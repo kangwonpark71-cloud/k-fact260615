@@ -37,6 +37,14 @@ const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; b
 const QUICK_CHECK_DEBOUNCE = 2000;
 const QUICK_CHECK_MIN = 50;
 
+function sanitizeServerError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (msg.trim().startsWith("<!") || msg.trim().startsWith("<html")) {
+    return "서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
+  }
+  return msg || "오류가 발생했습니다.";
+}
+
 function Home() {
   const navigate = useNavigate();
   const analyze = useServerFn(analyzeContent);
@@ -80,7 +88,7 @@ function Home() {
           const result = await quickCheck({ data: { text: t } });
           setQuickResult(result);
         } catch (e) {
-          setQuickErr(e instanceof Error ? e.message : "빠른 분석 실패");
+          setQuickErr(sanitizeServerError(e));
           setQuickResult(null);
         } finally {
           setQuickLoading(false);
@@ -141,7 +149,7 @@ function Home() {
       });
       navigate({ to: "/analysis/$id", params: { id: res.id } });
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "분석 중 오류가 발생했습니다.");
+      setErr(sanitizeServerError(e));
     } finally {
       setLoading(false);
     }
