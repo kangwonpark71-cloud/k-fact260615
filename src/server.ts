@@ -39,6 +39,11 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    // Cloudflare Workers secrets/vars are in `env`, not in process.env by default.
+    // Copy them so all server code can use process.env.X normally.
+    if (env && typeof env === "object") {
+      Object.assign(process.env, env);
+    }
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
