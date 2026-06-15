@@ -12,7 +12,7 @@ export default defineConfig({
   },
   vite: {
     ssr: {
-      noExternal: ["youtube-transcript"],
+      noExternal: ["youtube-transcript", "@ai-sdk/google", "@ai-sdk/openai-compatible"],
     },
   },
 });
