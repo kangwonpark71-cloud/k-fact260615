@@ -19,6 +19,10 @@ export function setCfEnv(env: unknown): void {
   }
 }
 
+export function getCfAIBinding(): unknown {
+  return _cfEnv["AI"] ?? null;
+}
+
 export function getEnv(key: string): string | undefined {
   // Try Cloudflare env object first (covers secrets + vars)
   const cfVal = (_cfEnv as Record<string, unknown>)[key];

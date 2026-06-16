@@ -4,8 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 import { generateObject } from "ai";
 import { z } from "zod";
 
-import { createGeminiProvider } from "./ai-gateway.server";
-import { getEnv } from "./runtime-env.server";
+import { createModelInstance, type SupportedProvider } from "./ai-gateway.server";
+import { getEnv, getCfAIBinding } from "./runtime-env.server";
 
 const VerdictEnum = z.enum([
   "사실",
@@ -39,11 +39,16 @@ const AnalysisSchema = z.object({
   claims: z.array(ClaimSchema).min(1).max(7),
 });
 
-const InputSchema = z.object({
-  url: z.string().url().optional().or(z.literal("").transform(() => undefined)),
-  text: z.string().min(30, "본문은 최소 30자 이상이어야 합니다."),
-  sessionId: z.string().min(1),
-});
+const InputSchema = z
+  .object({
+    url: z.string().url().optional().or(z.literal("").transform(() => undefined)),
+    text: z.string().default(""),
+    sessionId: z.string().min(1),
+  })
+  .refine((d) => d.url || d.text.length >= 30, {
+    message: "본문은 최소 30자 이상이어야 합니다.",
+    path: ["text"],
+  });
 
 const SYSTEM_PROMPT = `당신은 한국어 사실검증 보조 AI 'FactGuard'입니다.
 입력된 뉴스/게시물 본문에서 검증 가능한 핵심 주장 3~7개를 추출하고,
@@ -58,24 +63,232 @@ const SYSTEM_PROMPT = `당신은 한국어 사실검증 보조 AI 'FactGuard'입
 - confidence는 0~100 정수.
 - title은 본문을 대표하는 12자 내외 짧은 제목.`;
 
-async function getActiveGeminiKey(): Promise<string> {
+// ── 멀티 키 관리 ──
+
+type KeyEntry = {
+  provider: SupportedProvider;
+  key: string;
+};
+
+async function getAllActiveKeys(): Promise<{ keys: KeyEntry[]; dbError?: string }> {
+  const keys: KeyEntry[] = [];
+  const supported: SupportedProvider[] = ["gemini", "openai", "anthropic"];
+  let dbError: string | undefined;
+
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from("api_keys")
-      .select("key_value")
-      .eq("provider", "gemini")
+      .select("provider, key_value")
       .eq("is_active", true)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (data?.key_value) return data.key_value;
-  } catch {
-    // DB 조회 실패 시 환경변수로 폴백
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      dbError = "DB오류: " + error.message;
+    } else {
+      for (const row of data ?? []) {
+        if (supported.includes(row.provider as SupportedProvider)) {
+          keys.push({ provider: row.provider as SupportedProvider, key: row.key_value });
+        }
+      }
+      if (keys.length === 0) dbError = "DB조회성공-키없음(등록된 활성키 0개)";
+    }
+  } catch (e) {
+    dbError = "DB연결실패: " + (e instanceof Error ? e.message.slice(0, 100) : String(e));
   }
-  const envKey = getEnv("GEMINI_API_KEY");
-  if (!envKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다. 관리자 대시보드에서 API 키를 등록하거나 환경 변수를 설정하세요.");
-  return envKey;
+
+  // 환경변수 폴백 (DB 키와 무관하게 항상 추가 — DB 키가 무효일 때 대비)
+  const envFallbacks: Array<[SupportedProvider, string]> = [
+    ["openai", "OPENAI_API_KEY"],
+    ["anthropic", "ANTHROPIC_API_KEY"],
+    ["gemini", "GEMINI_API_KEY"],
+  ];
+  for (const [provider, envName] of envFallbacks) {
+    const val = getEnv(envName);
+    if (val) keys.push({ provider, key: val });
+  }
+
+  return { keys, dbError };
+}
+
+// ── CF Workers AI 전용 빌더 (모델 출력 구조와 무관하게 항상 유효한 객체 반환) ──
+
+type CFVerdict = "사실" | "부분 사실" | "근거 부족" | "반대 근거 우세" | "미확인";
+const CF_VALID: CFVerdict[] = ["사실", "부분 사실", "근거 부족", "반대 근거 우세", "미확인"];
+const CF_VMAP: Record<string, CFVerdict> = {
+  "사실이다": "사실", "사실임": "사실", "참": "사실",
+  "부분사실": "부분 사실", "부분적 사실": "부분 사실", "일부사실": "부분 사실",
+  "근거부족": "근거 부족", "증거부족": "근거 부족", "불충분": "근거 부족",
+  "반대근거우세": "반대 근거 우세", "거짓": "반대 근거 우세", "허위": "반대 근거 우세",
+  "불확실": "미확인", "확인불가": "미확인",
+};
+const cfV = (v: unknown): CFVerdict => {
+  if (typeof v !== "string") return "미확인";
+  const t = v.trim();
+  return CF_VALID.includes(t as CFVerdict) ? (t as CFVerdict) : (CF_VMAP[t] ?? "미확인");
+};
+const cfS = (v: unknown, max: number) => (typeof v === "string" ? v : String(v ?? "")).slice(0, max);
+const cfN = (v: unknown) => { const n = typeof v === "number" ? v : parseFloat(String(v ?? "")); return isNaN(n) ? 50 : Math.min(100, Math.max(0, Math.round(n))); };
+const cfA = (v: unknown): string[] => Array.isArray(v) ? v.slice(0, 5).map(s => cfS(s, 120)) : [];
+const cfSrc = (v: unknown): { name: string; type: string }[] => {
+  if (!Array.isArray(v)) return [];
+  return v.slice(0, 5).map(s => {
+    if (typeof s === "string") return { name: s.slice(0, 50), type: "일반" };
+    if (s && typeof s === "object") { const o = s as Record<string, unknown>; return { name: cfS(o.name ?? o.source ?? o.title ?? "", 50), type: cfS(o.type ?? "일반", 30) }; }
+    return { name: "참고 자료", type: "일반" };
+  });
+};
+const cfClaim = (c: unknown) => {
+  const DEF = { claim: "본문 내 주요 주장", verdict: "미확인" as CFVerdict, confidence: 50, reasoning: "", supporting_points: [] as string[], counter_points: [] as string[], unknowns: [] as string[], suggested_sources: [] as { name: string; type: string }[] };
+  if (typeof c === "string") return { ...DEF, claim: c.slice(0, 200) };
+  if (!c || typeof c !== "object") return DEF;
+  const o = c as Record<string, unknown>;
+  return {
+    claim:             cfS(o.claim ?? o.주장 ?? o.content ?? o.text ?? "본문 내 주요 주장", 200),
+    verdict:           cfV(o.verdict ?? o.판정 ?? o.result ?? o.rating),
+    confidence:        cfN(o.confidence ?? o.신뢰도 ?? o.score ?? o.certainty),
+    reasoning:         cfS(o.reasoning ?? o.reason ?? o.이유 ?? o.explanation ?? o.analysis ?? "", 500),
+    supporting_points: cfA(o.supporting_points ?? o.supportingPoints ?? o.support ?? o.지지 ?? o.evidence),
+    counter_points:    cfA(o.counter_points ?? o.counterPoints ?? o.counter ?? o.반박 ?? o.opposition),
+    unknowns:          cfA(o.unknowns ?? o.unknown ?? o.미확인 ?? o.uncertain),
+    suggested_sources: cfSrc(o.suggested_sources ?? o.suggestedSources ?? o.sources ?? o.출처 ?? o.references),
+  };
+};
+
+function buildAnalysisFromCF(obj: Record<string, unknown>) {
+  const root = (obj.analysis ?? obj.result ?? obj.data ?? obj) as Record<string, unknown>;
+  let raw = root.claims ?? root.분석결과 ?? root.주장들 ?? root.items ?? [];
+  if (!Array.isArray(raw)) raw = typeof raw === "object" && raw ? Object.values(raw as Record<string, unknown>) : [];
+  const claims = (raw as unknown[]).slice(0, 7).map(cfClaim).filter(c => c.claim.length > 0);
+  if (claims.length === 0) claims.push(cfClaim(null));
+  return {
+    title:              cfS(root.title ?? obj.title ?? "분석 결과", 20),
+    summary:            cfS(root.summary ?? obj.summary ?? "", 500),
+    overall_verdict:    cfV(root.overall_verdict ?? obj.overall_verdict),
+    overall_confidence: cfN(root.overall_confidence ?? obj.overall_confidence),
+    claims,
+  };
+}
+
+function buildQuickFromCF(obj: Record<string, unknown>) {
+  let rawH = obj.highlights ?? obj.claims ?? obj.주장 ?? obj.items ?? [];
+  if (!Array.isArray(rawH)) rawH = [];
+  const highlights = (rawH as unknown[]).slice(0, 3).map(h => {
+    if (typeof h === "string") return { claim: h.slice(0, 150), verdict: "미확인" as CFVerdict, confidence: 50, brief: "", supporting: "", counter: "" };
+    if (!h || typeof h !== "object") return { claim: "주요 주장", verdict: "미확인" as CFVerdict, confidence: 50, brief: "", supporting: "", counter: "" };
+    const o = h as Record<string, unknown>;
+    return {
+      claim:      cfS(o.claim ?? o.주장 ?? o.content ?? "주요 주장", 150),
+      verdict:    cfV(o.verdict ?? o.판정 ?? o.result),
+      confidence: cfN(o.confidence ?? o.신뢰도),
+      brief:      cfS(o.brief ?? o.reasoning ?? o.이유 ?? o.explanation ?? "", 200),
+      supporting: cfS(o.supporting ?? o.support ?? o.지지 ?? "", 150),
+      counter:    cfS(o.counter ?? o.opposition ?? o.반박 ?? "", 150),
+    };
+  });
+  const rawF = obj.risk_flags ?? obj.riskFlags ?? obj.위험 ?? obj.flags ?? [];
+  return {
+    summary:            cfS(obj.summary ?? obj.요약 ?? "", 200),
+    overall_verdict:    cfV(obj.overall_verdict ?? obj.overall ?? obj.판정),
+    overall_confidence: cfN(obj.overall_confidence ?? obj.confidence),
+    highlights,
+    risk_flags: (Array.isArray(rawF) ? rawF : []).slice(0, 4).map(f => cfS(f, 50)),
+  };
+}
+
+function parseCFResponse(raw: string, hint: "analysis" | "quick"): unknown {
+  let s = raw.replace(/^```(?:json)?\s*/im, "").replace(/\s*```\s*$/im, "").trim();
+  const st = s.indexOf("{"); if (st > 0) s = s.slice(st);
+  const en = s.lastIndexOf("}"); if (en !== -1) s = s.slice(0, en + 1);
+  const obj = JSON.parse(s) as Record<string, unknown>;
+  return hint === "analysis" ? buildAnalysisFromCF(obj) : buildQuickFromCF(obj);
+}
+
+const CF_JSON_HINT = `\n\n[출력] 마크다운 없이 순수 JSON 객체만. 판정은 "사실"|"부분 사실"|"근거 부족"|"반대 근거 우세"|"미확인" 중 하나.`;
+
+async function generateWithFallback<T extends z.ZodType>(params: {
+  schema: T;
+  system: string;
+  prompt: string;
+  temperature?: number;
+  cfHint?: "analysis" | "quick";
+}): Promise<z.infer<T>> {
+  const { keys, dbError } = await getAllActiveKeys();
+
+  if (keys.length === 0) {
+    const hint = dbError ? ` (${dbError})` : "";
+    throw new Error(
+      `등록된 AI API 키가 없습니다. 관리자 대시보드에서 API 키를 등록하거나 환경 변수를 설정하세요.${hint}`,
+    );
+  }
+
+  const errors: string[] = [];
+
+  for (const entry of keys) {
+    try {
+      const model = createModelInstance(entry.provider, entry.key);
+      const { object } = await generateObject({
+        model,
+        system: params.system,
+        prompt: params.prompt,
+        schema: params.schema,
+        ...(params.temperature !== undefined ? { temperature: params.temperature } : {}),
+      });
+      return object;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+
+      // 즉시 실패 처리 (재시도 불필요한 오류)
+      if (msg.includes("429") || msg.includes("rate_limit") || msg.includes("rate limit")) {
+        throw new Error("AI 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.");
+      }
+
+      errors.push(`[${entry.provider}] ${msg.slice(0, 120)}`);
+      // 다음 키 시도
+      continue;
+    }
+  }
+
+  // 최종 폴백: CF Workers AI 네이티브 바인딩
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cfAIBinding = getCfAIBinding() as any;
+  if (cfAIBinding) {
+    const cfModels = [
+      "@cf/meta/llama-3.2-3b-instruct",        // 경량, json_object 지원
+      "@cf/meta/llama-3.3-70b-instruct-fp8-fast", // 고품질
+      "@cf/meta/llama-3.1-70b-instruct",        // 70B 안정 버전
+      "@cf/mistral/mistral-7b-instruct-v0.1",   // Mistral v0.1
+    ];
+
+    const cfSystem = params.system + CF_JSON_HINT;
+
+    for (const cfModel of cfModels) {
+      try {
+        const cfResult = await cfAIBinding.run(cfModel, {
+          messages: [
+            { role: "system", content: cfSystem },
+            { role: "user", content: params.prompt },
+          ],
+          response_format: { type: "json_object" },
+          max_tokens: 3000,
+        });
+
+        const raw: string =
+          typeof cfResult === "string"
+            ? cfResult
+            : typeof cfResult?.response === "string"
+              ? cfResult.response
+              : JSON.stringify(cfResult);
+
+        return parseCFResponse(raw, params.cfHint ?? "analysis") as z.infer<T>;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`[cf:${cfModel.split("/").pop()}] ${msg.slice(0, 100)}`);
+      }
+    }
+  }
+
+  throw new Error("모든 AI 키 실패 — " + errors.join(" / "));
 }
 
 async function getOptionalUserId(): Promise<string | null> {
@@ -98,7 +311,6 @@ async function getOptionalUserId(): Promise<string | null> {
 export const analyzeContent = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => InputSchema.parse(input))
   .handler(async ({ data }) => {
-    const apiKey = await getActiveGeminiKey();
     const userId = await getOptionalUserId();
 
     let bodyText = data.text;
@@ -126,22 +338,13 @@ export const analyzeContent = createServerFn({ method: "POST" })
       }
     }
 
-    const gemini = createGeminiProvider(apiKey);
     const prompt = `분석할 본문:\n"""\n${bodyText.slice(0, 8000)}\n"""\n\n${sourceUrl ? `원본 URL: ${sourceUrl}\n\n` : ""}위 지침에 따라 JSON으로 응답하세요.`;
 
     let parsed: z.infer<typeof AnalysisSchema>;
     try {
-      const { object } = await generateObject({
-        model: gemini("gemini-2.5-flash"),
-        system: SYSTEM_PROMPT,
-        prompt,
-        schema: AnalysisSchema,
-      });
-      parsed = object;
+      parsed = await generateWithFallback({ schema: AnalysisSchema, system: SYSTEM_PROMPT, prompt, cfHint: "analysis" });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("429")) throw new Error("AI 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.");
-      if (msg.includes("403")) throw new Error("Gemini API 키가 유효하지 않습니다. GEMINI_API_KEY를 확인하세요.");
       throw new Error("AI 분석 호출 실패: " + msg);
     }
 
@@ -292,22 +495,18 @@ export const quickAnalyzeContent = createServerFn({ method: "POST" })
     z.object({ text: z.string().min(10) }).parse(input),
   )
   .handler(async ({ data }) => {
-    const apiKey = await getActiveGeminiKey();
-    const gemini = createGeminiProvider(apiKey);
+    const quickPrompt = `다음 텍스트를 사실검증 관점에서 분석하세요:\n"""\n${data.text.slice(0, 3000)}\n"""`;
     try {
-      const { object } = await generateObject({
-        model: gemini("gemini-2.5-flash"),
-        system: QUICK_SYSTEM,
-        prompt: `다음 텍스트를 사실검증 관점에서 분석하세요:\n"""\n${data.text.slice(0, 3000)}\n"""`,
+      return await generateWithFallback({
         schema: QuickCheckSchema,
+        system: QUICK_SYSTEM,
+        prompt: quickPrompt,
         temperature: 0.2,
+        cfHint: "quick",
       });
-      return object;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("429") || msg.includes("quota")) throw new Error("AI 요청 한도 초과. 잠시 후 다시 시도하세요.");
-      if (msg.includes("API key")) throw new Error("API 키 오류. 관리자에게 문의하세요.");
-      throw new Error("빠른 분석 실패. 잠시 후 다시 시도하세요.");
+      throw new Error("빠른 분석 실패: " + msg);
     }
   });
 

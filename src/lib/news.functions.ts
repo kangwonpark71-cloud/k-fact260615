@@ -1,6 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getEnv } from "./runtime-env.server";
 
-export type SourceType = "factcheck" | "news" | "government" | "naver";
+export type SourceType =
+  | "factcheck"
+  | "news"
+  | "government"
+  | "naver"
+  | "youtube"
+  | "community"
+  | "social";
 
 export interface TrendingItem {
   id: string;
@@ -13,48 +21,75 @@ export interface TrendingItem {
   score: number;
 }
 
-// ── 5분 in-memory 캐시 ──
+// ── 예약 캐시 (9시/14시 KST 기준) ──
 let _cache: TrendingItem[] = [];
 let _cacheTs = 0;
-const CACHE_TTL = 5 * 60 * 1000;
 
-// ── RSS 파싱 유틸 ──
+function getLastScheduledTs(): number {
+  const nowUtc = Date.now();
+  const kstMs = 9 * 3600000;
+  const nowKST = new Date(nowUtc + kstMs);
+  const h = nowKST.getUTCHours();
+  const base = new Date(nowKST);
+  base.setUTCMinutes(0, 0, 0);
+
+  let lastKST: Date;
+  if (h < 9) {
+    lastKST = new Date(base);
+    lastKST.setUTCDate(lastKST.getUTCDate() - 1);
+    lastKST.setUTCHours(14);
+  } else if (h < 14) {
+    lastKST = new Date(base);
+    lastKST.setUTCHours(9);
+  } else {
+    lastKST = new Date(base);
+    lastKST.setUTCHours(14);
+  }
+  return lastKST.getTime() - kstMs; // UTC 타임스탬프로 변환
+}
+
+function isCacheValid(): boolean {
+  return _cache.length > 0 && _cacheTs >= getLastScheduledTs();
+}
+
+// ── 공통 유틸 ──
+function stableId(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+  return Math.abs(h).toString(36).slice(0, 10);
+}
+
 function extractTag(xml: string, tag: string): string {
   const re = new RegExp(
-    `<${tag}(?:\\s[^>]*)?>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`,
-    "i",
+    `<${tag}(?:\\s[^>]*)?>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`, "i",
   );
   const m = xml.match(re);
   if (!m) return "";
   return m[1]
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&#039;/g, "'")
-    .replace(/<[^>]+>/g, "")
-    .trim();
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"').replace(/&#39;|&#039;/g, "'")
+    .replace(/<[^>]+>/g, "").trim();
 }
 
-function stableId(link: string): string {
-  let h = 5381;
-  for (let i = 0; i < link.length; i++) h = ((h << 5) + h) ^ link.charCodeAt(i);
-  return Math.abs(h).toString(36).slice(0, 10);
-}
-
-function parseRss(xml: string, sourceName: string, sourceType: SourceType, maxItems = 20): TrendingItem[] {
+function parseRss(xml: string, sourceName: string, sourceType: SourceType, max = 10): TrendingItem[] {
   const items: TrendingItem[] = [];
-  const re = /<item[^>]*>([\s\S]*?)<\/item>/gi;
+  const re = /<(?:item|entry)[^>]*>([\s\S]*?)<\/(?:item|entry)>/gi;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(xml)) !== null && items.length < maxItems) {
+  while ((m = re.exec(xml)) !== null && items.length < max) {
     const body = m[1];
     const title = extractTag(body, "title");
-    const rawLink = extractTag(body, "link") || extractTag(body, "guid");
+    const rawLink =
+      extractTag(body, "link") ||
+      (body.match(/<link[^>]+href="([^"]+)"/i)?.[1] ?? "") ||
+      extractTag(body, "guid");
     if (!title || !rawLink) continue;
     const link = rawLink.startsWith("http") ? rawLink : "";
     if (!link) continue;
-    const pubDate = extractTag(body, "pubDate") || extractTag(body, "dc:date") || "";
-    const desc = extractTag(body, "description");
+    const pubDate =
+      extractTag(body, "pubDate") ||
+      extractTag(body, "published") ||
+      extractTag(body, "updated") ||
+      extractTag(body, "dc:date") || "";
     items.push({
       id: stableId(link),
       title: title.slice(0, 120),
@@ -62,59 +97,44 @@ function parseRss(xml: string, sourceName: string, sourceType: SourceType, maxIt
       pubDate,
       source: sourceName,
       sourceType,
-      description: desc ? desc.slice(0, 200) : undefined,
+      description: extractTag(body, "description").slice(0, 200) || undefined,
       score: 0,
     });
   }
   return items;
 }
 
-async function fetchRss(
-  url: string,
-  sourceName: string,
-  sourceType: SourceType,
-  maxItems = 20,
-): Promise<TrendingItem[]> {
+async function safeRss(url: string, name: string, type: SourceType, max = 10): Promise<TrendingItem[]> {
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": "KFactBot/1.0 (+https://kfact.kr)" },
-      signal: AbortSignal.timeout(7000),
+      headers: { "User-Agent": "Mozilla/5.0 KFactBot/1.0" },
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return [];
-    const xml = await res.text();
-    return parseRss(xml, sourceName, sourceType, maxItems);
-  } catch {
-    return [];
-  }
+    return parseRss(await res.text(), name, type, max);
+  } catch { return []; }
 }
 
-// ── 네이버 뉴스 검색 API ──
+// ── 네이버 뉴스 API ──
 async function fetchNaverNews(): Promise<TrendingItem[]> {
-  const clientId = process.env.NAVER_CLIENT_ID;
-  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+  const clientId = getEnv("NAVER_CLIENT_ID");
+  const clientSecret = getEnv("NAVER_CLIENT_SECRET");
   if (!clientId || !clientSecret) return [];
-
-  const queries = ["팩트체크", "사실확인"];
   const results: TrendingItem[] = [];
-  try {
-    for (const q of queries) {
-      const url = `https://openapi.naver.com/v1/search/news.json?query=${encodeURIComponent(q)}&display=15&sort=date`;
-      const res = await fetch(url, {
-        headers: {
-          "X-Naver-Client-Id": clientId,
-          "X-Naver-Client-Secret": clientSecret,
-        },
-        signal: AbortSignal.timeout(5000),
-      });
+  for (const q of ["팩트체크", "사실확인"]) {
+    try {
+      const res = await fetch(
+        `https://openapi.naver.com/v1/search/news.json?query=${encodeURIComponent(q)}&display=10&sort=date`,
+        { headers: { "X-Naver-Client-Id": clientId, "X-Naver-Client-Secret": clientSecret }, signal: AbortSignal.timeout(5000) },
+      );
       if (!res.ok) continue;
-      const json = await res.json();
+      const json = await res.json() as { items?: any[] };
       for (const it of json.items ?? []) {
-        const rawTitle = (it.title as string).replace(/<[^>]+>/g, "");
         const link = (it.originallink as string) || (it.link as string);
         if (!link) continue;
         results.push({
           id: stableId(link),
-          title: rawTitle.slice(0, 120),
+          title: (it.title as string).replace(/<[^>]+>/g, "").slice(0, 120),
           link,
           pubDate: it.pubDate as string,
           source: "네이버 뉴스",
@@ -123,133 +143,296 @@ async function fetchNaverNews(): Promise<TrendingItem[]> {
           score: 0,
         });
       }
-    }
-  } catch {
-    // 네이버 API 실패 무시
+    } catch { /**/ }
   }
   return results;
 }
 
-// ── SNU 팩트체크 JSON API ──
+// ── SNU 팩트체크 ──
 async function fetchSnuFactcheck(): Promise<TrendingItem[]> {
   try {
-    const res = await fetch("https://factcheck.snu.ac.kr/v2/facts?offset=0&limit=15", {
+    const res = await fetch("https://factcheck.snu.ac.kr/v2/facts?offset=0&limit=10", {
       headers: { "User-Agent": "KFactBot/1.0", Accept: "application/json" },
       signal: AbortSignal.timeout(7000),
     });
     if (!res.ok) return [];
-    const json = await res.json();
-    // 응답 구조가 { results: [...] } 또는 배열 형태
+    const json = await res.json() as any;
     const arr: any[] = Array.isArray(json) ? json : (json.results ?? json.facts ?? []);
-    return arr
-      .filter((it: any) => it && (it.title || it.factTitle))
-      .map((it: any): TrendingItem => {
-        const id = String(it.id ?? it.factId ?? Math.random());
-        const link = it.url ?? `https://factcheck.snu.ac.kr/v2/facts/${id}`;
-        return {
-          id: stableId(link),
-          title: (it.title ?? it.factTitle ?? "").slice(0, 120),
-          link,
-          pubDate: it.publishedAt ?? it.createdAt ?? "",
-          source: "SNU 팩트체크",
-          sourceType: "factcheck",
-          description: (it.summary ?? it.content ?? "").slice(0, 200),
-          score: 0,
-        };
-      });
-  } catch {
-    return [];
-  }
+    return arr.filter((it: any) => it?.title || it?.factTitle).slice(0, 10).map((it: any): TrendingItem => {
+      const id = String(it.id ?? it.factId ?? Math.random());
+      const link = it.url ?? `https://factcheck.snu.ac.kr/v2/facts/${id}`;
+      return {
+        id: stableId(link),
+        title: (it.title ?? it.factTitle ?? "").slice(0, 120),
+        link,
+        pubDate: it.publishedAt ?? it.createdAt ?? "",
+        source: "SNU 팩트체크",
+        sourceType: "factcheck",
+        description: (it.summary ?? it.content ?? "").slice(0, 200),
+        score: 0,
+      };
+    });
+  } catch { return []; }
 }
 
-// ── 인기도 스코어 계산 ──
+// ── YouTube ──
+async function fetchYouTube(): Promise<TrendingItem[]> {
+  const apiKey = getEnv("YOUTUBE_API_KEY");
+  const items: TrendingItem[] = [];
+
+  // API 키 있을 때: 한국 인기 뉴스/정치 동영상
+  if (apiKey) {
+    try {
+      const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet&chart=mostPopular&regionCode=KR&videoCategoryId=25&maxResults=10&key=${apiKey}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (res.ok) {
+        const json = await res.json() as { items?: any[] };
+        for (const v of json.items ?? []) {
+          const videoId = v.id as string;
+          const link = `https://www.youtube.com/watch?v=${videoId}`;
+          items.push({
+            id: stableId(link),
+            title: (v.snippet?.title ?? "").slice(0, 120),
+            link,
+            pubDate: v.snippet?.publishedAt ?? "",
+            source: v.snippet?.channelTitle ?? "YouTube",
+            sourceType: "youtube",
+            description: v.snippet?.description?.slice(0, 200),
+            score: 0,
+          });
+        }
+        if (items.length >= 10) return items;
+      }
+    } catch { /**/ }
+  }
+
+  // 폴백: 주요 한국 뉴스 채널 RSS
+  const channels = [
+    { id: "UCcQTRi69dsVYHN3exePtZ1A", name: "KBS뉴스" },
+    { id: "UCF4Wxdo3inmxP-Y59wXDsFw", name: "MBC뉴스" },
+    { id: "UCSVpUaLXnDqQa5P4Ls0eGhA", name: "JTBC뉴스" },
+    { id: "UCmE1-5K6Py91tPFUHkZ-PCA", name: "연합뉴스TV" },
+    { id: "UCut9nQ-T2VJSG2MaJTnhNRA", name: "YTN" },
+  ];
+  const rssResults = await Promise.all(
+    channels.map((ch) =>
+      safeRss(
+        `https://www.youtube.com/feeds/videos.xml?channel_id=${ch.id}`,
+        ch.name, "youtube", 3,
+      ),
+    ),
+  );
+  const merged = rssResults.flat().slice(0, 10);
+  items.push(...merged.filter((r) => !items.some((e) => e.id === r.id)));
+  return items.slice(0, 10);
+}
+
+// ── DC인사이드 ──
+async function fetchDCInside(): Promise<TrendingItem[]> {
+  const targets = [
+    { url: "https://gall.dcinside.com/board/lists/?id=dcbest&page=1", name: "DC인사이드 베스트" },
+    { url: "https://gall.dcinside.com/board/lists/?id=hit&page=1", name: "DC인사이드 힛갤" },
+  ];
+  const items: TrendingItem[] = [];
+
+  for (const { url, name } of targets) {
+    if (items.length >= 10) break;
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept": "text/html,application/xhtml+xml",
+          "Accept-Language": "ko-KR,ko;q=0.9",
+          "Referer": "https://www.dcinside.com/",
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) continue;
+      const html = await res.text();
+
+      // 제목과 링크 파싱: <a href="/board/view/..." class="ub-word">TITLE</a>
+      const re = /<a[^>]+href="(\/board\/view\/[^"]+)"[^>]*class="[^"]*ub-word[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(html)) !== null && items.length < 10) {
+        const href = m[1];
+        const rawTitle = m[2].replace(/<[^>]+>/g, "").trim();
+        if (!rawTitle || rawTitle.length < 3) continue;
+        const link = `https://gall.dcinside.com${href}`;
+        if (items.some((it) => it.id === stableId(link))) continue;
+        items.push({
+          id: stableId(link),
+          title: rawTitle.slice(0, 120),
+          link,
+          pubDate: new Date().toISOString(),
+          source: name,
+          sourceType: "community",
+          score: 0,
+        });
+      }
+    } catch { /**/ }
+  }
+  return items.slice(0, 10);
+}
+
+// ── FM코리아 ──
+async function fetchFMKorea(): Promise<TrendingItem[]> {
+  // RSS 시도
+  const rss = await safeRss("https://www.fmkorea.com/rss", "FM코리아", "community", 10);
+  if (rss.length >= 3) return rss.slice(0, 10);
+
+  // HTML 스크래핑 폴백
+  try {
+    const res = await fetch("https://www.fmkorea.com/best", {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "text/html",
+        "Accept-Language": "ko-KR,ko;q=0.9",
+        "Referer": "https://www.fmkorea.com/",
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const items: TrendingItem[] = [];
+
+    // FM코리아 게시물 링크 패턴: href="/숫자" 또는 href="/best/숫자"
+    const re = /<a[^>]+href="(\/\d+|\/best\/\d+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null && items.length < 10) {
+      const href = m[1];
+      const rawTitle = m[2].replace(/<[^>]+>/g, "").trim();
+      if (!rawTitle || rawTitle.length < 5) continue;
+      const link = `https://www.fmkorea.com${href}`;
+      if (items.some((it) => it.id === stableId(link))) continue;
+      items.push({
+        id: stableId(link),
+        title: rawTitle.slice(0, 120),
+        link,
+        pubDate: new Date().toISOString(),
+        source: "FM코리아",
+        sourceType: "community",
+        score: 0,
+      });
+    }
+    return items.slice(0, 10);
+  } catch { return []; }
+}
+
+// ── X (Twitter / Nitter RSS) ──
+async function fetchXTwitter(): Promise<TrendingItem[]> {
+  const nitterHosts = [
+    "https://nitter.poast.org",
+    "https://nitter.privacydev.net",
+    "https://nitter.1d4.us",
+  ];
+  const queries = ["팩트체크", "사실확인 논란"];
+
+  for (const host of nitterHosts) {
+    try {
+      const results: TrendingItem[] = [];
+      for (const q of queries) {
+        const url = `${host}/search/rss?q=${encodeURIComponent(q)}&f=tweets`;
+        const items = await safeRss(url, "X(Twitter)", "social", 5);
+        results.push(...items);
+        if (results.length >= 10) break;
+      }
+      if (results.length >= 3) return results.slice(0, 10);
+    } catch { /**/ }
+  }
+  return [];
+}
+
+// ── 인스타그램 (Nitter 해시태그 대체) ──
+async function fetchInstagram(): Promise<TrendingItem[]> {
+  // Instagram Graph API 없이는 공식 접근 불가
+  // Nitter 기반 해시태그 검색으로 대체
+  const nitterHosts = [
+    "https://nitter.poast.org",
+    "https://nitter.privacydev.net",
+  ];
+  for (const host of nitterHosts) {
+    try {
+      // Instagram 관련 X 해시태그 트렌드
+      const url = `${host}/search/rss?q=%23팩트체크+OR+%23사실확인&f=tweets`;
+      const items = await safeRss(url, "인스타(해시태그)", "social", 10);
+      if (items.length >= 2) return items.slice(0, 10).map((it) => ({ ...it, source: "Instagram 트렌드" }));
+    } catch { /**/ }
+  }
+  return [];
+}
+
+// ── 스코어 계산 ──
 function calcScore(item: TrendingItem): number {
   let score = 0;
-
-  // 최신성 (24시간 = 50점 → 점감)
   if (item.pubDate) {
     const ageH = (Date.now() - new Date(item.pubDate).getTime()) / 3_600_000;
     score += Math.max(0, 50 - ageH * (50 / 48));
   }
-
-  // 팩트체크/검증 키워드
-  const factKws = ["팩트체크", "사실확인", "거짓", "허위", "오해", "진실", "검증", "확인결과", "사실일까", "주장", "논란"];
-  for (const kw of factKws) {
-    if (item.title.includes(kw)) { score += 12; break; }
-  }
-
-  // 소스 신뢰도
+  const factKws = ["팩트체크","사실확인","거짓","허위","오해","진실","검증","확인결과","논란","주장"];
+  for (const kw of factKws) if (item.title.includes(kw)) { score += 12; break; }
   const bonus: Record<SourceType, number> = {
-    factcheck: 28,
-    government: 22,
-    naver: 16,
-    news: 10,
+    factcheck: 30, government: 24, naver: 18,
+    news: 12, youtube: 10, community: 8, social: 6,
   };
-  score += bonus[item.sourceType];
-
+  score += bonus[item.sourceType] ?? 0;
   return Math.round(score);
 }
 
-// ── RSS 소스 목록 (실제 접근 가능 확인된 소스만) ──
-const RSS_SOURCES: { url: string; name: string; type: SourceType; maxItems?: number }[] = [
-  // 연합뉴스 (분야별)
-  { url: "https://www.yna.co.kr/rss/politics.xml",  name: "연합뉴스", type: "news", maxItems: 15 },
-  { url: "https://www.yna.co.kr/rss/society.xml",   name: "연합뉴스", type: "news", maxItems: 10 },
-  { url: "https://www.yna.co.kr/rss/economy.xml",   name: "연합뉴스", type: "news", maxItems: 10 },
-  // 뉴시스
-  { url: "https://www.newsis.com/RSS/national.xml",  name: "뉴시스", type: "news", maxItems: 15 },
-  { url: "https://www.newsis.com/RSS/politics.xml",  name: "뉴시스", type: "news", maxItems: 10 },
-  { url: "https://www.newsis.com/RSS/society.xml",   name: "뉴시스", type: "news", maxItems: 10 },
-  // 뉴스1
-  { url: "https://www.news1.kr/rss/news_main.xml",   name: "뉴스1",  type: "news", maxItems: 15 },
-  { url: "https://www.news1.kr/rss/politics.xml",    name: "뉴스1",  type: "news", maxItems: 10 },
-  { url: "https://www.news1.kr/rss/society.xml",     name: "뉴스1",  type: "news", maxItems: 10 },
-  // MBC 뉴스
-  { url: "https://imnews.imbc.com/rss/news/news_00.xml",       name: "MBC 뉴스", type: "news", maxItems: 15 },
-  { url: "https://imnews.imbc.com/rss/news/news_politics.xml", name: "MBC 뉴스", type: "news", maxItems: 10 },
-  // 매일경제
-  { url: "https://www.mk.co.kr/rss/40300001/",  name: "매일경제", type: "news", maxItems: 15 },
-  { url: "https://www.mk.co.kr/rss/30000001/",  name: "매일경제", type: "news", maxItems: 10 },
-  // 정부 공식 보도자료
-  { url: "https://www.korea.kr/rss/policy.xml", name: "정책브리핑", type: "government", maxItems: 20 },
+// ── RSS 소스 목록 ──
+const RSS_SOURCES: { url: string; name: string; type: SourceType; max?: number }[] = [
+  { url: "https://www.yna.co.kr/rss/politics.xml",              name: "연합뉴스",  type: "news", max: 10 },
+  { url: "https://www.yna.co.kr/rss/society.xml",               name: "연합뉴스",  type: "news", max: 10 },
+  { url: "https://www.newsis.com/RSS/national.xml",             name: "뉴시스",   type: "news", max: 10 },
+  { url: "https://www.news1.kr/rss/news_main.xml",              name: "뉴스1",    type: "news", max: 10 },
+  { url: "https://imnews.imbc.com/rss/news/news_00.xml",        name: "MBC뉴스",  type: "news", max: 10 },
+  { url: "https://www.mk.co.kr/rss/40300001/",                  name: "매일경제", type: "news", max: 10 },
+  { url: "https://www.korea.kr/rss/policy.xml",                 name: "정책브리핑", type: "government", max: 10 },
 ];
 
 export const fetchTrendingNews = createServerFn({ method: "GET" }).handler(async () => {
-  const now = Date.now();
-  if (_cache.length > 0 && now - _cacheTs < CACHE_TTL) {
-    return _cache;
-  }
+  if (isCacheValid()) return _cache;
 
-  const [rssAll, naverItems, snuItems] = await Promise.all([
-    Promise.all(RSS_SOURCES.map((s) => fetchRss(s.url, s.name, s.type, s.maxItems))).then((r) => r.flat()),
-    fetchNaverNews(),
-    fetchSnuFactcheck(),
-  ]);
+  const [rssAll, naverItems, snuItems, ytItems, dcItems, fmItems, xItems, igItems] =
+    await Promise.all([
+      Promise.all(RSS_SOURCES.map((s) => safeRss(s.url, s.name, s.type, s.max))).then((r) => r.flat()),
+      fetchNaverNews(),
+      fetchSnuFactcheck(),
+      fetchYouTube(),
+      fetchDCInside(),
+      fetchFMKorea(),
+      fetchXTwitter(),
+      fetchInstagram(),
+    ]);
 
-  // SNU + 네이버 우선 배치 후 RSS 병합
-  const merged = [...snuItems, ...naverItems, ...rssAll];
+  const merged = [
+    ...snuItems,
+    ...naverItems,
+    ...ytItems,
+    ...dcItems,
+    ...fmItems,
+    ...xItems,
+    ...igItems,
+    ...rssAll,
+  ];
 
-  // 링크 기준 중복 제거
   const seen = new Set<string>();
   const unique = merged.filter((it) => {
-    const key = it.link.replace(/[?#].*$/, ""); // 쿼리스트링 제거 후 비교
+    const key = it.link.replace(/[?#].*$/, "");
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
 
-  // 스코어 계산 → 정렬 → 상위 40개
   const scored = unique
     .map((it) => ({ ...it, score: calcScore(it) }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, 40);
+    .slice(0, 80);
 
   _cache = scored;
-  _cacheTs = now;
+  _cacheTs = Date.now();
   return scored;
 });
 
-// 캐시 강제 무효화 (새로고침 버튼용)
 export const refreshTrendingNews = createServerFn({ method: "POST" }).handler(async () => {
   _cacheTs = 0;
   _cache = [];

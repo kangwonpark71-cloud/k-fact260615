@@ -5,7 +5,7 @@ import {
   ArrowRight, Link2, FileText, Sparkles, ShieldCheck,
   Search, Scale, Mic, Loader2, AlertCircle, CheckCircle2,
   HelpCircle, XCircle, MinusCircle, ThumbsUp, ThumbsDown,
-  TriangleAlert, RefreshCw,
+  TriangleAlert, RefreshCw, MessageSquare,
 } from "lucide-react";
 
 import { analyzeContent, quickAnalyzeContent, type QuickCheckResult } from "@/lib/analyses.functions";
@@ -14,6 +14,7 @@ import { getSessionId } from "@/lib/session";
 import { SiteHeader } from "@/components/SiteHeader";
 import { VoiceInput } from "@/components/VoiceInput";
 import { TrendingNews } from "@/components/TrendingNews";
+import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -38,6 +39,22 @@ const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; b
 const QUICK_CHECK_DEBOUNCE = 2500;
 const QUICK_CHECK_MIN = 80;
 
+type VoiceSentence = {
+  id: string;
+  text: string;
+  speaker: string;
+  loading: boolean;
+  result: QuickCheckResult | null;
+  error: string | null;
+};
+
+const SPEAKER_BADGE: Record<string, string> = {
+  "화자 A": "bg-blue-400/15 border-blue-400/30 text-blue-400",
+  "화자 B": "bg-emerald-400/15 border-emerald-400/30 text-emerald-400",
+  "화자 C": "bg-amber-400/15 border-amber-400/30 text-amber-400",
+  "화자 D": "bg-rose-400/15 border-rose-400/30 text-rose-400",
+};
+
 function sanitizeServerError(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   if (msg.trim().startsWith("<!") || msg.trim().startsWith("<html")) {
@@ -52,7 +69,7 @@ function Home() {
   const quickCheck = useServerFn(quickAnalyzeContent);
   const fetchYTInfo = useServerFn(fetchYouTubeInfo);
 
-  const [mode, setMode] = useState<"text" | "url" | "voice">("text");
+  const [mode, setMode] = useState<"text" | "url" | "voice" | "chat">("text");
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
   const [interimText, setInterimText] = useState("");
@@ -70,6 +87,8 @@ function Home() {
   const [quickErr, setQuickErr] = useState<string | null>(null);
   const quickTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const lastCheckedRef = useRef("");
+
+  const [voiceSentences, setVoiceSentences] = useState<VoiceSentence[]>([]);
 
   // 텍스트가 변경될 때 디바운스로 빠른 팩트체크 실행
   const scheduleQuickCheck = useCallback(
@@ -100,9 +119,10 @@ function Home() {
   );
 
   useEffect(() => {
+    if (mode === "voice") return;
     scheduleQuickCheck(text);
     return () => clearTimeout(quickTimerRef.current);
-  }, [text, scheduleQuickCheck]);
+  }, [text, scheduleQuickCheck, mode]);
 
   // YouTube URL 감지 → 자막+메타데이터 자동 fetch
   useEffect(() => {
@@ -157,13 +177,50 @@ function Home() {
   };
 
   const effectiveText = mode === "voice" ? text + interimText : text;
-  const canSubmit = effectiveText.replace(interimText, "").trim().length >= 30 && !loading;
+  const canSubmit =
+    (mode === "url" ? !!url.trim() : effectiveText.replace(interimText, "").trim().length >= 30) && !loading;
 
-  // URL 탭으로 전환하면서 url 값을 채우는 핸들러
-  const handleAnalyzeFromTrending = (trendUrl: string) => {
+  // 탭 전환 시 텍스트 초기화
+  const handleModeChange = (newMode: "text" | "url" | "voice" | "chat") => {
+    if (newMode === mode) return;
+    setMode(newMode);
+    setText("");
+    setInterimText("");
+    setQuickResult(null);
+    setQuickErr(null);
+    setVoiceSentences([]);
+  };
+
+  const handleVoiceSentence = useCallback(async (sentence: string) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setVoiceSentences(prev => [...prev, { id, text: sentence, speaker: "단일", loading: true, result: null, error: null }]);
+    try {
+      const result = await quickCheck({ data: { text: sentence } });
+      setVoiceSentences(prev => prev.map(s => s.id === id ? { ...s, loading: false, result } : s));
+    } catch (e) {
+      setVoiceSentences(prev => prev.map(s => s.id === id ? { ...s, loading: false, error: sanitizeServerError(e) } : s));
+    }
+  }, [quickCheck]);
+
+  // 트렌딩 뉴스 클릭 → URL 세팅 후 즉시 분석 제출
+  const handleAnalyzeFromTrending = async (trendUrl: string): Promise<void> => {
     setUrl(trendUrl);
     setMode("url");
+    setText("");
+    setQuickResult(null);
+    setQuickErr(null);
+    setErr(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
+    setLoading(true);
+    try {
+      const sessionId = getSessionId();
+      const res = await analyze({ data: { url: trendUrl, text: "", sessionId } });
+      navigate({ to: "/analysis/$id", params: { id: res.id } });
+    } catch (e) {
+      setErr(sanitizeServerError(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -177,7 +234,7 @@ function Home() {
             <Sparkles className="w-3.5 h-3.5 text-accent" />
             <span className="text-xs sm:text-xs tracking-wide text-muted-foreground">AI 사실검증 보조</span>
           </div>
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold leading-[1.1] mb-4 sm:mb-5">
+          <h1 className="text-2xl sm:text-4xl md:text-5xl font-bold leading-[1.15] mb-4 sm:mb-5">
             판정하지 않습니다.
             <br />
             <span className="gradient-text">근거를 구조화합니다.</span>
@@ -194,30 +251,48 @@ function Home() {
         {/* 좌측: 입력 폼 영역 */}
         <div className="order-1">
 
-        {/* 로딩 배너 */}
-        {loading && (
-          <div className="glass rounded-xl px-5 py-4 mb-4 flex items-center gap-3">
-            <span className="inline-block w-5 h-5 border-2 border-accent/40 border-t-accent rounded-full animate-spin shrink-0" />
-            <span className="text-muted-foreground text-sm sm:text-sm leading-snug">AI가 주장을 분석하고 있습니다. 보통 10~20초 정도 걸립니다…</span>
+        {/* ── 대화 버튼 (폼 위 중앙) ── */}
+        {!loading && (
+          <div className="flex justify-center mb-3">
+            <button
+              type="button"
+              onClick={() => handleModeChange(mode === "chat" ? "text" : "chat")}
+              className={`inline-flex items-center gap-2 px-5 py-2 rounded-full border text-sm font-medium shadow-sm transition-all ${
+                mode === "chat"
+                  ? "bg-primary/15 border-primary/40 text-primary"
+                  : "glass border-border/60 text-muted-foreground hover:border-primary/40 hover:text-primary"
+              }`}
+            >
+              <MessageSquare className="w-4 h-4" />
+              {mode === "chat" ? "대화 분석 중" : "대화 분석"}
+            </button>
           </div>
+        )}
+
+        {/* 분석 로딩 오버레이 */}
+        {loading && (
+          <AnalysisLoadingOverlay
+            text={effectiveText}
+            url={mode === "url" ? url : undefined}
+          />
         )}
 
         {/* Input card */}
         <form
           onSubmit={onSubmit}
-          className={`glass rounded-2xl p-2 shadow-[var(--shadow-card)] transition-opacity ${loading ? "opacity-70 pointer-events-none" : ""}`}
+          className={`glass rounded-2xl p-2 shadow-[var(--shadow-card)] transition-all duration-300 ${loading ? "opacity-0 pointer-events-none absolute inset-x-0 -z-10" : "opacity-100"}`}
         >
           {/* 탭 */}
           <div className="flex gap-1 p-1 mb-1">
-            <TabButton active={mode === "text"} onClick={() => setMode("text")}>
+            <TabButton active={mode === "text"} onClick={() => handleModeChange("text")}>
               <FileText className="w-4 h-4" />
               <span>텍스트</span>
             </TabButton>
-            <TabButton active={mode === "url"} onClick={() => setMode("url")}>
+            <TabButton active={mode === "url"} onClick={() => handleModeChange("url")}>
               <Link2 className="w-4 h-4" />
               <span>URL</span>
             </TabButton>
-            <TabButton active={mode === "voice"} onClick={() => setMode("voice")}>
+            <TabButton active={mode === "voice"} onClick={() => handleModeChange("voice")}>
               <Mic className="w-4 h-4" />
               <span>음성 입력</span>
             </TabButton>
@@ -289,39 +364,177 @@ function Home() {
               </div>
             )}
 
-            {/* 텍스트 / URL 입력 영역 */}
+            {/* 대화 모드 헤더 */}
+            {mode === "chat" && (
+              <div className="flex items-center gap-2 mb-2 px-1">
+                <MessageSquare className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span className="text-xs font-semibold text-primary">대화 분석 모드</span>
+                <span className="text-[10px] text-muted-foreground/60">— 화자별 발언을 구분해 입력하세요</span>
+              </div>
+            )}
+
+            {/* 텍스트 / URL / 대화 입력 영역 */}
             {mode !== "voice" && (
               <textarea
                 required
-                rows={ytInfo ? 5 : 7}
+                rows={ytInfo ? 3 : 4}
                 placeholder={
-                  mode === "url"
-                    ? ytInfo
-                      ? "자막이 자동으로 입력되었습니다 — 직접 수정도 가능합니다"
-                      : isYouTubeUrl(url)
-                        ? "자막을 불러오는 중…"
-                        : "URL에서 본문을 가져오지 못하면 사용할 백업 텍스트 (30자 이상)"
-                    : "검증하고 싶은 기사·보도자료·SNS 본문을 붙여넣으세요. (30자 이상)"
+                  mode === "chat"
+                    ? "화자 A: 정부가 발표한 GDP 성장률은 3.5%입니다.\n화자 B: 그건 작년보다 2배 상승한 수치라고 하던데요.\n화자 A: 맞아요, 전문가들도 긍정적으로 평가했습니다."
+                    : mode === "url"
+                      ? ytInfo
+                        ? "자막이 자동으로 입력되었습니다 — 직접 수정도 가능합니다"
+                        : isYouTubeUrl(url)
+                          ? "자막을 불러오는 중…"
+                          : "URL에서 본문을 가져오지 못하면 사용할 백업 텍스트 (30자 이상)"
+                      : "검증하고 싶은 기사·보도자료·SNS 본문을 붙여넣으세요. (30자 이상)"
                 }
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 minLength={30}
-                className="w-full bg-transparent outline-none resize-none placeholder:text-muted-foreground/60 text-foreground text-base leading-relaxed"
+                className="w-full bg-transparent outline-none resize-none placeholder:text-muted-foreground/50 text-foreground text-sm leading-relaxed"
               />
             )}
 
             {/* 음성 입력 모드 */}
             {mode === "voice" && (
-              <VoiceInput
-                value={text}
-                onChange={setText}
-                interimText={interimText}
-                onInterimChange={setInterimText}
-              />
+              <>
+                <VoiceInput
+                  value={text}
+                  onChange={setText}
+                  interimText={interimText}
+                  onInterimChange={setInterimText}
+                  onSentenceComplete={handleVoiceSentence}
+                />
+
+                {/* 문장별 실시간 팩트체크 패널 */}
+                {voiceSentences.length > 0 && (
+                  <div className="mt-4 border-t border-border/50 pt-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Sparkles className="w-3.5 h-3.5 text-accent shrink-0" />
+                      <span className="text-xs font-semibold text-muted-foreground tracking-wide">
+                        문장별 실시간 팩트체크
+                      </span>
+                      {/* 화자별 분석 수 요약 */}
+                      {(() => {
+                        const counts: Record<string, number> = {};
+                        voiceSentences.forEach(s => { if (s.speaker !== "단일") counts[s.speaker] = (counts[s.speaker] ?? 0) + 1; });
+                        return Object.entries(counts).map(([sp, cnt]) => (
+                          <span key={sp} className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${SPEAKER_BADGE[sp] ?? "bg-border/30 border-border text-muted-foreground"}`}>
+                            {sp} {cnt}건
+                          </span>
+                        ));
+                      })()}
+                      {voiceSentences.some(s => s.loading) && (
+                        <span className="ml-auto flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <RefreshCw className="w-3 h-3 animate-spin" /> 분석 중…
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-2 max-h-96 overflow-y-auto pr-0.5">
+                      {voiceSentences.map((s, idx) => {
+                        const meta = s.result ? (VERDICT_META[s.result.overall_verdict] ?? VERDICT_META["미확인"]) : null;
+                        const Icon = meta?.icon;
+                        const brief = s.result?.highlights[0]?.brief ?? s.result?.summary ?? "";
+                        const badgeClass = SPEAKER_BADGE[s.speaker] ?? "";
+                        const isSolo = s.speaker === "단일";
+                        // 이전 문장과 화자가 다를 때 구분선
+                        const prevSpeaker = idx > 0 ? voiceSentences[idx - 1].speaker : null;
+                        const speakerChanged = !isSolo && prevSpeaker !== null && prevSpeaker !== s.speaker;
+                        return (
+                          <div key={s.id}>
+                            {speakerChanged && (
+                              <div className="flex items-center gap-2 my-1">
+                                <div className="flex-1 h-px bg-border/40" />
+                                <span className="text-[10px] text-muted-foreground/50">화자 전환</span>
+                                <div className="flex-1 h-px bg-border/40" />
+                              </div>
+                            )}
+                            <div
+                              className={`rounded-xl border px-3 py-2.5 transition-all ${
+                                s.loading
+                                  ? "border-border/40 bg-background/20"
+                                  : s.error
+                                    ? "border-destructive/20 bg-destructive/5"
+                                    : meta
+                                      ? `${meta.bg} border-border/40`
+                                      : "border-border/40 bg-background/20"
+                              }`}
+                            >
+                              {/* 화자 배지 + 발화 내용 */}
+                              <div className="flex items-start gap-2 mb-1.5">
+                                {!isSolo && (
+                                  <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${badgeClass}`}>
+                                    {s.speaker}
+                                  </span>
+                                )}
+                                <p className="text-xs text-foreground/85 leading-relaxed flex-1">
+                                  {s.text}
+                                </p>
+                              </div>
+
+                              {s.loading && (
+                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground ml-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                                  팩트체크 중…
+                                </div>
+                              )}
+                              {s.error && !s.loading && (
+                                <p className="text-[10px] text-destructive ml-1">{s.error.slice(0, 60)}</p>
+                              )}
+                              {s.result && meta && Icon && (
+                                <div className="space-y-1 ml-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <div className={`flex items-center gap-1 ${meta.color}`}>
+                                      <Icon className="w-3 h-3 shrink-0" />
+                                      <span className="text-[10px] font-semibold">{meta.label}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="w-16 h-1 rounded-full bg-border/60 overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full ${meta.color.replace("text-", "bg-")}`}
+                                          style={{ width: `${s.result.overall_confidence}%`, opacity: 0.75 }}
+                                        />
+                                      </div>
+                                      <span className="text-[10px] text-muted-foreground">{s.result.overall_confidence}%</span>
+                                    </div>
+                                  </div>
+                                  {brief && (
+                                    <p className="text-[10px] text-muted-foreground leading-relaxed line-clamp-2">
+                                      {brief}
+                                    </p>
+                                  )}
+                                  {s.result.risk_flags.length > 0 && (
+                                    <div className="flex items-center gap-1 flex-wrap">
+                                      <TriangleAlert className="w-2.5 h-2.5 text-orange-400 shrink-0" />
+                                      {s.result.risk_flags.map((f, fi) => (
+                                        <span key={fi} className="text-[9px] text-orange-400 bg-orange-400/10 border border-orange-400/20 px-1.5 py-0.5 rounded-full">
+                                          {f}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setVoiceSentences([])}
+                      className="mt-2 text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+                    >
+                      결과 지우기
+                    </button>
+                  </div>
+                )}
+              </>
             )}
 
-            {/* 실시간 팩트체크 프리뷰 */}
-            {(quickLoading || quickResult || quickErr) && text.length >= QUICK_CHECK_MIN && (
+            {/* 실시간 팩트체크 프리뷰 (텍스트·URL 모드 전용) */}
+            {mode !== "voice" && (quickLoading || quickResult || quickErr) && text.length >= QUICK_CHECK_MIN && (
               <div className="mt-4 border-t border-border/50 pt-4 space-y-3">
                 {/* 헤더 */}
                 <div className="flex items-center gap-2">
