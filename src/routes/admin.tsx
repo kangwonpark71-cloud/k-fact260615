@@ -6,12 +6,14 @@ import {
   Search, Trash2, ExternalLink, ChevronLeft, ChevronRight,
   RefreshCw, X, Download, Calendar, Clock, UserCheck,
   Mail, Globe, Eye, ChevronDown, ChevronUp,
+  Key, Plus, Power,
 } from "lucide-react";
 
 import { useAuth } from "@/lib/auth";
 import {
   getAdminStats, getAdminAnalyses, adminDeleteAnalysis,
   getAdminUsers, adminGetAnalysisDetail,
+  listApiKeys, addApiKey, deleteApiKey, toggleApiKey,
 } from "@/lib/admin.functions";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -37,7 +39,7 @@ const VERDICT_TEXT: Record<string, string> = {
   "미확인": "text-muted-foreground",
 };
 
-type Tab = "overview" | "analyses" | "users";
+type Tab = "overview" | "analyses" | "users" | "apikeys";
 
 function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -53,6 +55,7 @@ function AdminPage() {
   const [page, setPage] = useState(0);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState("");
+  const [addKeyOpen, setAddKeyOpen] = useState(false);
   const PAGE_SIZE = 20;
 
   const isAdmin = user?.email === "kangwonpark71@gmail.com";
@@ -94,6 +97,24 @@ function AdminPage() {
   const deleteMut = useMutation({
     mutationFn: (id: string) => adminDeleteAnalysis({ data: { id } }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin"] }); },
+  });
+
+  const { data: apiKeys, isLoading: apiKeysLoading } = useQuery({
+    queryKey: ["admin", "apikeys"],
+    queryFn: () => listApiKeys(),
+    enabled: !!user && isAdmin && tab === "apikeys",
+    staleTime: 30_000,
+  });
+
+  const deleteKeyMut = useMutation({
+    mutationFn: (id: string) => deleteApiKey({ data: { id } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin", "apikeys"] }); },
+  });
+
+  const toggleKeyMut = useMutation({
+    mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
+      toggleApiKey({ data: { id, is_active } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin", "apikeys"] }); },
   });
 
   if (authLoading) {
@@ -170,6 +191,7 @@ function AdminPage() {
             ["overview", "개요"],
             ["analyses", "분석 목록"],
             ["users", "사용자 관리"],
+            ["apikeys", "API 키"],
           ] as [Tab, string][]).map(([t, label]) => (
             <button
               key={t}
@@ -472,7 +494,117 @@ function AdminPage() {
             </div>
           </div>
         )}
+        {/* ── API 키 관리 탭 ── */}
+        {tab === "apikeys" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold">AI API 키 관리</h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  활성화된 키가 AI 분석에 우선 사용됩니다. 환경 변수 GEMINI_API_KEY는 폴백으로 동작합니다.
+                </p>
+              </div>
+              <button
+                onClick={() => setAddKeyOpen(true)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-accent text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity shadow-[var(--shadow-glow)]"
+              >
+                <Plus className="w-4 h-4" />키 추가
+              </button>
+            </div>
+
+            <div className="glass rounded-2xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground text-xs">
+                    <th className="text-left px-4 py-3 font-medium">이름</th>
+                    <th className="text-left px-4 py-3 font-medium">프로바이더</th>
+                    <th className="text-left px-4 py-3 font-medium hidden md:table-cell">키 (마스킹)</th>
+                    <th className="text-left px-4 py-3 font-medium">상태</th>
+                    <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">등록일</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {apiKeysLoading ? (
+                    <tr><td colSpan={6} className="text-center py-12">
+                      <RefreshCw className="w-5 h-5 animate-spin mx-auto text-muted-foreground" />
+                    </td></tr>
+                  ) : (apiKeys ?? []).length === 0 ? (
+                    <tr><td colSpan={6} className="text-center py-12">
+                      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                        <Key className="w-8 h-8 opacity-30" />
+                        <p className="text-sm">등록된 API 키가 없습니다.</p>
+                        <p className="text-xs">환경 변수 GEMINI_API_KEY가 폴백으로 사용됩니다.</p>
+                      </div>
+                    </td></tr>
+                  ) : (apiKeys ?? []).map((key) => (
+                    <tr key={key.id} className="border-b border-border/50 hover:bg-surface/40 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Key className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                          <span className="font-medium">{key.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <ProviderBadge provider={key.provider} />
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <code className="text-xs text-muted-foreground bg-surface-2 px-2 py-0.5 rounded font-mono">
+                          ••••••••{key.key_hint}
+                        </code>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => toggleKeyMut.mutate({ id: key.id, is_active: !key.is_active })}
+                          disabled={toggleKeyMut.isPending}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors disabled:opacity-50 ${
+                            key.is_active
+                              ? "bg-emerald-400/10 text-emerald-400 border border-emerald-400/30 hover:bg-emerald-400/20"
+                              : "bg-border/30 text-muted-foreground border border-border hover:bg-surface-2"
+                          }`}
+                        >
+                          <Power className="w-3 h-3" />
+                          {key.is_active ? "활성" : "비활성"}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell text-xs text-muted-foreground whitespace-nowrap">
+                        {new Date(key.created_at).toLocaleDateString("ko-KR")}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => { if (confirm(`"${key.name}" 키를 삭제할까요?`)) deleteKeyMut.mutate(key.id); }}
+                          disabled={deleteKeyMut.isPending}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                          title="삭제"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="glass rounded-xl p-4 text-xs text-muted-foreground leading-relaxed">
+              <p className="font-medium text-foreground/70 mb-1">키 사용 우선순위</p>
+              <p>1. DB에 등록된 <span className="text-emerald-400">활성</span> 키 중 가장 최근 등록 순 → 2. 환경 변수 <code className="bg-surface-2 px-1 rounded">GEMINI_API_KEY</code></p>
+            </div>
+          </div>
+        )}
+
       </main>
+
+      {/* API 키 추가 모달 */}
+      {addKeyOpen && (
+        <AddApiKeyModal
+          onClose={() => setAddKeyOpen(false)}
+          onSuccess={() => {
+            setAddKeyOpen(false);
+            qc.invalidateQueries({ queryKey: ["admin", "apikeys"] });
+          }}
+        />
+      )}
 
       {/* 분석 상세 모달 */}
       {detailId && (
@@ -638,6 +770,136 @@ function VerdictDistribution({ counts, total }: { counts: Record<string, number>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+const PROVIDER_META: Record<string, { label: string; color: string; bg: string }> = {
+  gemini:    { label: "Gemini",    color: "text-blue-400",   bg: "bg-blue-400/10 border-blue-400/30" },
+  openai:    { label: "OpenAI",    color: "text-emerald-400", bg: "bg-emerald-400/10 border-emerald-400/30" },
+  anthropic: { label: "Anthropic", color: "text-violet-400", bg: "bg-violet-400/10 border-violet-400/30" },
+};
+
+function ProviderBadge({ provider }: { provider: string }) {
+  const meta = PROVIDER_META[provider] ?? { label: provider, color: "text-muted-foreground", bg: "bg-muted/30 border-border" };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${meta.bg} ${meta.color}`}>
+      {meta.label}
+    </span>
+  );
+}
+
+function AddApiKeyModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [name, setName] = useState("");
+  const [provider, setProvider] = useState<"gemini" | "openai" | "anthropic">("gemini");
+  const [keyValue, setKeyValue] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr(null);
+    setLoading(true);
+    try {
+      await addApiKey({ data: { name, provider, key_value: keyValue } });
+      onSuccess();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "등록 실패");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md glass rounded-2xl p-6 shadow-2xl">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2">
+            <Key className="w-4 h-4 text-primary" />
+            <h2 className="text-lg font-semibold">API 키 추가</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-2 text-muted-foreground transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">이름</label>
+            <input
+              type="text"
+              required
+              placeholder="예: Gemini 운영 키"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={50}
+              className="w-full px-3 py-2.5 rounded-lg bg-background/40 border border-border outline-none focus:border-primary text-sm"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">AI 프로바이더</label>
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value as typeof provider)}
+              className="w-full px-3 py-2.5 rounded-lg bg-background/40 border border-border outline-none focus:border-primary text-sm"
+            >
+              <option value="gemini">Google Gemini</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">API 키 값</label>
+            <div className="relative">
+              <input
+                type={showKey ? "text" : "password"}
+                required
+                placeholder="sk-... 또는 AIza..."
+                value={keyValue}
+                onChange={(e) => setKeyValue(e.target.value)}
+                minLength={10}
+                className="w-full px-3 py-2.5 pr-10 rounded-lg bg-background/40 border border-border outline-none focus:border-primary text-sm font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                tabIndex={-1}
+              >
+                <Eye className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">키 값은 서버에만 저장되며, 이후 마지막 4자리만 표시됩니다.</p>
+          </div>
+
+          {err && (
+            <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5">
+              <X className="w-3.5 h-3.5 shrink-0 mt-0.5" />{err}
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors"
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-primary to-accent text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {loading ? "등록 중…" : "등록하기"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

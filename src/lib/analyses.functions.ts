@@ -58,6 +58,26 @@ const SYSTEM_PROMPT = `당신은 한국어 사실검증 보조 AI 'FactGuard'입
 - confidence는 0~100 정수.
 - title은 본문을 대표하는 12자 내외 짧은 제목.`;
 
+async function getActiveGeminiKey(): Promise<string> {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data } = await supabaseAdmin
+      .from("api_keys")
+      .select("key_value")
+      .eq("provider", "gemini")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (data?.key_value) return data.key_value;
+  } catch {
+    // DB 조회 실패 시 환경변수로 폴백
+  }
+  const envKey = getEnv("GEMINI_API_KEY");
+  if (!envKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다. 관리자 대시보드에서 API 키를 등록하거나 환경 변수를 설정하세요.");
+  return envKey;
+}
+
 async function getOptionalUserId(): Promise<string | null> {
   try {
     const auth = getRequestHeader("authorization");
@@ -78,9 +98,7 @@ async function getOptionalUserId(): Promise<string | null> {
 export const analyzeContent = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => InputSchema.parse(input))
   .handler(async ({ data }) => {
-    const apiKey = getEnv("GEMINI_API_KEY");
-    if (!apiKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다.");
-
+    const apiKey = await getActiveGeminiKey();
     const userId = await getOptionalUserId();
 
     let bodyText = data.text;
@@ -274,9 +292,7 @@ export const quickAnalyzeContent = createServerFn({ method: "POST" })
     z.object({ text: z.string().min(10) }).parse(input),
   )
   .handler(async ({ data }) => {
-    const apiKey = getEnv("GEMINI_API_KEY");
-    if (!apiKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다.");
-
+    const apiKey = await getActiveGeminiKey();
     const gemini = createGeminiProvider(apiKey);
     try {
       const { object } = await generateObject({

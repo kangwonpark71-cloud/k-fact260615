@@ -155,6 +155,68 @@ export const adminDeleteAnalysis = createServerFn({ method: "POST" })
     return { deleted: true };
   });
 
+// ── API 키 목록 (마스킹된 hint만 반환) ──
+export const listApiKeys = createServerFn({ method: "GET" }).handler(async () => {
+  await requireAdmin();
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
+    .from("api_keys")
+    .select("id, name, provider, key_hint, is_active, created_at")
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return data ?? [];
+});
+
+// ── API 키 등록 ──
+export const addApiKey = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({
+      name: z.string().min(1, "이름을 입력하세요.").max(50),
+      provider: z.enum(["gemini", "openai", "anthropic"]),
+      key_value: z.string().min(10, "키 값이 너무 짧습니다."),
+    }).parse(input),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const key_hint = data.key_value.slice(-4);
+    const { error } = await supabaseAdmin.from("api_keys").insert({
+      name: data.name,
+      provider: data.provider,
+      key_value: data.key_value,
+      key_hint,
+    });
+    if (error) throw new Error("키 등록 실패: " + error.message);
+    return { success: true };
+  });
+
+// ── API 키 삭제 ──
+export const deleteApiKey = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("api_keys").delete().eq("id", data.id);
+    if (error) throw new Error("삭제 실패: " + error.message);
+    return { deleted: true };
+  });
+
+// ── API 키 활성/비활성 토글 ──
+export const toggleApiKey = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({ id: z.string().uuid(), is_active: z.boolean() }).parse(input),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
+      .from("api_keys")
+      .update({ is_active: data.is_active })
+      .eq("id", data.id);
+    if (error) throw new Error("업데이트 실패: " + error.message);
+    return { updated: true };
+  });
+
 // ── 사용자 목록 (Supabase Auth) ──
 export const getAdminUsers = createServerFn({ method: "GET" }).handler(async () => {
   await requireAdmin();

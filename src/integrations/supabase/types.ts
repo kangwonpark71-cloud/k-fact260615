@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      api_keys: {
+        Row: {
+          id: string
+          name: string
+          provider: string
+          key_value: string
+          key_hint: string
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          provider: string
+          key_value: string
+          key_hint: string
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          provider?: string
+          key_value?: string
+          key_hint?: string
+          is_active?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
       analyses: {
         Row: {
           claims: Json
