@@ -4,7 +4,8 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   ArrowRight, Link2, FileText, Sparkles, ShieldCheck,
   Search, Scale, Mic, Loader2, AlertCircle, CheckCircle2,
-  HelpCircle, XCircle, MinusCircle,
+  HelpCircle, XCircle, MinusCircle, ThumbsUp, ThumbsDown,
+  TriangleAlert, RefreshCw,
 } from "lucide-react";
 
 import { analyzeContent, quickAnalyzeContent, type QuickCheckResult } from "@/lib/analyses.functions";
@@ -34,8 +35,8 @@ const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; b
   "미확인": { icon: AlertCircle, color: "text-muted-foreground", bg: "bg-border/30 border-border", label: "미확인" },
 };
 
-const QUICK_CHECK_DEBOUNCE = 2000;
-const QUICK_CHECK_MIN = 50;
+const QUICK_CHECK_DEBOUNCE = 2500;
+const QUICK_CHECK_MIN = 80;
 
 function sanitizeServerError(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
@@ -321,75 +322,132 @@ function Home() {
 
             {/* 실시간 팩트체크 프리뷰 */}
             {(quickLoading || quickResult || quickErr) && text.length >= QUICK_CHECK_MIN && (
-              <div className="mt-4 border-t border-border/50 pt-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Sparkles className="w-3.5 h-3.5 text-accent" />
-                  <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
+              <div className="mt-4 border-t border-border/50 pt-4 space-y-3">
+                {/* 헤더 */}
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-accent shrink-0" />
+                  <span className="text-xs font-semibold text-muted-foreground tracking-wide">
                     실시간 팩트체크 미리보기
                   </span>
                   {quickLoading && (
-                    <Loader2 className="w-3.5 h-3.5 text-accent animate-spin ml-auto" />
+                    <span className="ml-auto flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                      <RefreshCw className="w-3 h-3 animate-spin" /> AI 분석 중…
+                    </span>
                   )}
                 </div>
 
-                {quickErr && (
-                  <p className="text-xs text-destructive flex items-center gap-1.5">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {quickErr}
-                  </p>
+                {/* 로딩 스켈레톤 */}
+                {quickLoading && !quickResult && (
+                  <div className="space-y-2 animate-pulse">
+                    <div className="h-3 bg-border/50 rounded-full w-3/4" />
+                    <div className="h-8 bg-border/30 rounded-lg" />
+                    <div className="h-8 bg-border/30 rounded-lg w-5/6" />
+                  </div>
                 )}
 
-                {quickResult && !quickLoading && (
-                  <div className="space-y-2">
-                    {/* 전체 판정 배지 */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <OverallBadge
-                        verdict={quickResult.overall_verdict}
-                        confidence={quickResult.overall_confidence}
-                      />
-                      <span className="text-xs text-muted-foreground">
-                        핵심 주장 {quickResult.highlights.length}개 감지
-                      </span>
+                {/* 오류 */}
+                {quickErr && !quickLoading && (
+                  <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>{quickErr}</span>
+                  </div>
+                )}
+
+                {/* 결과 */}
+                {quickResult && (
+                  <div className="space-y-2.5">
+                    {/* 요약 + 전체 판정 */}
+                    <div className="bg-background/30 rounded-xl border border-border/40 px-3 py-2.5 space-y-2">
+                      {quickResult.summary && (
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {quickResult.summary}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <OverallBadge
+                          verdict={quickResult.overall_verdict}
+                          confidence={quickResult.overall_confidence}
+                        />
+                        {quickResult.highlights.length > 0 && (
+                          <span className="text-[11px] text-muted-foreground">
+                            주장 {quickResult.highlights.length}개 분석됨
+                          </span>
+                        )}
+                      </div>
                     </div>
 
-                    {/* 주장별 미니 카드 */}
-                    <div className="space-y-1.5">
-                      {quickResult.highlights.map((h, i) => {
-                        const meta = VERDICT_META[h.verdict] ?? VERDICT_META["미확인"];
-                        const Icon = meta.icon;
-                        return (
-                          <div
-                            key={i}
-                            className={`rounded-lg border px-3 py-2.5 flex gap-2.5 ${meta.bg}`}
-                          >
-                            <Icon className={`w-4 h-4 shrink-0 mt-0.5 ${meta.color}`} />
-                            <div className="min-w-0">
-                              <p className="text-xs font-medium leading-relaxed text-foreground/90 line-clamp-2">
-                                {h.claim}
-                              </p>
-                              <p className="text-xs text-muted-foreground mt-1 leading-relaxed line-clamp-2">
+                    {/* 위험 신호 */}
+                    {quickResult.risk_flags.length > 0 && (
+                      <div className="flex items-start gap-2 bg-orange-400/8 border border-orange-400/25 rounded-lg px-3 py-2">
+                        <TriangleAlert className="w-3.5 h-3.5 text-orange-400 shrink-0 mt-0.5" />
+                        <div className="flex flex-wrap gap-1.5">
+                          {quickResult.risk_flags.map((flag, i) => (
+                            <span key={i} className="text-[10px] font-medium text-orange-400 bg-orange-400/10 border border-orange-400/20 px-2 py-0.5 rounded-full">
+                              {flag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 주장별 카드 */}
+                    {quickResult.highlights.length > 0 && (
+                      <div className="space-y-2">
+                        {quickResult.highlights.map((h, i) => {
+                          const meta = VERDICT_META[h.verdict] ?? VERDICT_META["미확인"];
+                          const Icon = meta.icon;
+                          return (
+                            <div key={i} className={`rounded-xl border px-3 py-2.5 ${meta.bg}`}>
+                              {/* 주장 + 판정 */}
+                              <div className="flex items-start gap-2 mb-1.5">
+                                <Icon className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${meta.color}`} />
+                                <p className="text-xs font-medium leading-relaxed text-foreground/90 flex-1">
+                                  {h.claim}
+                                </p>
+                              </div>
+
+                              {/* 판정 이유 */}
+                              <p className="text-[11px] text-muted-foreground leading-relaxed ml-5 mb-2">
                                 {h.brief}
                               </p>
-                              <div className="flex items-center gap-1.5 mt-1.5">
-                                <span className={`text-[10px] font-semibold ${meta.color}`}>
-                                  {meta.label}
-                                </span>
-                                <span className="text-[10px] text-muted-foreground">·</span>
-                                <div className="flex-1 max-w-[80px] h-1 rounded-full bg-border overflow-hidden">
+
+                              {/* 지지/반박 근거 */}
+                              {(h.supporting || h.counter) && (
+                                <div className="ml-5 space-y-1">
+                                  {h.supporting && (
+                                    <div className="flex items-start gap-1.5">
+                                      <ThumbsUp className="w-3 h-3 text-emerald-500 shrink-0 mt-0.5" />
+                                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 leading-relaxed">{h.supporting}</span>
+                                    </div>
+                                  )}
+                                  {h.counter && (
+                                    <div className="flex items-start gap-1.5">
+                                      <ThumbsDown className="w-3 h-3 text-red-400 shrink-0 mt-0.5" />
+                                      <span className="text-[10px] text-red-500 dark:text-red-400 leading-relaxed">{h.counter}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* 신뢰도 바 */}
+                              <div className="flex items-center gap-2 mt-2 ml-5">
+                                <span className={`text-[10px] font-semibold ${meta.color}`}>{meta.label}</span>
+                                <div className="flex-1 max-w-[100px] h-1 rounded-full bg-border/60 overflow-hidden">
                                   <div
-                                    className={`h-full rounded-full ${meta.color.replace("text-", "bg-")}`}
-                                    style={{ width: `${h.confidence}%`, opacity: 0.7 }}
+                                    className={`h-full rounded-full transition-all duration-700 ${meta.color.replace("text-", "bg-")}`}
+                                    style={{ width: `${h.confidence}%`, opacity: 0.75 }}
                                   />
                                 </div>
                                 <span className="text-[10px] text-muted-foreground">{h.confidence}%</span>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    )}
 
-                    <p className="text-[10px] text-muted-foreground/60 pt-0.5">
-                      ※ 미리보기는 빠른 추론 결과입니다. 정밀 분석을 위해 아래 버튼을 누르세요.
+                    <p className="text-[10px] text-muted-foreground/50 leading-relaxed">
+                      ※ 미리보기는 빠른 추론 결과입니다. 정밀 분석은 아래 버튼을 이용하세요.
                     </p>
                   </div>
                 )}

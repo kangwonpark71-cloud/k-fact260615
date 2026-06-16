@@ -5,6 +5,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 
 import { createGeminiProvider } from "./ai-gateway.server";
+import { getEnv } from "./runtime-env.server";
 
 const VerdictEnum = z.enum([
   "사실",
@@ -63,8 +64,8 @@ async function getOptionalUserId(): Promise<string | null> {
     if (!auth?.toLowerCase().startsWith("bearer ")) return null;
     const token = auth.slice(7).trim();
     if (!token) return null;
-    const url = process.env.SUPABASE_URL;
-    const anonKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+    const url = getEnv("SUPABASE_URL");
+    const anonKey = getEnv("SUPABASE_PUBLISHABLE_KEY");
     if (!url || !anonKey) return null;
     const supa = createClient(url, anonKey, { auth: { persistSession: false } });
     const { data } = await supa.auth.getUser(token);
@@ -77,7 +78,7 @@ async function getOptionalUserId(): Promise<string | null> {
 export const analyzeContent = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => InputSchema.parse(input))
   .handler(async ({ data }) => {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = getEnv("GEMINI_API_KEY");
     if (!apiKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다.");
 
     const userId = await getOptionalUserId();
@@ -225,39 +226,55 @@ export const deleteAnalysis = createServerFn({ method: "POST" })
     return { deleted: true };
   });
 
-// ── 실시간 빠른 팩트체크 (음성 입력용 프리뷰) ──
+// ── 실시간 빠른 팩트체크 ──
 const QuickCheckSchema = z.object({
-  highlights: z
-    .array(
-      z.object({
-        claim: z.string(),
-        verdict: VerdictEnum,
-        confidence: z.number().min(0).max(100),
-        brief: z.string(),
-      }),
-    )
-    .min(1)
-    .max(3),
+  summary: z.string().max(200),
+  highlights: z.array(
+    z.object({
+      claim: z.string().max(150),
+      verdict: VerdictEnum,
+      confidence: z.number().int().min(0).max(100),
+      brief: z.string().max(200),
+      supporting: z.string().max(150),
+      counter: z.string().max(150),
+    }),
+  ).max(3),
   overall_verdict: VerdictEnum,
-  overall_confidence: z.number().min(0).max(100),
+  overall_confidence: z.number().int().min(0).max(100),
+  risk_flags: z.array(z.string().max(50)).max(4),
 });
 
 export type QuickCheckResult = z.infer<typeof QuickCheckSchema>;
 
-const QUICK_SYSTEM = `당신은 빠른 사실검증 보조 AI입니다.
-입력된 텍스트에서 검증 가능한 핵심 주장 1~3개를 추출하고 빠르게 검토합니다.
-규칙:
-- highlights 최대 3개
-- brief는 1~2문장 한국어로 간결하게
-- 추론 가능한 범위만 답변, 불분명하면 "미확인"
-- confidence는 0~100 정수`;
+const QUICK_SYSTEM = `당신은 한국어 사실검증 보조 AI입니다. 입력된 텍스트에서 검증 가능한 핵심 주장을 추출하고 정확하게 평가합니다.
+
+## 판정 기준 (반드시 준수)
+- 사실: 학습된 지식·상식으로 충분한 근거가 있음
+- 부분 사실: 일부는 맞지만 과장·누락·맥락 오류 존재
+- 근거 부족: 주장은 있으나 검증 근거가 불충분
+- 반대 근거 우세: 알려진 사실과 명백히 배치됨
+- 미확인: 최신 데이터·전문 정보 없이는 판단 불가
+
+## 위험 신호 유형 (risk_flags)
+선동적/감정 유발 언어, 출처 불명 수치/통계, 혐오·차별 표현, 과도한 단정, 음모론 패턴, 허위 권위 인용 중 해당하는 것만 포함.
+
+## 규칙
+- highlights: 사실 주장만 추출 (의견·감상·예측 제외), 없으면 빈 배열
+- claim: 원문에서 추출한 구체적 주장을 한 문장으로
+- brief: 판정 이유를 1-2문장 한국어로 (왜 그 판정인지 명확히)
+- supporting: 해당 판정을 지지하는 핵심 근거 1문장 (없으면 빈 문자열)
+- counter: 반박 또는 주의사항 1문장 (없으면 빈 문자열)
+- confidence: 학습 지식 기반 확신도 정수 (불확실할수록 낮게)
+- summary: 텍스트 전체를 1-2문장으로 중립적 요약
+- risk_flags: 발견된 위험 신호만, 없으면 빈 배열
+- 환각 금지: URL·가상 인용문·존재하지 않는 연구 생성 금지`;
 
 export const quickAnalyzeContent = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z.object({ text: z.string().min(10) }).parse(input),
   )
   .handler(async ({ data }) => {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = getEnv("GEMINI_API_KEY");
     if (!apiKey) throw new Error("GEMINI_API_KEY가 설정되지 않았습니다.");
 
     const gemini = createGeminiProvider(apiKey);
@@ -265,14 +282,16 @@ export const quickAnalyzeContent = createServerFn({ method: "POST" })
       const { object } = await generateObject({
         model: gemini("gemini-2.5-flash"),
         system: QUICK_SYSTEM,
-        prompt: `다음 텍스트의 핵심 주장을 빠르게 검토하세요:\n"""\n${data.text.slice(0, 2000)}\n"""`,
+        prompt: `다음 텍스트를 사실검증 관점에서 분석하세요:\n"""\n${data.text.slice(0, 3000)}\n"""`,
         schema: QuickCheckSchema,
+        temperature: 0.2,
       });
       return object;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("429")) throw new Error("AI 요청 한도 초과");
-      throw new Error("빠른 분석 실패");
+      if (msg.includes("429") || msg.includes("quota")) throw new Error("AI 요청 한도 초과. 잠시 후 다시 시도하세요.");
+      if (msg.includes("API key")) throw new Error("API 키 오류. 관리자에게 문의하세요.");
+      throw new Error("빠른 분석 실패. 잠시 후 다시 시도하세요.");
     }
   });
 
