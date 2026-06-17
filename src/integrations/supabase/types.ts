@@ -54,6 +54,7 @@ export type Database = {
           overall_verdict: string | null
           session_id: string
           source_url: string | null
+          status: string
           summary: string | null
           title: string | null
           user_id: string | null
@@ -67,6 +68,7 @@ export type Database = {
           overall_verdict?: string | null
           session_id: string
           source_url?: string | null
+          status?: string
           summary?: string | null
           title?: string | null
           user_id?: string | null
@@ -80,6 +82,7 @@ export type Database = {
           overall_verdict?: string | null
           session_id?: string
           source_url?: string | null
+          status?: string
           summary?: string | null
           title?: string | null
           user_id?: string | null

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   ShieldCheck, History, LogOut, User as UserIcon,
-  Moon, Sun, LayoutDashboard, Menu, X, Home,
+  Moon, Sun, LayoutDashboard, Menu, X, Home, MessageSquare,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
@@ -48,6 +48,12 @@ export function SiteHeader() {
             >
               {theme === "rose" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </button>
+            <Link
+              to="/live"
+              className="px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors flex items-center gap-1.5"
+            >
+              <MessageSquare className="w-4 h-4" /> 대화 분석
+            </Link>
             <Link
               to="/history"
               className="px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors flex items-center gap-1.5"
@@ -150,6 +156,9 @@ export function SiteHeader() {
               <DrawerLink to="/" icon={<ShieldCheck className="w-6 h-6" />} onClick={close}>
                 홈
               </DrawerLink>
+              <DrawerLink to="/live" icon={<MessageSquare className="w-6 h-6" />} onClick={close}>
+                대화 분석
+              </DrawerLink>
               <DrawerLink to="/history" icon={<History className="w-6 h-6" />} onClick={close}>
                 분석 히스토리
               </DrawerLink>
@@ -222,6 +231,10 @@ export function BottomNav() {
       <Link to="/" className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/")}`}>
         <Home className="w-5 h-5" />
         홈
+      </Link>
+      <Link to="/live" className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/live")}`}>
+        <MessageSquare className="w-5 h-5" />
+        대화
       </Link>
       <Link to="/history" className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/history")}`}>
         <History className="w-5 h-5" />

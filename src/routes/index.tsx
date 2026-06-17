@@ -5,7 +5,7 @@ import {
   ArrowRight, Link2, FileText, Sparkles, ShieldCheck,
   Search, Scale, Mic, Loader2, AlertCircle, CheckCircle2,
   HelpCircle, XCircle, MinusCircle, ThumbsUp, ThumbsDown,
-  TriangleAlert, RefreshCw, MessageSquare,
+  TriangleAlert, RefreshCw, MessageSquare, Users,
 } from "lucide-react";
 
 import { analyzeContent, quickAnalyzeContent, type QuickCheckResult } from "@/lib/analyses.functions";
@@ -69,7 +69,7 @@ function Home() {
   const quickCheck = useServerFn(quickAnalyzeContent);
   const fetchYTInfo = useServerFn(fetchYouTubeInfo);
 
-  const [mode, setMode] = useState<"text" | "url" | "voice" | "chat">("text");
+  const [mode, setMode] = useState<"text" | "url" | "voice">("text");
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
   const [interimText, setInterimText] = useState("");
@@ -181,7 +181,7 @@ function Home() {
     (mode === "url" ? !!url.trim() : text.trim().length >= 30) && !loading;
 
   // 탭 전환 시 텍스트 초기화
-  const handleModeChange = (newMode: "text" | "url" | "voice" | "chat") => {
+  const handleModeChange = (newMode: "text" | "url" | "voice") => {
     if (newMode === mode) return;
     setMode(newMode);
     setText("");
@@ -252,21 +252,16 @@ function Home() {
         {/* 좌측: 입력 폼 영역 */}
         <div className="order-1">
 
-        {/* ── 대화 버튼 (폼 위 중앙) ── */}
+        {/* ── 대화 분석 버튼 (폼 위 중앙) ── */}
         {!loading && (
           <div className="flex justify-center mb-4">
-            <button
-              type="button"
-              onClick={() => handleModeChange(mode === "chat" ? "text" : "chat")}
-              className={`inline-flex items-center gap-3 px-10 py-4 rounded-full border-2 text-base font-bold shadow-xl transition-all duration-200 active:scale-95 ${
-                mode === "chat"
-                  ? "bg-gradient-to-r from-amber-500 to-yellow-400 border-amber-400 text-amber-950 shadow-amber-400/50 scale-105"
-                  : "bg-gradient-to-r from-amber-400 to-yellow-300 border-amber-300 text-amber-900 shadow-amber-300/40 hover:scale-105 hover:from-amber-500 hover:to-yellow-400 hover:shadow-amber-400/60"
-              }`}
+            <Link
+              to="/live"
+              className="inline-flex items-center gap-3 px-10 py-4 rounded-full border-2 bg-gradient-to-r from-amber-400 to-yellow-300 border-amber-300 text-amber-900 text-base font-bold shadow-xl shadow-amber-300/40 hover:scale-105 hover:from-amber-500 hover:to-yellow-400 hover:shadow-amber-400/60 transition-all duration-200 active:scale-95"
             >
-              <MessageSquare className="w-6 h-6" />
-              {mode === "chat" ? "대화 분석 중" : "대화 분석"}
-            </button>
+              <Users className="w-6 h-6" />
+              대화 분석
+            </Link>
           </div>
         )}
 
@@ -365,29 +360,18 @@ function Home() {
               </div>
             )}
 
-            {/* 대화 모드 헤더 */}
-            {mode === "chat" && (
-              <div className="flex items-center gap-2 mb-2 px-1">
-                <MessageSquare className="w-3.5 h-3.5 text-primary shrink-0" />
-                <span className="text-xs font-semibold text-primary">대화 분석 모드</span>
-                <span className="text-[10px] text-muted-foreground/60">— 화자별 발언을 구분해 입력하세요</span>
-              </div>
-            )}
-
-            {/* 텍스트 / URL / 대화 입력 영역 */}
+            {/* 텍스트 / URL 입력 영역 */}
             {mode !== "voice" && (
               <textarea
                 rows={ytInfo ? 3 : 4}
                 placeholder={
-                  mode === "chat"
-                    ? "화자 A: 정부가 발표한 GDP 성장률은 3.5%입니다.\n화자 B: 그건 작년보다 2배 상승한 수치라고 하던데요.\n화자 A: 맞아요, 전문가들도 긍정적으로 평가했습니다."
-                    : mode === "url"
-                      ? ytInfo
-                        ? "자막이 자동으로 입력되었습니다 — 직접 수정도 가능합니다"
-                        : isYouTubeUrl(url)
-                          ? "자막을 불러오는 중…"
-                          : "URL에서 본문을 가져오지 못하면 사용할 백업 텍스트 (30자 이상)"
-                      : "검증하고 싶은 기사·보도자료·SNS 본문을 붙여넣으세요. (30자 이상)"
+                  mode === "url"
+                    ? ytInfo
+                      ? "자막이 자동으로 입력되었습니다 — 직접 수정도 가능합니다"
+                      : isYouTubeUrl(url)
+                        ? "자막을 불러오는 중…"
+                        : "URL에서 본문을 가져오지 못하면 사용할 백업 텍스트 (30자 이상)"
+                    : "검증하고 싶은 기사·보도자료·SNS 본문을 붙여넣으세요. (30자 이상)"
                 }
                 value={text}
                 onChange={(e) => setText(e.target.value)}

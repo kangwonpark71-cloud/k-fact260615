@@ -486,12 +486,14 @@ ${bodyText.slice(0, 8000)}
     }).eq("id", analysisId);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await supabaseAdmin.from("analyses").update({
-      status: "failed",
-      title: "분석 실패",
-      summary: msg.slice(0, 300),
-      claims: [],
-    }).eq("id", analysisId).catch(() => {});
+    try {
+      await supabaseAdmin.from("analyses").update({
+        status: "failed",
+        title: "분석 실패",
+        summary: msg.slice(0, 300),
+        claims: [],
+      }).eq("id", analysisId);
+    } catch { /* 실패 업데이트 오류 무시 */ }
   }
 }
 
