@@ -14,6 +14,7 @@ import {
   getAdminStats, getAdminAnalyses, adminDeleteAnalysis,
   getAdminUsers, adminGetAnalysisDetail,
   listApiKeys, addApiKey, deleteApiKey, toggleApiKey,
+  checkIsAdmin,
 } from "@/lib/admin.functions";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -58,11 +59,16 @@ function AdminPage() {
   const [addKeyOpen, setAddKeyOpen] = useState(false);
   const PAGE_SIZE = 20;
 
-  const isAdmin = user?.email === "kangwonpark71@gmail.com";
+  const { data: isAdmin = false, isLoading: adminCheckLoading } = useQuery({
+    queryKey: ["admin", "check"],
+    queryFn: () => checkIsAdmin(),
+    enabled: !!user && !authLoading,
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
-    if (!authLoading && (!user || !isAdmin)) navigate({ to: "/" });
-  }, [user, authLoading, isAdmin, navigate]);
+    if (!authLoading && !adminCheckLoading && (!user || !isAdmin)) navigate({ to: "/" });
+  }, [user, authLoading, isAdmin, adminCheckLoading, navigate]);
 
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery({
     queryKey: ["admin", "stats"],
@@ -721,7 +727,7 @@ function DailyChart({ data }: { data: { date: string; count: number }[] }) {
               {new Date(date).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}
             </span>
           )}
-          {!showLabel && data.indexOf({ date, count }) % 5 === 0 && (
+          {!showLabel && data.findIndex(d => d.date === date) % 5 === 0 && (
             <span className="text-[9px] text-muted-foreground whitespace-nowrap">
               {new Date(date).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}
             </span>

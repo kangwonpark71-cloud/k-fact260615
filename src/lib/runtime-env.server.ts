@@ -23,6 +23,11 @@ export function getCfAIBinding(): unknown {
   return _cfEnv["AI"] ?? null;
 }
 
+export function getCfBinding<T>(name: string): T | null {
+  const v = _cfEnv[name];
+  return v != null ? (v as T) : null;
+}
+
 export function getEnv(key: string): string | undefined {
   // Try Cloudflare env object first (covers secrets + vars)
   const cfVal = (_cfEnv as Record<string, unknown>)[key];

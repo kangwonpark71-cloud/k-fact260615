@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getEnv } from "./runtime-env.server";
+import { getEnv, getCfBinding } from "./runtime-env.server";
 
 export type SourceType =
   | "factcheck"
@@ -21,7 +21,15 @@ export interface TrendingItem {
   score: number;
 }
 
-// ── 예약 캐시 (9시/14시 KST 기준) ──
+// ── KV 캐시 인터페이스 (CF Workers KV) ──
+interface KVBinding {
+  get(key: string, type: "json"): Promise<unknown>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+}
+const KV_KEY = "trending-news-v1";
+function getNewsKV(): KVBinding | null { return getCfBinding<KVBinding>("NEWS_CACHE"); }
+
+// ── 인메모리 폴백 캐시 (KV 없는 환경용) ──
 let _cache: TrendingItem[] = [];
 let _cacheTs = 0;
 
@@ -390,7 +398,23 @@ const RSS_SOURCES: { url: string; name: string; type: SourceType; max?: number }
 ];
 
 export const fetchTrendingNews = createServerFn({ method: "GET" }).handler(async () => {
-  if (isCacheValid()) return _cache;
+  const kv = getNewsKV();
+  const scheduledTs = getLastScheduledTs();
+
+  // KV 캐시 확인 (인스턴스 간 공유)
+  if (kv) {
+    try {
+      const cached = await kv.get(KV_KEY, "json") as { data: TrendingItem[]; ts: number } | null;
+      if (cached && cached.ts >= scheduledTs) {
+        _cache = cached.data;
+        _cacheTs = cached.ts;
+        return cached.data;
+      }
+    } catch { /* KV 읽기 실패 시 재fetch */ }
+  } else if (isCacheValid()) {
+    // KV 없으면 인메모리 폴백
+    return _cache;
+  }
 
   const [rssAll, naverItems, snuItems, ytItems, dcItems, fmItems, xItems, igItems] =
     await Promise.all([
@@ -405,14 +429,8 @@ export const fetchTrendingNews = createServerFn({ method: "GET" }).handler(async
     ]);
 
   const merged = [
-    ...snuItems,
-    ...naverItems,
-    ...ytItems,
-    ...dcItems,
-    ...fmItems,
-    ...xItems,
-    ...igItems,
-    ...rssAll,
+    ...snuItems, ...naverItems, ...ytItems, ...dcItems,
+    ...fmItems, ...xItems, ...igItems, ...rssAll,
   ];
 
   const seen = new Set<string>();
@@ -430,11 +448,24 @@ export const fetchTrendingNews = createServerFn({ method: "GET" }).handler(async
 
   _cache = scored;
   _cacheTs = Date.now();
+
+  // KV에 저장 — 다음 예약 갱신 시각까지 TTL
+  if (kv) {
+    const nextKST = scheduledTs + 5 * 3600000; // 다음 예약 (5시간 후)
+    const ttlSec = Math.max(1800, Math.floor((nextKST - Date.now()) / 1000));
+    try { await kv.put(KV_KEY, JSON.stringify({ data: scored, ts: _cacheTs }), { expirationTtl: ttlSec }); } catch {}
+  }
+
   return scored;
 });
 
 export const refreshTrendingNews = createServerFn({ method: "POST" }).handler(async () => {
   _cacheTs = 0;
   _cache = [];
+  // KV 캐시도 만료 처리 (ts를 0으로 덮어쓰기)
+  const kv = getNewsKV();
+  if (kv) {
+    try { await kv.put(KV_KEY, JSON.stringify({ data: [], ts: 0 }), { expirationTtl: 1 }); } catch {}
+  }
   return { ok: true };
 });

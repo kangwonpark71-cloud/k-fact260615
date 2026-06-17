@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { createModelInstance, type SupportedProvider } from "./ai-gateway.server";
 import { getEnv, getCfAIBinding } from "./runtime-env.server";
+import { decryptSecret } from "./crypto.server";
 
 const VerdictEnum = z.enum([
   "사실",
@@ -88,7 +89,8 @@ async function getAllActiveKeys(): Promise<{ keys: KeyEntry[]; dbError?: string 
     } else {
       for (const row of data ?? []) {
         if (supported.includes(row.provider as SupportedProvider)) {
-          keys.push({ provider: row.provider as SupportedProvider, key: row.key_value });
+          const key = await decryptSecret(row.key_value);
+          keys.push({ provider: row.provider as SupportedProvider, key });
         }
       }
       if (keys.length === 0) dbError = "DB조회성공-키없음(등록된 활성키 0개)";
@@ -305,13 +307,59 @@ async function getOptionalUserId(): Promise<string | null> {
   }
 }
 
+/* ── SSRF 차단: 내부 IP / 사설 주소 fetch 금지 ── */
+function validatePublicUrl(rawUrl: string): void {
+  let parsed: URL;
+  try { parsed = new URL(rawUrl); } catch { throw new Error("유효하지 않은 URL입니다."); }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("http/https URL만 분석할 수 있습니다.");
+  }
+  const h = parsed.hostname.toLowerCase();
+  if (h === "localhost" || h === "0.0.0.0" || h === "::1") {
+    throw new Error("내부 주소는 분석할 수 없습니다.");
+  }
+  const oct = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (oct) {
+    const [a, b] = [Number(oct[1]), Number(oct[2])];
+    if (
+      a === 127 ||
+      a === 10 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 169 && b === 254)
+    ) throw new Error("내부 IP 주소는 분석할 수 없습니다.");
+  }
+}
+
+/* ── Rate limit: 세션/사용자당 일일 분석 횟수 제한 ── */
+const RATE_LIMIT_ANON = 10;
+const RATE_LIMIT_USER = 30;
+
+async function checkRateLimit(sessionId: string, userId: string | null): Promise<void> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const base = supabaseAdmin.from("analyses")
+    .select("id", { count: "exact", head: true })
+    .gte("created_at", todayStart.toISOString());
+  const { count } = await (userId
+    ? base.eq("user_id", userId)
+    : base.eq("session_id", sessionId));
+  const limit = userId ? RATE_LIMIT_USER : RATE_LIMIT_ANON;
+  if ((count ?? 0) >= limit) {
+    throw new Error(`일일 분석 한도(${limit}건)에 도달했습니다. 내일 다시 시도하세요.`);
+  }
+}
+
 export const analyzeContent = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => InputSchema.parse(input))
   .handler(async ({ data }) => {
     const userId = await getOptionalUserId();
+    await checkRateLimit(data.sessionId, userId);
 
     let bodyText = data.text;
     const sourceUrl = data.url;
+    if (sourceUrl) validatePublicUrl(sourceUrl);
 
     if (sourceUrl && data.text.length < 200) {
       try {

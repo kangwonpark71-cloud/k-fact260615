@@ -3,6 +3,7 @@ import { getRequestHeader } from "@tanstack/react-start/server";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { getEnv } from "./runtime-env.server";
+import { encryptSecret, decryptSecret } from "./crypto.server";
 
 async function requireAdmin(): Promise<string> {
   const auth = getRequestHeader("authorization");
@@ -29,7 +30,7 @@ export const getAdminStats = createServerFn({ method: "GET" }).handler(async () 
   const weekAgo = new Date(Date.now() - 7 * 86400000);
   const monthAgo = new Date(Date.now() - 30 * 86400000);
 
-  const [totalRes, todayRes, weekRes, monthRes, userRes, anonRes, verdictRes, confidenceRes, recentRes] =
+  const [totalRes, todayRes, weekRes, monthRes, summaryRes, recentRes] =
     await Promise.all([
       supabaseAdmin.from("analyses").select("id", { count: "exact", head: true }),
       supabaseAdmin.from("analyses").select("id", { count: "exact", head: true })
@@ -38,28 +39,26 @@ export const getAdminStats = createServerFn({ method: "GET" }).handler(async () 
         .gte("created_at", weekAgo.toISOString()),
       supabaseAdmin.from("analyses").select("id", { count: "exact", head: true })
         .gte("created_at", monthAgo.toISOString()),
-      supabaseAdmin.from("analyses").select("user_id").not("user_id", "is", null),
-      supabaseAdmin.from("analyses").select("session_id").is("user_id", null),
-      supabaseAdmin.from("analyses").select("overall_verdict"),
-      supabaseAdmin.from("analyses").select("overall_confidence"),
-      // 최근 30일 데이터 (일별 + 시간별 모두 커버)
+      // DB 집계 RPC: verdict 분포·평균신뢰도·고유 사용자/세션을 한 번에
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabaseAdmin as any).rpc("get_admin_stats_summary"),
+      // 최근 30일 created_at (일별 + 시간별 차트용)
       supabaseAdmin.from("analyses").select("created_at")
         .gte("created_at", monthAgo.toISOString())
         .order("created_at", { ascending: true }),
     ]);
 
-  const uniqueUsers = new Set((userRes.data ?? []).map((r) => r.user_id)).size;
-  const uniqueSessions = new Set((anonRes.data ?? []).map((r) => r.session_id)).size;
-
-  const verdictCounts: Record<string, number> = {};
-  for (const row of verdictRes.data ?? []) {
-    const vk = row.overall_verdict ?? "미확인";
-    verdictCounts[vk] = (verdictCounts[vk] ?? 0) + 1;
-  }
-
-  const confidences = (confidenceRes.data ?? []).map((r) => r.overall_confidence as number);
-  const avgConfidence = confidences.length > 0
-    ? Math.round(confidences.reduce((a, b) => a + b, 0) / confidences.length) : 0;
+  type StatsSummary = {
+    verdict_counts: Record<string, number>;
+    avg_confidence: number;
+    unique_users: number;
+    unique_sessions: number;
+  };
+  const summary = summaryRes.data as StatsSummary | null;
+  const verdictCounts: Record<string, number> = summary?.verdict_counts ?? {};
+  const avgConfidence = summary?.avg_confidence ?? 0;
+  const uniqueUsers = summary?.unique_users ?? 0;
+  const uniqueSessions = summary?.unique_sessions ?? 0;
 
   // 30일 일별 집계
   const daily30Map: Record<string, number> = {};
@@ -181,10 +180,11 @@ export const addApiKey = createServerFn({ method: "POST" })
     await requireAdmin();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const key_hint = data.key_value.slice(-4);
+    const encrypted = await encryptSecret(data.key_value);
     const { error } = await supabaseAdmin.from("api_keys").insert({
       name: data.name,
       provider: data.provider,
-      key_value: data.key_value,
+      key_value: encrypted,
       key_hint,
     });
     if (error) throw new Error("키 등록 실패: " + error.message);
@@ -251,4 +251,14 @@ export const getAdminUsers = createServerFn({ method: "GET" }).handler(async () 
       analysis_count: countMap[u.id] ?? 0,
       last_analysis_at: lastMap[u.id] ?? null,
     }));
+});
+
+// ── 관리자 여부 확인 (이메일 하드코딩 없이 서버에서 검증) ──
+export const checkIsAdmin = createServerFn({ method: "GET" }).handler(async () => {
+  try {
+    await requireAdmin();
+    return true;
+  } catch {
+    return false;
+  }
 });
