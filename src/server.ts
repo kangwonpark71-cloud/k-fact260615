@@ -2,7 +2,7 @@ import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
-import { setCfEnv } from "./lib/runtime-env.server";
+import { setCfEnv, setCfCtx } from "./lib/runtime-env.server";
 
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
@@ -42,6 +42,7 @@ export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     // Store Cloudflare bindings so all server functions can read them via getEnv()
     setCfEnv(env);
+    setCfCtx(ctx);
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);

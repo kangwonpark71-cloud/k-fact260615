@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState, useMemo } from "react";
-import { Inbox, Trash2, Search, X } from "lucide-react";
+import { Inbox, Trash2, Search, X, Loader2, AlertTriangle } from "lucide-react";
 
 import { listAnalyses, deleteAnalysis } from "@/lib/analyses.functions";
 import { getSessionId } from "@/lib/session";
@@ -155,18 +155,30 @@ function HistoryPage() {
               >
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium truncate group-hover:text-primary transition-colors">
-                    {row.title ?? "(제목 없음)"}
+                    {row.title ?? (row.status === "pending" ? "분석 중…" : "(제목 없음)")}
                   </h3>
                   <p className="text-xs text-muted-foreground mt-1">
                     {new Date(row.created_at).toLocaleString("ko-KR")}
-                    {row.source_url && " · " + new URL(row.source_url).hostname}
+                    {row.source_url && " · " + (() => { try { return new URL(row.source_url!).hostname; } catch { return row.source_url; } })()}
                   </p>
                 </div>
                 <div className="text-right shrink-0">
-                  <VerdictBadge verdict={row.overall_verdict ?? "미확인"} size="sm" />
-                  <div className="text-xs text-muted-foreground mt-1 tabular-nums">
-                    신뢰도 {row.overall_confidence ?? 0}%
-                  </div>
+                  {row.status === "pending" ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> 처리 중
+                    </span>
+                  ) : row.status === "failed" ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-destructive">
+                      <AlertTriangle className="w-3.5 h-3.5" /> 실패
+                    </span>
+                  ) : (
+                    <>
+                      <VerdictBadge verdict={row.overall_verdict ?? "미확인"} size="sm" />
+                      <div className="text-xs text-muted-foreground mt-1 tabular-nums">
+                        신뢰도 {row.overall_confidence ?? 0}%
+                      </div>
+                    </>
+                  )}
                 </div>
               </Link>
               <button

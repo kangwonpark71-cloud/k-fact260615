@@ -4,6 +4,17 @@
 // server functions can read secrets reliably without depending on process.env.
 
 let _cfEnv: Record<string, unknown> = {};
+let _cfCtx: { waitUntil: (p: Promise<unknown>) => void } | null = null;
+
+export function setCfCtx(ctx: unknown): void {
+  if (ctx && typeof ctx === "object" && "waitUntil" in ctx) {
+    _cfCtx = ctx as { waitUntil: (p: Promise<unknown>) => void };
+  }
+}
+
+export function getCfCtx(): { waitUntil: (p: Promise<unknown>) => void } | null {
+  return _cfCtx;
+}
 
 export function setCfEnv(env: unknown): void {
   if (env && typeof env === "object") {

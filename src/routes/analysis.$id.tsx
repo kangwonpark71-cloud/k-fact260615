@@ -62,15 +62,50 @@ function AnalysisPage() {
     queryKey: ["analysis", id, sessionId],
     queryFn: () => fetchAnalysis({ data: { id, sessionId } }),
     enabled: !!sessionId,
+    // pending 상태면 2초마다 폴링
+    refetchInterval: (q) => {
+      const status = (q.state.data as { status?: string } | undefined)?.status;
+      return status === "pending" ? 2000 : false;
+    },
   });
 
-  if (isLoading || !data) {
+  const status = (data as { status?: string } | undefined)?.status;
+  const isPending = isLoading || !data || status === "pending";
+  const isFailed = status === "failed";
+
+  if (isPending) {
     return (
       <div className="min-h-screen pb-16 sm:pb-0">
         <SiteHeader />
         <BottomNav />
-        <div className="max-w-4xl mx-auto px-6 py-20 text-center text-muted-foreground animate-pulse">
-          분석 결과를 불러오는 중…
+        <div className="max-w-4xl mx-auto px-6 py-24 text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto animate-pulse">
+            <BookOpen className="w-8 h-8 text-primary" />
+          </div>
+          <p className="text-lg font-semibold">AI 분석 중…</p>
+          <p className="text-sm text-muted-foreground">백그라운드에서 처리 중입니다. 잠시 기다려주세요.</p>
+          <div className="flex justify-center gap-1.5 pt-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isFailed) {
+    return (
+      <div className="min-h-screen pb-16 sm:pb-0">
+        <SiteHeader />
+        <BottomNav />
+        <div className="max-w-4xl mx-auto px-6 py-24 text-center space-y-4">
+          <AlertTriangle className="w-12 h-12 text-destructive mx-auto" />
+          <p className="text-lg font-semibold">분석 실패</p>
+          <p className="text-sm text-muted-foreground">{(data as { summary?: string })?.summary ?? "AI 분석 중 오류가 발생했습니다."}</p>
+          <Link to="/" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium mt-4">
+            <ArrowLeft className="w-4 h-4" /> 다시 시도
+          </Link>
         </div>
       </div>
     );

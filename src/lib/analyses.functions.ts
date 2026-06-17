@@ -5,7 +5,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 
 import { createModelInstance, type SupportedProvider } from "./ai-gateway.server";
-import { getEnv, getCfAIBinding } from "./runtime-env.server";
+import { getEnv, getCfAIBinding, getCfCtx } from "./runtime-env.server";
 import { decryptSecret } from "./crypto.server";
 
 const VerdictEnum = z.enum([
@@ -387,21 +387,45 @@ async function checkRateLimit(sessionId: string, userId: string | null): Promise
   }
 }
 
-export const analyzeContent = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => InputSchema.parse(input))
-  .handler(async ({ data }) => {
-    const userId = await getOptionalUserId();
-    await checkRateLimit(data.sessionId, userId);
+/* ── URL 캐시 확인 (24시간 내 동일 URL 분석 재사용) ── */
+async function checkUrlCache(
+  sourceUrl: string,
+  sessionId: string,
+  userId: string | null,
+): Promise<string | null> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  let q = supabaseAdmin
+    .from("analyses")
+    .select("id")
+    .eq("source_url", sourceUrl)
+    .eq("status", "completed")
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (userId) {
+    q = q.eq("user_id", userId);
+  } else {
+    q = q.eq("session_id", sessionId).is("user_id", null);
+  }
+  const { data } = await q;
+  return data?.[0]?.id ?? null;
+}
 
-    let bodyText = data.text;
-    const sourceUrl = data.url;
-    if (sourceUrl) validatePublicUrl(sourceUrl);
-
-    if (sourceUrl && data.text.length < 200) {
+/* ── 백그라운드 AI 분석 처리 ── */
+async function processAnalysis(
+  analysisId: string,
+  inputText: string,
+  sourceUrl: string | undefined,
+): Promise<void> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  try {
+    let bodyText = inputText;
+    if (sourceUrl && inputText.length < 200) {
       try {
         const res = await fetch(sourceUrl, {
           headers: { "User-Agent": "Mozilla/5.0 FactGuardBot" },
-          redirect: "error", // 리다이렉트 기반 SSRF 우회 차단
+          redirect: "error",
         });
         if (res.ok) {
           const html = await res.text();
@@ -411,45 +435,81 @@ export const analyzeContent = createServerFn({ method: "POST" })
             .replace(/<[^>]+>/g, " ")
             .replace(/\s+/g, " ")
             .trim();
-          if (stripped.length > bodyText.length) {
-            bodyText = stripped.slice(0, 8000);
-          }
+          if (stripped.length > bodyText.length) bodyText = stripped.slice(0, 8000);
         }
-      } catch {
-        // ignore
-      }
+      } catch { /* URL 가져오기 실패 → 원본 텍스트 사용 */ }
     }
 
     const prompt = `분석할 본문:\n"""\n${bodyText.slice(0, 8000)}\n"""\n\n${sourceUrl ? `원본 URL: ${sourceUrl}\n\n` : ""}위 지침에 따라 JSON으로 응답하세요.`;
+    const parsed = await generateWithFallback({ schema: AnalysisSchema, system: SYSTEM_PROMPT, prompt, cfHint: "analysis" });
 
-    let parsed: z.infer<typeof AnalysisSchema>;
-    try {
-      parsed = await generateWithFallback({ schema: AnalysisSchema, system: SYSTEM_PROMPT, prompt, cfHint: "analysis" });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new Error("AI 분석 호출 실패: " + msg);
+    await supabaseAdmin.from("analyses").update({
+      status: "completed",
+      input_text: bodyText.slice(0, 8000),
+      title: parsed.title,
+      summary: parsed.summary,
+      overall_verdict: parsed.overall_verdict,
+      overall_confidence: parsed.overall_confidence,
+      claims: parsed.claims,
+    }).eq("id", analysisId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await supabaseAdmin.from("analyses").update({
+      status: "failed",
+      title: "분석 실패",
+      summary: msg.slice(0, 300),
+      claims: [],
+    }).eq("id", analysisId).catch(() => {});
+  }
+}
+
+export const analyzeContent = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => InputSchema.parse(input))
+  .handler(async ({ data }) => {
+    const userId = await getOptionalUserId();
+    await checkRateLimit(data.sessionId, userId);
+
+    const sourceUrl = data.url;
+    if (sourceUrl) validatePublicUrl(sourceUrl);
+
+    // 24시간 URL 캐시 적중 시 기존 결과 즉시 반환
+    if (sourceUrl) {
+      const cachedId = await checkUrlCache(sourceUrl, data.sessionId, userId);
+      if (cachedId) return { id: cachedId, cached: true, pending: false };
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: inserted, error } = await supabaseAdmin
+    const { data: pending, error: insertErr } = await supabaseAdmin
       .from("analyses")
       .insert({
         session_id: data.sessionId,
         user_id: userId,
         source_url: sourceUrl ?? null,
-        input_text: bodyText.slice(0, 8000),
-        title: parsed.title,
-        summary: parsed.summary,
-        overall_verdict: parsed.overall_verdict,
-        overall_confidence: parsed.overall_confidence,
-        claims: parsed.claims,
+        input_text: data.text.slice(0, 8000),
+        status: "pending",
+        title: null,
+        summary: null,
+        overall_verdict: null,
+        overall_confidence: null,
+        claims: [],
       })
       .select("id")
       .single();
+    if (insertErr) throw new Error("저장 실패: " + insertErr.message);
 
-    if (error) throw new Error("저장 실패: " + error.message);
+    const analysisId = pending.id as string;
+    const workPromise = processAnalysis(analysisId, data.text, sourceUrl);
 
-    return { id: inserted.id as string, ...parsed };
+    const cfCtx = getCfCtx();
+    if (cfCtx) {
+      // CF Workers: 응답 즉시 반환 후 백그라운드 처리
+      cfCtx.waitUntil(workPromise);
+      return { id: analysisId, cached: false, pending: true };
+    } else {
+      // 로컬 개발: 동기적으로 처리 후 반환
+      await workPromise;
+      return { id: analysisId, cached: false, pending: false };
+    }
   });
 
 export const getAnalysis = createServerFn({ method: "GET" })
@@ -484,7 +544,7 @@ export const listAnalyses = createServerFn({ method: "POST" })
 
     let query = supabaseAdmin
       .from("analyses")
-      .select("id, title, overall_verdict, overall_confidence, created_at, source_url")
+      .select("id, title, overall_verdict, overall_confidence, created_at, source_url, status")
       .order("created_at", { ascending: false })
       .limit(50);
 
