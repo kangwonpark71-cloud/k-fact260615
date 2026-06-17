@@ -10,7 +10,7 @@ import {
 
 import { getAnalysis } from "@/lib/analyses.functions";
 import { getSessionId } from "@/lib/session";
-import { SiteHeader } from "@/components/SiteHeader";
+import { SiteHeader, BottomNav } from "@/components/SiteHeader";
 import { VerdictBadge } from "@/components/VerdictBadge";
 
 export const Route = createFileRoute("/analysis/$id")({
@@ -66,8 +66,9 @@ function AnalysisPage() {
 
   if (isLoading || !data) {
     return (
-      <div className="min-h-screen">
+      <div className="min-h-screen pb-16 sm:pb-0">
         <SiteHeader />
+        <BottomNav />
         <div className="max-w-4xl mx-auto px-6 py-20 text-center text-muted-foreground animate-pulse">
           분석 결과를 불러오는 중…
         </div>
@@ -78,8 +79,9 @@ function AnalysisPage() {
   const claims = (data.claims as unknown as Claim[]) ?? [];
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pb-16 sm:pb-0">
       <SiteHeader />
+      <BottomNav />
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-5">
         <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-4 h-4" /> 새 분석

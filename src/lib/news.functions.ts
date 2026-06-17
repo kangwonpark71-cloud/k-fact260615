@@ -350,24 +350,6 @@ async function fetchXTwitter(): Promise<TrendingItem[]> {
   return [];
 }
 
-// ── 인스타그램 (Nitter 해시태그 대체) ──
-async function fetchInstagram(): Promise<TrendingItem[]> {
-  // Instagram Graph API 없이는 공식 접근 불가
-  // Nitter 기반 해시태그 검색으로 대체
-  const nitterHosts = [
-    "https://nitter.poast.org",
-    "https://nitter.privacydev.net",
-  ];
-  for (const host of nitterHosts) {
-    try {
-      // Instagram 관련 X 해시태그 트렌드
-      const url = `${host}/search/rss?q=%23팩트체크+OR+%23사실확인&f=tweets`;
-      const items = await safeRss(url, "인스타(해시태그)", "social", 10);
-      if (items.length >= 2) return items.slice(0, 10).map((it) => ({ ...it, source: "X 트렌드" }));
-    } catch { /**/ }
-  }
-  return [];
-}
 
 // ── 스코어 계산 ──
 function calcScore(item: TrendingItem): number {
@@ -416,7 +398,7 @@ export const fetchTrendingNews = createServerFn({ method: "GET" }).handler(async
     return _cache;
   }
 
-  const [rssAll, naverItems, snuItems, ytItems, dcItems, fmItems, xItems, igItems] =
+  const [rssAll, naverItems, snuItems, ytItems, dcItems, fmItems, xItems] =
     await Promise.all([
       Promise.all(RSS_SOURCES.map((s) => safeRss(s.url, s.name, s.type, s.max))).then((r) => r.flat()),
       fetchNaverNews(),
@@ -425,12 +407,11 @@ export const fetchTrendingNews = createServerFn({ method: "GET" }).handler(async
       fetchDCInside(),
       fetchFMKorea(),
       fetchXTwitter(),
-      fetchInstagram(),
     ]);
 
   const merged = [
     ...snuItems, ...naverItems, ...ytItems, ...dcItems,
-    ...fmItems, ...xItems, ...igItems, ...rssAll,
+    ...fmItems, ...xItems, ...rssAll,
   ];
 
   const seen = new Set<string>();

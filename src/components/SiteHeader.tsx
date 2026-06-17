@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   ShieldCheck, History, LogOut, User as UserIcon,
-  Moon, Sun, LayoutDashboard, Menu, X,
+  Moon, Sun, LayoutDashboard, Menu, X, Home,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
@@ -205,4 +205,44 @@ function DrawerLink({
       {children}
     </Link>
   );
+}
+
+export function BottomNav() {
+  const { user } = useAuth();
+  const { isAdmin } = useBottomNavAdmin();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  const active = (path: string) =>
+    pathname === path
+      ? "text-primary"
+      : "text-muted-foreground";
+
+  return (
+    <nav className="fixed bottom-0 inset-x-0 z-40 sm:hidden glass border-t border-border/50 flex items-stretch">
+      <Link to="/" className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/")}`}>
+        <Home className="w-5 h-5" />
+        홈
+      </Link>
+      <Link to="/history" className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/history")}`}>
+        <History className="w-5 h-5" />
+        히스토리
+      </Link>
+      {user && isAdmin && (
+        <Link to="/admin" className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/admin")}`}>
+          <LayoutDashboard className="w-5 h-5" />
+          관리자
+        </Link>
+      )}
+      <Link to={user ? "/" : "/auth"} className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/auth")}`}>
+        <UserIcon className="w-5 h-5" />
+        {user ? user.email?.split("@")[0] ?? "나" : "로그인"}
+      </Link>
+    </nav>
+  );
+}
+
+function useBottomNavAdmin() {
+  const { user } = useAuth();
+  const isAdmin = user?.email === import.meta.env.VITE_ADMIN_EMAIL;
+  return { isAdmin };
 }

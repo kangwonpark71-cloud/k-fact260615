@@ -11,7 +11,7 @@ import {
 import { analyzeContent, quickAnalyzeContent, type QuickCheckResult } from "@/lib/analyses.functions";
 import { fetchYouTubeInfo, isYouTubeUrl, type YouTubeInfo } from "@/lib/youtube.functions";
 import { getSessionId } from "@/lib/session";
-import { SiteHeader } from "@/components/SiteHeader";
+import { SiteHeader, BottomNav } from "@/components/SiteHeader";
 import { VoiceInput } from "@/components/VoiceInput";
 import { TrendingNews } from "@/components/TrendingNews";
 import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay";
@@ -226,8 +226,9 @@ function Home() {
   return (
     <div className="min-h-screen">
       <SiteHeader />
+      <BottomNav />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-24 sm:pb-32">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-36 sm:pb-32">
         {/* Hero */}
         <section className="text-center mb-8 sm:mb-12">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass mb-5 sm:mb-6">
@@ -659,9 +660,19 @@ function Home() {
                       </div>
                     )}
 
-                    <p className="text-[10px] text-muted-foreground/50 leading-relaxed">
-                      ※ 미리보기는 빠른 추론 결과입니다. 정밀 분석은 아래 버튼을 이용하세요.
-                    </p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] text-muted-foreground/50 leading-relaxed">
+                        ※ 미리보기는 빠른 추론 결과입니다.
+                      </p>
+                      <button
+                        type="submit"
+                        disabled={!canSubmit}
+                        className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 transition-opacity"
+                      >
+                        <ArrowRight className="w-3.5 h-3.5" />
+                        상세 분석
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

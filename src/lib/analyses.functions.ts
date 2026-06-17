@@ -51,18 +51,27 @@ const InputSchema = z
     path: ["text"],
   });
 
-const SYSTEM_PROMPT = `당신은 한국어 사실검증 보조 AI 'FactGuard'입니다.
+const SYSTEM_PROMPT = `당신은 다국어 사실검증 보조 AI 'FactGuard'입니다.
 입력된 뉴스/게시물 본문에서 검증 가능한 핵심 주장 3~7개를 추출하고,
 각 주장에 대해 일반 상식, 학습된 지식, 논리적 추론을 바탕으로
 사실성·반박 가능성·미확인 항목을 구조화해 평가합니다.
 
+언어 규칙:
+- 입력 텍스트의 주요 언어를 감지하여 동일한 언어로 모든 필드를 작성합니다.
+- 한국어 입력 → 한국어 출력 / English input → English output.
+- 혼합 언어는 더 많이 사용된 언어를 기준으로 합니다.
+
+판정 값 (언어 무관 고정):
+- 한국어: 사실 / 부분 사실 / 근거 부족 / 반대 근거 우세 / 미확인
+- English: use the same Korean verdict strings (they are enum values)
+
 규칙:
 - 단정형 판정 대신 '근거 기반 신뢰도'로 표현합니다.
 - 모르거나 최신 정보가 필요한 경우 '미확인'으로 표시하고 unknowns에 명시합니다.
-- 환각 금지: 출처 URL을 만들어내지 말고, suggested_sources에는 일반적인 출처 유형/기관명만 적습니다 (예: '통계청', '주요 일간지', '학술 데이터베이스').
-- reasoning은 2~4문장의 한국어로 간결하게.
+- 환각 금지: 출처 URL을 만들어내지 말고, suggested_sources에는 일반적인 출처 유형/기관명만 적습니다.
+- reasoning은 2~4문장으로 간결하게 (입력 언어와 동일).
 - confidence는 0~100 정수.
-- title은 본문을 대표하는 12자 내외 짧은 제목.`;
+- title은 본문을 대표하는 짧은 제목 (12자/words 내외, 입력 언어와 동일).`;
 
 // ── 멀티 키 관리 ──
 
@@ -540,7 +549,7 @@ const QuickCheckSchema = z.object({
 
 export type QuickCheckResult = z.infer<typeof QuickCheckSchema>;
 
-const QUICK_SYSTEM = `당신은 한국어 사실검증 보조 AI입니다. 입력된 텍스트에서 검증 가능한 핵심 주장을 추출하고 정확하게 평가합니다.
+const QUICK_SYSTEM = `당신은 다국어 사실검증 보조 AI입니다. 입력된 텍스트의 언어를 감지하여 동일한 언어로 응답합니다 (한국어 입력→한국어, English input→English). 판정 enum 값은 항상 한국어 고정(사실/부분 사실/근거 부족/반대 근거 우세/미확인). 텍스트에서 검증 가능한 핵심 주장을 추출하고 정확하게 평가합니다.
 
 ## 판정 기준 (반드시 준수)
 - 사실: 학습된 지식·상식으로 충분한 근거가 있음
