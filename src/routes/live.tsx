@@ -123,8 +123,12 @@ function useSpeechRecognition({
 
     rec.onerror = (e: any) => {
       const err = e.error as string;
-      if (err === "not-allowed" || err === "service-not-allowed") {
+      if (err === "not-allowed") {
         setPermissionDenied(true);
+        doStop();
+      } else if (err === "service-not-allowed") {
+        // 브라우저 권한은 있으나 Windows 시스템 수준에서 차단된 경우
+        setMicError("service-not-allowed");
         doStop();
       } else if (err === "audio-capture") {
         setMicError("마이크를 찾을 수 없습니다. 마이크가 연결되어 있는지 확인하세요.");
@@ -452,6 +456,25 @@ function LivePage() {
   );
 }
 
+/* ── 마이크 안내 카드 ── */
+function MicGuideCard({ title, color, steps }: { title: string; color: "orange" | "red"; steps: string[] }) {
+  const border = color === "orange" ? "border-orange-400/30 bg-orange-400/8" : "border-red-400/30 bg-red-400/8";
+  const text   = color === "orange" ? "text-orange-400" : "text-red-400";
+  return (
+    <div className={`w-full max-w-sm rounded-2xl border ${border} px-5 py-4 space-y-2 text-left`}>
+      <div className="flex items-start gap-2">
+        <MicOff className={`w-4 h-4 ${text} shrink-0 mt-0.5`} />
+        <p className={`text-sm font-semibold ${text}`}>{title}</p>
+      </div>
+      <ol className="space-y-1 pl-6 list-decimal list-inside">
+        {steps.map((s, i) => (
+          <li key={i} className="text-xs text-muted-foreground leading-relaxed">{s}</li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 /* ── 마이크 진단 ── */
 type DiagStep = { label: string; status: "ok" | "fail" | "warn"; detail: string };
 
@@ -568,21 +591,36 @@ function StartScreen({
         <span className="text-[10px] text-muted-foreground/30 ml-1">…순환</span>
       </div>
 
-      {/* 권한 거부 안내 */}
+      {/* 브라우저 권한 거부 */}
       {permissionDenied && (
-        <div className="w-full max-w-sm rounded-2xl border border-orange-400/30 bg-orange-400/8 px-5 py-4 space-y-2 text-left">
-          <div className="flex items-start gap-2">
-            <MicOff className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
-            <p className="text-sm font-semibold text-orange-400">마이크 접근이 차단됨</p>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed pl-6">
-            Chrome 주소창 왼쪽 🔒 클릭 → 마이크 <strong className="text-foreground/70">허용</strong> → 아래 "다시 시도"
-          </p>
-        </div>
+        <MicGuideCard
+          title="브라우저 마이크 권한이 차단됨"
+          color="orange"
+          steps={[
+            "Chrome 주소창 왼쪽 🔒 아이콘 클릭",
+            "마이크 항목을 '허용'으로 변경",
+            "페이지 새로고침 후 '녹음 시작' 클릭",
+          ]}
+        />
+      )}
+
+      {/* Windows 시스템 수준 차단 (service-not-allowed) */}
+      {micError === "service-not-allowed" && (
+        <MicGuideCard
+          title="Windows 시스템에서 마이크가 차단됨"
+          color="orange"
+          steps={[
+            "Windows 시작 → 설정(⚙️) → 개인정보 보호 및 보안",
+            "마이크 클릭",
+            "'앱이 마이크에 액세스하도록 허용' → 켜기",
+            "'데스크톱 앱이 마이크에 액세스하도록 허용' → 켜기",
+            "Chrome을 완전히 종료 후 재시작",
+          ]}
+        />
       )}
 
       {/* 기타 오류 */}
-      {micError && !permissionDenied && (
+      {micError && micError !== "service-not-allowed" && !permissionDenied && (
         <div className="w-full max-w-sm rounded-2xl border border-red-400/30 bg-red-400/8 px-4 py-3 flex items-start gap-2 text-left">
           <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
           <p className="text-xs text-muted-foreground leading-relaxed">{micError}</p>
