@@ -315,18 +315,45 @@ function validatePublicUrl(rawUrl: string): void {
     throw new Error("http/https URL만 분석할 수 있습니다.");
   }
   const h = parsed.hostname.toLowerCase();
-  if (h === "localhost" || h === "0.0.0.0" || h === "::1") {
+
+  // IPv6 리터럴 — loopback, unique-local(fc00::/7), link-local(fe80::/10), IPv4-mapped
+  const ipv6Host = h.startsWith("[") ? h.slice(1, -1) : (h.includes(":") ? h : null);
+  if (ipv6Host !== null) {
+    if (
+      ipv6Host === "::" ||
+      ipv6Host === "::1" ||
+      /^fc/i.test(ipv6Host) ||
+      /^fd/i.test(ipv6Host) ||
+      /^fe[89ab]/i.test(ipv6Host) || // fe80::/10
+      /^::ffff:/i.test(ipv6Host)     // IPv4-mapped
+    ) throw new Error("내부 주소는 분석할 수 없습니다.");
+    return;
+  }
+
+  // 명시적 키워드
+  if (h === "localhost" || h === "0.0.0.0") {
     throw new Error("내부 주소는 분석할 수 없습니다.");
   }
+
+  // 비표준 IP 인코딩 차단: 0x7f000001, 017700000001, 2130706433 같은 우회 형태
+  if (/^0x[0-9a-f]+$/i.test(h) || /^0\d+$/.test(h) || /^\d+$/.test(h)) {
+    throw new Error("내부 IP 주소는 분석할 수 없습니다.");
+  }
+
+  // 표준 점 표기 IPv4 — 모든 비공개 대역 차단
   const oct = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (oct) {
     const [a, b] = [Number(oct[1]), Number(oct[2])];
     if (
-      a === 127 ||
-      a === 10 ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 169 && b === 254)
+      a === 0 ||                               // 0.0.0.0/8
+      a === 127 ||                             // 127/8 루프백
+      a === 10 ||                              // 10/8 사설
+      (a === 172 && b >= 16 && b <= 31) ||    // 172.16/12 사설
+      (a === 192 && b === 168) ||             // 192.168/16 사설
+      (a === 169 && b === 254) ||             // 169.254/16 링크로컬
+      (a === 100 && b >= 64 && b <= 127) ||   // 100.64/10 CGNAT
+      (a === 198 && (b === 18 || b === 19)) || // 198.18/15 벤치마킹
+      a >= 224                                 // 멀티캐스트·예약 대역
     ) throw new Error("내부 IP 주소는 분석할 수 없습니다.");
   }
 }
@@ -365,6 +392,7 @@ export const analyzeContent = createServerFn({ method: "POST" })
       try {
         const res = await fetch(sourceUrl, {
           headers: { "User-Agent": "Mozilla/5.0 FactGuardBot" },
+          redirect: "error", // 리다이렉트 기반 SSRF 우회 차단
         });
         if (res.ok) {
           const html = await res.text();
