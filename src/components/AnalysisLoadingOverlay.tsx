@@ -45,7 +45,7 @@ function toClaims(text: string, url?: string): string[] {
 function ClaimChip({ label, delay }: { label: string; delay: number }) {
   const [idx, setIdx] = useState(0);
   const [settled, setSettled] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     timerRef.current = setTimeout(() => {

@@ -200,8 +200,12 @@ function parseCFResponse(raw: string, hint: "analysis" | "quick"): unknown {
   let s = raw.replace(/^```(?:json)?\s*/im, "").replace(/\s*```\s*$/im, "").trim();
   const st = s.indexOf("{"); if (st > 0) s = s.slice(st);
   const en = s.lastIndexOf("}"); if (en !== -1) s = s.slice(0, en + 1);
-  const obj = JSON.parse(s) as Record<string, unknown>;
-  return hint === "analysis" ? buildAnalysisFromCF(obj) : buildQuickFromCF(obj);
+  try {
+    const obj = JSON.parse(s) as Record<string, unknown>;
+    return hint === "analysis" ? buildAnalysisFromCF(obj) : buildQuickFromCF(obj);
+  } catch {
+    return hint === "analysis" ? buildAnalysisFromCF({}) : buildQuickFromCF({});
+  }
 }
 
 const CF_JSON_HINT = `\n\n[출력] 마크다운 없이 순수 JSON 객체만. 판정은 "사실"|"부분 사실"|"근거 부족"|"반대 근거 우세"|"미확인" 중 하나.`;
@@ -237,14 +241,7 @@ async function generateWithFallback<T extends z.ZodType>(params: {
       return object;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-
-      // 즉시 실패 처리 (재시도 불필요한 오류)
-      if (msg.includes("429") || msg.includes("rate_limit") || msg.includes("rate limit")) {
-        throw new Error("AI 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.");
-      }
-
       errors.push(`[${entry.provider}] ${msg.slice(0, 120)}`);
-      // 다음 키 시도
       continue;
     }
   }

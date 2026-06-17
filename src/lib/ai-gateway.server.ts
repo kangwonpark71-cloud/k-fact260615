@@ -21,6 +21,3 @@ export function createModelInstance(provider: SupportedProvider, apiKey: string)
   }
 }
 
-export function createOpenAIProvider(apiKey: string) {
-  return createOpenAI({ apiKey });
-}

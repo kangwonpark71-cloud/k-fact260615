@@ -344,7 +344,7 @@ function AdminPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 hidden md:table-cell">
-                          <VerdictBadge verdict={row.overall_verdict} size="sm" />
+                          <VerdictBadge verdict={row.overall_verdict ?? "미확인"} size="sm" />
                         </td>
                         <td className="px-4 py-3 hidden lg:table-cell">
                           <div className="flex items-center gap-2">

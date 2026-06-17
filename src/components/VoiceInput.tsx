@@ -101,7 +101,12 @@ export function VoiceInput({ value, onChange, interimText, onInterimChange, onSe
     rec.onerror = (e: any) => {
       if (e.error === "not-allowed") {
         alert("마이크 접근 권한이 필요합니다. 브라우저 설정에서 허용해 주세요.");
-        stop();
+        isListeningRef.current = false;
+        recognitionRef.current?.stop();
+        recognitionRef.current = null;
+        setIsListening(false);
+        onInterimChange("");
+        stopAudio();
       }
     };
 

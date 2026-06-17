@@ -53,7 +53,8 @@ export const getAdminStats = createServerFn({ method: "GET" }).handler(async () 
 
   const verdictCounts: Record<string, number> = {};
   for (const row of verdictRes.data ?? []) {
-    verdictCounts[row.overall_verdict] = (verdictCounts[row.overall_verdict] ?? 0) + 1;
+    const vk = row.overall_verdict ?? "미확인";
+    verdictCounts[vk] = (verdictCounts[vk] ?? 0) + 1;
   }
 
   const confidences = (confidenceRes.data ?? []).map((r) => r.overall_confidence as number);
@@ -232,10 +233,10 @@ export const getAdminUsers = createServerFn({ method: "GET" }).handler(async () 
   ]);
 
   const countMap: Record<string, number> = {};
-  for (const r of countRes.data ?? []) countMap[r.user_id] = (countMap[r.user_id] ?? 0) + 1;
+  for (const r of countRes.data ?? []) { const uid = r.user_id ?? ""; if (uid) countMap[uid] = (countMap[uid] ?? 0) + 1; }
 
   const lastMap: Record<string, string> = {};
-  for (const r of lastRes.data ?? []) if (!lastMap[r.user_id]) lastMap[r.user_id] = r.created_at as string;
+  for (const r of lastRes.data ?? []) { const uid = r.user_id ?? ""; if (uid && !lastMap[uid]) lastMap[uid] = r.created_at as string; }
 
   return (authRes.data?.users ?? [])
     .sort((a, b) => (countMap[b.id] ?? 0) - (countMap[a.id] ?? 0))

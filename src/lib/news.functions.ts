@@ -355,7 +355,7 @@ async function fetchInstagram(): Promise<TrendingItem[]> {
       // Instagram 관련 X 해시태그 트렌드
       const url = `${host}/search/rss?q=%23팩트체크+OR+%23사실확인&f=tweets`;
       const items = await safeRss(url, "인스타(해시태그)", "social", 10);
-      if (items.length >= 2) return items.slice(0, 10).map((it) => ({ ...it, source: "Instagram 트렌드" }));
+      if (items.length >= 2) return items.slice(0, 10).map((it) => ({ ...it, source: "X 트렌드" }));
     } catch { /**/ }
   }
   return [];

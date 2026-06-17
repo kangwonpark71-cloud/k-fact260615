@@ -80,12 +80,12 @@ function Home() {
   const [ytInfo, setYtInfo] = useState<YouTubeInfo | null>(null);
   const [ytLoading, setYtLoading] = useState(false);
   const [ytErr, setYtErr] = useState<string | null>(null);
-  const ytTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const ytTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const [quickResult, setQuickResult] = useState<QuickCheckResult | null>(null);
   const [quickLoading, setQuickLoading] = useState(false);
   const [quickErr, setQuickErr] = useState<string | null>(null);
-  const quickTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const quickTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastCheckedRef = useRef("");
 
   const [voiceSentences, setVoiceSentences] = useState<VoiceSentence[]>([]);
@@ -178,7 +178,7 @@ function Home() {
 
   const effectiveText = mode === "voice" ? text + interimText : text;
   const canSubmit =
-    (mode === "url" ? !!url.trim() : effectiveText.replace(interimText, "").trim().length >= 30) && !loading;
+    (mode === "url" ? !!url.trim() : text.trim().length >= 30) && !loading;
 
   // 탭 전환 시 텍스트 초기화
   const handleModeChange = (newMode: "text" | "url" | "voice" | "chat") => {
@@ -253,17 +253,17 @@ function Home() {
 
         {/* ── 대화 버튼 (폼 위 중앙) ── */}
         {!loading && (
-          <div className="flex justify-center mb-3">
+          <div className="flex justify-center mb-4">
             <button
               type="button"
               onClick={() => handleModeChange(mode === "chat" ? "text" : "chat")}
-              className={`inline-flex items-center gap-2 px-5 py-2 rounded-full border text-sm font-medium shadow-sm transition-all ${
+              className={`inline-flex items-center gap-3 px-10 py-4 rounded-full border-2 text-base font-bold shadow-xl transition-all duration-200 active:scale-95 ${
                 mode === "chat"
-                  ? "bg-primary/15 border-primary/40 text-primary"
-                  : "glass border-border/60 text-muted-foreground hover:border-primary/40 hover:text-primary"
+                  ? "bg-gradient-to-r from-amber-500 to-yellow-400 border-amber-400 text-amber-950 shadow-amber-400/50 scale-105"
+                  : "bg-gradient-to-r from-amber-400 to-yellow-300 border-amber-300 text-amber-900 shadow-amber-300/40 hover:scale-105 hover:from-amber-500 hover:to-yellow-400 hover:shadow-amber-400/60"
               }`}
             >
-              <MessageSquare className="w-4 h-4" />
+              <MessageSquare className="w-6 h-6" />
               {mode === "chat" ? "대화 분석 중" : "대화 분석"}
             </button>
           </div>

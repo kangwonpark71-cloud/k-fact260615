@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, ExternalLink, ThumbsUp, ThumbsDown, HelpCircle,
   BookOpen, Share2, Check, ChevronDown, ChevronUp, FileText,
-  AlertTriangle, CheckCircle2, XCircle, MinusCircle, AlertCircle, Search,
+  AlertTriangle, CheckCircle2, XCircle, MinusCircle, AlertCircle,
 } from "lucide-react";
 
 import { getAnalysis } from "@/lib/analyses.functions";
@@ -156,7 +156,7 @@ function InputSummary({ text }: { text: string }) {
       {open && (
         <div className="px-4 sm:px-5 pb-4 pt-1">
           <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap break-words">
-            {hasMore && !open ? preview + "…" : text}
+            {text}
           </p>
         </div>
       )}
@@ -249,11 +249,66 @@ function EvidenceLinks({
 /* ── 주장 한눈에 보기 ── */
 function ClaimOverview({ claims }: { claims: Claim[] }) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [showUnknown, setShowUnknown] = useState(false);
 
   const verdictCount = claims.reduce<Record<string, number>>((acc, c) => {
     acc[c.verdict] = (acc[c.verdict] ?? 0) + 1;
     return acc;
   }, {});
+
+  const indexed      = claims.map((c, i) => ({ c, i }));
+  const mainClaims   = indexed.filter(({ c }) => c.verdict !== "미확인");
+  const unknownClaims = indexed.filter(({ c }) => c.verdict === "미확인");
+  const isHighlight  = (v: string) => v === "사실" || v === "반대 근거 우세";
+
+  /* 공통 근거 패널 */
+  function DetailPanel({ c, meta }: { c: Claim; meta: typeof VERDICT_META["사실"] }) {
+    const hasDetail =
+      !!c.reasoning ||
+      c.supporting_points.length > 0 ||
+      c.counter_points.length > 0 ||
+      c.unknowns.length > 0 ||
+      c.suggested_sources.length > 0;
+    return (
+      <div className={`rounded-b-lg border border-t-0 ${meta.border} bg-background/50 px-4 py-3 space-y-3`}>
+        {c.reasoning && (
+          <p className="text-xs text-muted-foreground leading-relaxed border-b border-border/30 pb-3">
+            {c.reasoning}
+          </p>
+        )}
+        {!hasDetail && (
+          <div className="flex items-start gap-2 py-1">
+            <AlertCircle className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              AI가 이 주장에 대한 충분한 근거를 확인하지 못했습니다.
+              신뢰할 수 있는 기관의 1차 자료를 직접 검색해 보세요.
+            </p>
+          </div>
+        )}
+        <div className="grid sm:grid-cols-2 gap-3">
+          {c.supporting_points.length > 0 && (
+            <EvidenceLinks title="지지 근거" icon={ThumbsUp} colorClass="text-emerald-400"
+              items={c.supporting_points.map(p => ({ text: p, url: `https://news.google.com/search?q=${encodeURIComponent(p.slice(0, 70))}&hl=ko&gl=KR&ceid=KR:ko` }))} />
+          )}
+          {c.counter_points.length > 0 && (
+            <EvidenceLinks title="반박 가능성" icon={ThumbsDown} colorClass="text-red-400"
+              items={c.counter_points.map(p => ({ text: p, url: `https://news.google.com/search?q=${encodeURIComponent(p.slice(0, 70))}&hl=ko&gl=KR&ceid=KR:ko` }))} />
+          )}
+          {c.suggested_sources.length > 0 && (
+            <EvidenceLinks title="확인 권장 출처" icon={BookOpen} colorClass="text-primary"
+              items={c.suggested_sources.map(s => ({ text: `${s.name}${s.type && s.type !== "일반" ? ` (${s.type})` : ""}`, url: generateSourceUrl(s.name, s.type, c.claim) }))} />
+          )}
+          {c.unknowns.length > 0 && (
+            <EvidenceLinks title="미확인 항목" icon={AlertTriangle} colorClass="text-yellow-400"
+              items={c.unknowns.map(u => ({ text: u, url: `https://www.google.com/search?q=${encodeURIComponent(u.slice(0, 70))}` }))} />
+          )}
+        </div>
+        <p className="text-[10px] text-muted-foreground/40 pt-1">
+          출처 링크는 검색 결과로 연결됩니다. 1차 자료를 직접 확인하세요.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="glass rounded-xl p-4 sm:p-5 shadow-[var(--shadow-card)]">
@@ -278,107 +333,130 @@ function ClaimOverview({ claims }: { claims: Claim[] }) {
         각 주장을 클릭하면 판정 근거와 출처 링크를 확인할 수 있습니다.
       </p>
 
-      {/* 주장 목록 — 클릭 시 근거 인라인 펼침 */}
-      <div className="space-y-1.5">
-        {claims.map((c, i) => {
+      {/* 주장 목록 */}
+      <div className="space-y-2">
+        {mainClaims.map(({ c, i }) => {
           const meta = VERDICT_META[c.verdict] ?? VERDICT_META["미확인"];
           const Icon = meta.icon;
           const isExpanded = expandedIdx === i;
-          const hasSources =
-            c.reasoning ||
-            c.supporting_points.length > 0 ||
-            c.counter_points.length > 0 ||
-            c.suggested_sources.length > 0;
+          const highlight = isHighlight(c.verdict);
+          const glowClass = c.verdict === "사실"
+            ? "shadow-[0_0_18px_rgba(52,211,153,0.18)] border-l-[3px] border-l-emerald-400"
+            : c.verdict === "반대 근거 우세"
+              ? "shadow-[0_0_18px_rgba(248,113,113,0.18)] border-l-[3px] border-l-red-400"
+              : "";
 
           return (
-            <div key={i}>
+            <div key={i} className={`rounded-lg overflow-hidden ${highlight ? glowClass : ""}`}>
               <button
                 type="button"
-                onClick={() => hasSources && setExpandedIdx(isExpanded ? null : i)}
-                className={`w-full flex items-start gap-2.5 rounded-lg px-3 py-2.5 border text-left transition-all ${meta.bg} ${meta.border} ${hasSources ? "cursor-pointer hover:brightness-110 active:scale-[0.99]" : "cursor-default"}`}
+                onClick={() => setExpandedIdx(isExpanded ? null : i)}
+                className={`w-full flex items-start text-left transition-all cursor-pointer active:scale-[0.99] ${meta.bg} ${meta.border} border ${
+                  highlight
+                    ? "gap-3 px-4 py-4 hover:brightness-105"
+                    : "gap-2.5 rounded-lg px-3 py-2.5 hover:brightness-110"
+                }`}
               >
-                <span className="text-[10px] font-mono text-muted-foreground shrink-0 mt-0.5 w-4">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <p className="text-xs text-foreground/90 flex-1 leading-relaxed">{c.claim}</p>
-                <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                  {/* 판정 배지 — 클릭 가능 표시 */}
-                  <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${meta.bg} ${meta.border} ${meta.color} ${hasSources ? "ring-1 ring-current/20" : ""}`}>
-                    <Icon className="w-3 h-3" />
-                    <span className="hidden sm:inline">{meta.label}</span>
+                {highlight ? (
+                  /* 강조 아이콘 */
+                  <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center border-2 ${meta.border} ${meta.bg} mt-0.5`}>
+                    <Icon className={`w-4 h-4 ${meta.color}`} />
                   </div>
-                  <span className="text-[10px] text-muted-foreground tabular-nums">{c.confidence}%</span>
-                  {hasSources && (
-                    isExpanded
-                      ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
-                      : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                ) : (
+                  <span className="text-[10px] font-mono text-muted-foreground shrink-0 mt-0.5 w-4">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                )}
+
+                <div className="flex-1 min-w-0">
+                  {highlight && (
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold mb-1.5 ${meta.bg} ${meta.border} ${meta.color}`}>
+                      <Icon className="w-2.5 h-2.5" />{meta.label}
+                    </span>
                   )}
+                  <p className={`leading-snug ${highlight ? "text-sm font-semibold text-foreground" : "text-xs text-foreground/90 leading-relaxed"}`}>
+                    {c.claim}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0 ml-2 mt-0.5">
+                  {!highlight && (
+                    <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${meta.bg} ${meta.border} ${meta.color} ring-1 ring-current/20`}>
+                      <Icon className="w-3 h-3" />
+                      <span className="hidden sm:inline">{meta.label}</span>
+                    </div>
+                  )}
+                  <span className={`tabular-nums font-bold ${highlight ? `text-sm ${meta.color}` : "text-[10px] text-muted-foreground"}`}>
+                    {c.confidence}%
+                  </span>
+                  {isExpanded
+                    ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+                    : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
                 </div>
               </button>
 
-              {/* 인라인 근거 + 출처 링크 패널 */}
-              {isExpanded && (
-                <div className={`mx-1 mb-1 rounded-b-lg border border-t-0 ${meta.border} bg-background/50 px-4 py-3 space-y-3`}>
-                  {c.reasoning && (
-                    <p className="text-xs text-muted-foreground leading-relaxed border-b border-border/30 pb-3">
-                      {c.reasoning}
-                    </p>
-                  )}
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    {c.supporting_points.length > 0 && (
-                      <EvidenceLinks
-                        title="지지 근거"
-                        icon={ThumbsUp}
-                        colorClass="text-emerald-400"
-                        items={c.supporting_points.map(p => ({
-                          text: p,
-                          url: `https://news.google.com/search?q=${encodeURIComponent(p.slice(0, 70))}&hl=ko&gl=KR&ceid=KR:ko`,
-                        }))}
-                      />
-                    )}
-                    {c.counter_points.length > 0 && (
-                      <EvidenceLinks
-                        title="반박 가능성"
-                        icon={ThumbsDown}
-                        colorClass="text-red-400"
-                        items={c.counter_points.map(p => ({
-                          text: p,
-                          url: `https://news.google.com/search?q=${encodeURIComponent(p.slice(0, 70))}&hl=ko&gl=KR&ceid=KR:ko`,
-                        }))}
-                      />
-                    )}
-                    {c.suggested_sources.length > 0 && (
-                      <EvidenceLinks
-                        title="확인 권장 출처"
-                        icon={BookOpen}
-                        colorClass="text-primary"
-                        items={c.suggested_sources.map(s => ({
-                          text: `${s.name}${s.type && s.type !== "일반" ? ` (${s.type})` : ""}`,
-                          url: generateSourceUrl(s.name, s.type, c.claim),
-                        }))}
-                      />
-                    )}
-                    {c.unknowns.length > 0 && (
-                      <EvidenceLinks
-                        title="미확인 항목"
-                        icon={AlertTriangle}
-                        colorClass="text-yellow-400"
-                        items={c.unknowns.map(u => ({
-                          text: u,
-                          url: `https://www.google.com/search?q=${encodeURIComponent(u.slice(0, 70))}`,
-                        }))}
-                      />
-                    )}
-                  </div>
-                  <p className="text-[10px] text-muted-foreground/40 pt-1">
-                    출처 링크는 검색 결과로 연결됩니다. 1차 자료를 직접 확인하세요.
-                  </p>
-                </div>
-              )}
+              {isExpanded && <DetailPanel c={c} meta={meta} />}
             </div>
           );
         })}
       </div>
+
+      {/* 미확인 섹션 — 기본 접힘 */}
+      {unknownClaims.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-border/25">
+          <button
+            type="button"
+            onClick={() => setShowUnknown(v => !v)}
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface-2/50 transition-colors text-left"
+          >
+            <AlertCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span className="text-[11px] text-muted-foreground/60 font-medium">
+              미확인 {unknownClaims.length}건 — 근거 부족으로 판정 보류
+            </span>
+            <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground/40">
+              {showUnknown ? "접기" : "펼치기"}
+              {showUnknown
+                ? <ChevronUp className="w-3 h-3" />
+                : <ChevronDown className="w-3 h-3" />}
+            </span>
+          </button>
+
+          {showUnknown && (
+            <div className="mt-2 space-y-1.5 opacity-60">
+              {unknownClaims.map(({ c, i }) => {
+                const meta = VERDICT_META["미확인"];
+                const Icon = meta.icon;
+                const isExpanded = expandedIdx === i;
+                return (
+                  <div key={i}>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedIdx(isExpanded ? null : i)}
+                      className={`w-full flex items-start gap-2.5 rounded-lg px-3 py-2 border text-left transition-all cursor-pointer hover:brightness-110 active:scale-[0.99] ${meta.bg} ${meta.border}`}
+                    >
+                      <span className="text-[10px] font-mono text-muted-foreground/60 shrink-0 mt-0.5 w-4">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <p className="text-xs text-foreground/50 flex-1 leading-relaxed">{c.claim}</p>
+                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-semibold ${meta.bg} ${meta.border} ${meta.color}`}>
+                          <Icon className="w-2.5 h-2.5" />
+                          <span className="hidden sm:inline">{meta.label}</span>
+                        </span>
+                        <span className="text-[10px] text-muted-foreground/50 tabular-nums">{c.confidence}%</span>
+                        {isExpanded
+                          ? <ChevronUp className="w-3 h-3 text-muted-foreground/40" />
+                          : <ChevronDown className="w-3 h-3 text-muted-foreground/40" />}
+                      </div>
+                    </button>
+                    {isExpanded && <DetailPanel c={c} meta={meta} />}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

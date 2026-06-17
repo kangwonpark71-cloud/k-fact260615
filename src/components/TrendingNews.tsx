@@ -68,13 +68,13 @@ export function TrendingNews({ onAnalyze }: Props) {
 
   const { data: items = [], isLoading, isError, refetch } = useQuery<TrendingItem[]>({
     queryKey: ["trending-news", refreshKey],
-    queryFn: () => fetchFn({}),
+    queryFn: () => fetchFn(),
     staleTime: 30 * 60 * 1000,
     retry: 1,
   });
 
   const handleRefresh = async () => {
-    await refreshFn({ data: {} });
+    await refreshFn();
     setRefreshKey((k) => k + 1);
   };
 
