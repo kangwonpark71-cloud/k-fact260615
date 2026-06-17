@@ -328,68 +328,47 @@ async function fetchFMKorea(): Promise<TrendingItem[]> {
 
 // ── 일간베스트 ──
 async function fetchIlbeBest(): Promise<TrendingItem[]> {
-  // 일베는 공식 RSS 없음 → HTML 스크래핑 (여러 패턴 시도)
-  const targets = [
-    { url: "https://www.ilbe.com/list/ilbe?listStyle=list&isAdmin=0&page=1", pattern: /href="(\/view\/\d+[^"]*)"[^>]*[^<]*<[^>]+>[^<]*<\/[^>]+>\s*([\s\S]{3,120}?)\s*<\/a>/gi },
-    { url: "https://www.ilbe.com/list/ilbe?page=1", pattern: /href="(\/\d{10,}[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi },
-    { url: "https://www.ilbe.com/", pattern: /href="(\/\d{10,}[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi },
+  // 실제 HTML 구조: <a href="/view/[ID]?..." class="subject [...]">[제목]
+  const urls = [
+    "https://www.ilbe.com/list/ilbe?listStyle=list&isAdmin=0&page=1",
+    "https://www.ilbe.com/list/ilbe?page=1",
   ];
 
-  const COMMON_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.5",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Referer": "https://www.ilbe.com/",
-  };
-
-  for (const { url, pattern } of targets) {
+  for (const url of urls) {
     try {
       const res = await fetch(url, {
-        headers: COMMON_HEADERS,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml",
+          "Accept-Language": "ko-KR,ko;q=0.9",
+          "Referer": "https://www.ilbe.com/",
+        },
         signal: AbortSignal.timeout(9000),
         redirect: "follow",
       });
       if (!res.ok) continue;
       const html = await res.text();
-
-      // 404/차단 페이지 감지
-      if (html.includes("접근이 차단") || html.includes("로봇") || html.length < 500) continue;
+      if (html.length < 1000 || html.includes("접근이 차단") || html.includes("로봇 확인")) continue;
 
       const items: TrendingItem[] = [];
-      // 1차 시도: td.title 내부 a 태그
-      const tdPattern = /<td[^>]+class="[^"]*title[^"]*"[^>]*>[\s\S]*?<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+      // 핵심 패턴: href="/view/숫자..." class="subject">[제목]
+      const re = /<a[^>]+href="(\/view\/\d+[^"]*)"[^>]+class="subject[^"]*"[^>]*>([^<]{2,150})/gi;
       let m: RegExpExecArray | null;
-      while ((m = tdPattern.exec(html)) !== null && items.length < 10) {
-        const href = m[1].startsWith("http") ? m[1] : `https://www.ilbe.com${m[1]}`;
-        const rawTitle = m[2].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-        if (!rawTitle || rawTitle.length < 3 || rawTitle.length > 150) continue;
+      while ((m = re.exec(html)) !== null && items.length < 10) {
+        const rawPath = m[1].split("?")[0]; // 쿼리스트링 제거
+        const href = `https://www.ilbe.com${rawPath}`;
+        const rawTitle = m[2].replace(/\s+/g, " ").trim();
+        if (!rawTitle || rawTitle.startsWith("※")) continue; // 공지 제외
         if (items.some((it) => it.id === stableId(href))) continue;
-        items.push({ id: stableId(href), title: rawTitle, link: href, pubDate: new Date().toISOString(), source: "일간베스트", sourceType: "community", score: 0 });
-      }
-
-      // 2차 시도: 숫자 ID 패턴 링크
-      if (items.length < 3) {
-        const re2 = /<a[^>]+href="((?:https:\/\/www\.ilbe\.com)?\/(?:list\/ilbe\?|view\/|post\/)?\d{8,}[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
-        while ((m = re2.exec(html)) !== null && items.length < 10) {
-          const href = m[1].startsWith("http") ? m[1] : `https://www.ilbe.com${m[1]}`;
-          const rawTitle = m[2].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-          if (!rawTitle || rawTitle.length < 3 || rawTitle.length > 150) continue;
-          if (items.some((it) => it.id === stableId(href))) continue;
-          items.push({ id: stableId(href), title: rawTitle, link: href, pubDate: new Date().toISOString(), source: "일간베스트", sourceType: "community", score: 0 });
-        }
-      }
-
-      // 3차 시도: 범용 패턴 (링크에 일베 URL 포함)
-      if (items.length < 3) {
-        const re3 = pattern;
-        while ((m = re3.exec(html)) !== null && items.length < 10) {
-          const href = m[1].startsWith("http") ? m[1] : `https://www.ilbe.com${m[1]}`;
-          const rawTitle = m[2].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-          if (!rawTitle || rawTitle.length < 3 || rawTitle.length > 150) continue;
-          if (items.some((it) => it.id === stableId(href))) continue;
-          items.push({ id: stableId(href), title: rawTitle, link: href, pubDate: new Date().toISOString(), source: "일간베스트", sourceType: "community", score: 0 });
-        }
+        items.push({
+          id: stableId(href),
+          title: rawTitle.slice(0, 120),
+          link: href,
+          pubDate: new Date().toISOString(),
+          source: "일간베스트",
+          sourceType: "community",
+          score: 0,
+        });
       }
 
       if (items.length >= 3) return items.slice(0, 10);
