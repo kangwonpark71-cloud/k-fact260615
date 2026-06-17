@@ -5,7 +5,7 @@ import {
   MessageSquare, Trash2, RefreshCw, Sparkles,
   CheckCircle2, XCircle, MinusCircle, HelpCircle, AlertCircle,
   ThumbsUp, ThumbsDown, TriangleAlert, Download,
-  Mic, Square, MicOff, ChevronRight, Send,
+  Mic, Square, MicOff, ChevronRight, Send, Loader2,
 } from "lucide-react";
 
 import { quickAnalyzeContent, type QuickCheckResult } from "@/lib/analyses.functions";
@@ -25,11 +25,11 @@ export const Route = createFileRoute("/live")({
 type Speaker = "화자 A" | "화자 B" | "화자 C" | "화자 D";
 const SPEAKERS: Speaker[] = ["화자 A", "화자 B", "화자 C", "화자 D"];
 
-const SPEAKER_STYLE: Record<Speaker, { badge: string; bubble: string; ring: string; dot: string }> = {
-  "화자 A": { badge: "bg-blue-500/20 border-blue-400/40 text-blue-400",     bubble: "border-blue-400/20 bg-blue-500/5",     ring: "ring-blue-400/40",    dot: "bg-blue-400" },
-  "화자 B": { badge: "bg-emerald-500/20 border-emerald-400/40 text-emerald-400", bubble: "border-emerald-400/20 bg-emerald-500/5", ring: "ring-emerald-400/40", dot: "bg-emerald-400" },
-  "화자 C": { badge: "bg-amber-500/20 border-amber-400/40 text-amber-400",   bubble: "border-amber-400/20 bg-amber-500/5",   ring: "ring-amber-400/40",   dot: "bg-amber-400" },
-  "화자 D": { badge: "bg-rose-500/20 border-rose-400/40 text-rose-400",     bubble: "border-rose-400/20 bg-rose-500/5",     ring: "ring-rose-400/40",    dot: "bg-rose-400" },
+const SPEAKER_STYLE: Record<Speaker, { badge: string; bubble: string; ring: string }> = {
+  "화자 A": { badge: "bg-blue-500/20 border-blue-400/40 text-blue-400",          bubble: "border-blue-400/20 bg-blue-500/5",     ring: "ring-blue-400/40" },
+  "화자 B": { badge: "bg-emerald-500/20 border-emerald-400/40 text-emerald-400", bubble: "border-emerald-400/20 bg-emerald-500/5", ring: "ring-emerald-400/40" },
+  "화자 C": { badge: "bg-amber-500/20 border-amber-400/40 text-amber-400",       bubble: "border-amber-400/20 bg-amber-500/5",   ring: "ring-amber-400/40" },
+  "화자 D": { badge: "bg-rose-500/20 border-rose-400/40 text-rose-400",         bubble: "border-rose-400/20 bg-rose-500/5",     ring: "ring-rose-400/40" },
 };
 
 const VERDICT_META = {
@@ -50,7 +50,10 @@ type Utterance = {
   error: string | null;
 };
 
-/* ── 음성 인식 훅 ── */
+/* ── 음성 인식 훅 ──
+   getUserMedia 완전 제거 → SpeechRecognition 단독 사용으로 Chrome/Windows 마이크 충돌 방지 */
+type RecStatus = "idle" | "starting" | "listening";
+
 function useSpeechRecognition({
   onFinal,
   onInterim,
@@ -58,18 +61,16 @@ function useSpeechRecognition({
   onFinal: (text: string) => void;
   onInterim: (text: string) => void;
 }) {
-  const [isListening, setIsListening] = useState(false);
+  const [recStatus, setRecStatus] = useState<RecStatus>("idle");
   const [isSupported, setIsSupported] = useState<boolean | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
-  const [barHeights, setBarHeights] = useState<number[]>(Array(28).fill(3));
 
   const recRef = useRef<any>(null);
   const listeningRef = useRef(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const animRef = useRef<number>(0);
-  // 콜백을 ref로 저장 — 클로저 stale 방지
+  const retryRef = useRef(0);
+
+  // 콜백 ref — 클로저 stale 방지
   const onFinalRef = useRef(onFinal);
   const onInterimRef = useRef(onInterim);
   useEffect(() => { onFinalRef.current = onFinal; }, [onFinal]);
@@ -78,56 +79,16 @@ function useSpeechRecognition({
   useEffect(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     setIsSupported(!!SR);
-    return () => {
-      listeningRef.current = false;
-      stopAudio();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { listeningRef.current = false; };
   }, []);
-
-  const stopAudio = () => {
-    cancelAnimationFrame(animRef.current);
-    try { audioCtxRef.current?.close(); } catch {}
-    audioCtxRef.current = null;
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
-    setBarHeights(Array(28).fill(3));
-  };
-
-  const startAudio = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!listeningRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
-      streamRef.current = stream;
-      const ctx = new AudioContext();
-      audioCtxRef.current = ctx;
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-      ctx.createMediaStreamSource(stream).connect(analyser);
-      const buf = new Uint8Array(analyser.frequencyBinCount);
-      const step = Math.max(1, Math.floor(buf.length / 28));
-      const tick = () => {
-        if (!listeningRef.current) return;
-        analyser.getByteFrequencyData(buf);
-        setBarHeights(Array.from({ length: 28 }, (_, i) => {
-          const slice = buf.slice(i * step, i * step + step);
-          const avg = slice.reduce((a, b) => a + b, 0) / slice.length;
-          return Math.max(3, (avg / 255) * 48);
-        }));
-        animRef.current = requestAnimationFrame(tick);
-      };
-      tick();
-    } catch { /* 파형 없이 음성 인식 계속 진행 */ }
-  };
 
   const doStop = useCallback(() => {
     listeningRef.current = false;
-    try { recRef.current?.abort(); } catch {}
+    retryRef.current = 0;
     try { recRef.current?.stop(); } catch {}
     recRef.current = null;
-    setIsListening(false);
+    setRecStatus("idle");
     onInterimRef.current("");
-    stopAudio();
   }, []);
 
   const doStart = useCallback(() => {
@@ -136,6 +97,7 @@ function useSpeechRecognition({
 
     setMicError(null);
     setPermissionDenied(false);
+    setRecStatus("starting");
 
     const rec = new SR();
     rec.lang = "ko-KR";
@@ -144,8 +106,8 @@ function useSpeechRecognition({
     rec.maxAlternatives = 1;
 
     rec.onstart = () => {
-      setIsListening(true);
-      startAudio();
+      retryRef.current = 0;
+      setRecStatus("listening");
     };
 
     rec.onresult = (e: any) => {
@@ -165,40 +127,39 @@ function useSpeechRecognition({
     };
 
     rec.onerror = (e: any) => {
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      const err = e.error as string;
+      if (err === "not-allowed" || err === "service-not-allowed") {
         setPermissionDenied(true);
         doStop();
-      } else if (e.error === "audio-capture") {
+      } else if (err === "audio-capture") {
         setMicError("마이크를 찾을 수 없습니다. 마이크가 연결되어 있는지 확인하세요.");
         doStop();
-      } else if (e.error === "network") {
-        setMicError("네트워크 오류로 음성 인식을 사용할 수 없습니다. 인터넷 연결을 확인하세요.");
-        doStop();
-      } else if (e.error === "aborted" || e.error === "no-speech") {
-        // 무시 — onend에서 자동 재시작
-      } else {
-        setMicError(`음성 인식 오류 (${e.error}). Chrome 브라우저를 권장합니다.`);
+      } else if (err === "network") {
+        setMicError("네트워크 오류입니다. 인터넷 연결을 확인하세요.");
         doStop();
       }
+      // aborted / no-speech 는 onend에서 자동 재시작
     };
 
     rec.onend = () => {
       if (!listeningRef.current) {
-        setIsListening(false);
-        stopAudio();
+        setRecStatus("idle");
         return;
       }
-      // 즉시 재시작하면 일부 브라우저에서 InvalidStateError 발생 → 150ms 딜레이
+      retryRef.current += 1;
+      if (retryRef.current > 15) {
+        setMicError("음성 인식이 반복 중단됩니다. 페이지를 새로고침 후 다시 시도해 주세요.");
+        doStop();
+        return;
+      }
+      // 즉시 재시작 시 Chrome에서 InvalidStateError → 200ms 딜레이
       setTimeout(() => {
         if (!listeningRef.current || !recRef.current) return;
-        try {
-          recRef.current.start();
-        } catch {
+        try { recRef.current.start(); } catch {
           listeningRef.current = false;
-          setIsListening(false);
-          stopAudio();
+          setRecStatus("idle");
         }
-      }, 150);
+      }, 200);
     };
 
     recRef.current = rec;
@@ -209,20 +170,41 @@ function useSpeechRecognition({
     } catch {
       listeningRef.current = false;
       recRef.current = null;
+      setRecStatus("idle");
       setMicError("음성 인식을 시작할 수 없습니다. 페이지를 새로고침 후 다시 시도해 주세요.");
     }
   }, [doStop]);
 
   return {
-    isListening,
+    isListening: recStatus === "listening",
+    isStarting: recStatus === "starting",
     isSupported,
     permissionDenied,
     micError,
     setPermissionDenied,
-    barHeights,
     start: doStart,
     stop: doStop,
   };
+}
+
+/* ── CSS 파형 (getUserMedia 없이 순수 CSS 애니메이션) ── */
+function CssWaveform({ active }: { active: boolean }) {
+  const BARS = 28;
+  return (
+    <div className="flex items-end gap-[3px] h-12 w-full px-2">
+      {Array.from({ length: BARS }, (_, i) => (
+        <div
+          key={i}
+          className={`flex-1 rounded-full bg-primary/50 origin-bottom transition-all ${active ? "animate-pulse" : ""}`}
+          style={{
+            height: active ? `${12 + Math.sin(i * 0.7) * 8}px` : "3px",
+            animationDelay: `${(i * 60) % 800}ms`,
+            animationDuration: `${600 + (i * 80) % 600}ms`,
+          }}
+        />
+      ))}
+    </div>
+  );
 }
 
 /* ── 메인 컴포넌트 ── */
@@ -257,7 +239,6 @@ function LivePage() {
 
     setUtterances(prev => [...prev, { id, speaker: currentSpeaker, text: trimmed, time: now, checking: true, result: null, error: null }]);
     setInput("");
-    // 발언 완료 → 다음 화자로 자동 전환
     setSpeakerIdx(i => (i + 1) % SPEAKERS.length);
     textareaRef.current?.focus();
 
@@ -272,52 +253,40 @@ function LivePage() {
 
   useEffect(() => { addRef.current = addUtterance; }, [addUtterance]);
 
-  const { isListening, isSupported, permissionDenied, micError, setPermissionDenied, barHeights, start, stop } = useSpeechRecognition({
-    onFinal: useCallback((text: string) => {
-      if (text.length >= 4) {
-        setTimeout(() => addRef.current(text), 0);
-      } else {
-        setInput(text);
-      }
-    }, []),
-    onInterim: useCallback((text: string) => setInterim(text), []),
-  });
+  const { isListening, isStarting, isSupported, permissionDenied, micError, setPermissionDenied, start, stop } =
+    useSpeechRecognition({
+      onFinal: useCallback((text: string) => {
+        if (text.length >= 4) setTimeout(() => addRef.current(text), 0);
+        else setInput(text);
+      }, []),
+      onInterim: useCallback((text: string) => setInterim(text), []),
+    });
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      addUtterance(input);
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addUtterance(input); }
   };
 
   const handleExport = () => {
-    if (utterances.length === 0) return;
+    if (!utterances.length) return;
     const lines = utterances.map(u => {
-      const verdict = u.result
-        ? `[${u.result.overall_verdict} ${u.result.overall_confidence}%]`
+      const verdict = u.result ? `[${u.result.overall_verdict} ${u.result.overall_confidence}%]`
         : u.error ? "[분석 실패]" : "[처리 중]";
       return `[${u.time}] ${u.speaker}: ${u.text}\n  → ${verdict}${u.result?.summary ? " " + u.result.summary : ""}`;
     });
     const blob = new Blob([lines.join("\n\n")], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `대화분석_${new Date().toISOString().slice(0, 10)}.txt`;
-    a.click();
+    Object.assign(document.createElement("a"), { href: url, download: `대화분석_${new Date().toISOString().slice(0, 10)}.txt` }).click();
     URL.revokeObjectURL(url);
   };
 
   const handleReset = () => {
-    setUtterances([]);
-    setSpeakerIdx(0);
-    setInput("");
-    setInterim("");
-    if (isListening) stop();
+    setUtterances([]); setSpeakerIdx(0); setInput(""); setInterim("");
+    if (isListening || isStarting) stop();
   };
 
   const isAnalyzing = utterances.some(u => u.checking);
   const nextSpeaker = SPEAKERS[(speakerIdx + 1) % SPEAKERS.length];
-  const displayInput = interim || input;
+  const nextTextColor = SPEAKER_STYLE[nextSpeaker].badge.split(" ").find(c => c.startsWith("text-")) ?? "text-muted-foreground";
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -351,8 +320,8 @@ function LivePage() {
           )}
         </div>
 
-        {/* ── 시작 화면 (발언 없음 + 미녹음 상태) ── */}
-        {utterances.length === 0 && !isListening && (
+        {/* ── 시작 화면 ── */}
+        {utterances.length === 0 && !isListening && !isStarting && (
           <StartScreen
             isSupported={isSupported}
             permissionDenied={permissionDenied}
@@ -362,10 +331,17 @@ function LivePage() {
           />
         )}
 
-        {/* ── 녹음 중 화자 인디케이터 ── */}
+        {/* ── 마이크 연결 중 ── */}
+        {isStarting && (
+          <div className="glass rounded-2xl p-8 flex flex-col items-center gap-4">
+            <Loader2 className="w-10 h-10 text-amber-400 animate-spin" />
+            <p className="text-sm text-muted-foreground">마이크 연결 중…</p>
+          </div>
+        )}
+
+        {/* ── 녹음 중 인디케이터 ── */}
         {isListening && (
           <div className={`glass rounded-2xl p-5 flex flex-col items-center gap-4 ring-2 ${SPEAKER_STYLE[speaker].ring} transition-all`}>
-            {/* 현재 화자 배지 (크게) */}
             <div className="flex items-center gap-3">
               <span className={`text-base font-bold px-4 py-2 rounded-full border-2 ${SPEAKER_STYLE[speaker].badge} shadow-lg`}>
                 {speaker}
@@ -376,44 +352,28 @@ function LivePage() {
               </span>
             </div>
 
-            {/* 파형 */}
-            <div className="flex items-end gap-[2px] h-12 w-full px-2">
-              {barHeights.map((h, i) => (
-                <div key={i} className="flex-1 rounded-full transition-all duration-75"
-                  style={{
-                    height: `${h}px`,
-                    background: `oklch(${0.55 + (h / 48) * 0.25} ${0.15 + (h / 48) * 0.12} ${230 + i * 4})`,
-                  }} />
-              ))}
-            </div>
+            {/* CSS 파형 */}
+            <CssWaveform active={isListening} />
 
-            {/* 인식 중인 텍스트 */}
-            {interim && (
+            {interim ? (
               <p className="text-sm text-primary/70 italic text-center px-4 leading-relaxed">
                 {interim}
                 <span className="inline-block w-0.5 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
               </p>
-            )}
-            {!interim && (
+            ) : (
               <p className="text-xs text-muted-foreground/50">말씀하세요 — 발언 완료 시 자동 기록됩니다</p>
             )}
 
-            {/* 다음 화자 예고 + 정지 버튼 */}
             <div className="flex items-center justify-between w-full gap-3">
               <div className="flex items-center gap-1">
                 <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 shrink-0" />
                 <span className="text-[11px] text-muted-foreground/50">
                   다음 발언 →{" "}
-                  <span className={`font-semibold ${SPEAKER_STYLE[nextSpeaker].badge.split(" ").find(c => c.startsWith("text-"))}`}>
-                    {nextSpeaker}
-                  </span>
+                  <span className={`font-semibold ${nextTextColor}`}>{nextSpeaker}</span>
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={stop}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 border border-red-400/40 text-red-400 text-sm font-semibold hover:bg-red-500/30 transition-all active:scale-95"
-              >
+              <button type="button" onClick={stop}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 border border-red-400/40 text-red-400 text-sm font-semibold hover:bg-red-500/30 transition-all active:scale-95">
                 <Square className="w-4 h-4" />
                 녹음 중지
               </button>
@@ -421,54 +381,41 @@ function LivePage() {
           </div>
         )}
 
-        {/* ── 녹음 중지 후 재시작 + 직접 입력 (발언 있을 때) ── */}
-        {(utterances.length > 0 || showManual) && !isListening && (
+        {/* ── 중지 후 재시작 + 직접 입력 ── */}
+        {(utterances.length > 0 || showManual) && !isListening && !isStarting && (
           <div className="glass rounded-2xl p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              {/* 재녹음 버튼 */}
+            <div className="flex items-center gap-2 flex-wrap">
               {isSupported !== false && (
-                <button
-                  type="button"
-                  onClick={start}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-amber-950 text-sm font-bold shadow-md shadow-amber-400/30 hover:opacity-90 transition-all active:scale-95"
-                >
+                <button type="button" onClick={start}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-amber-950 text-sm font-bold shadow-md shadow-amber-400/30 hover:opacity-90 transition-all active:scale-95">
                   <Mic className="w-4 h-4" />
                   {utterances.length > 0 ? "계속 녹음" : "녹음 시작"}
                 </button>
               )}
-              {isSupported === false && (
-                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <MicOff className="w-3.5 h-3.5" /> 음성 미지원 브라우저
+              {micError && (
+                <span className="text-xs text-destructive flex items-center gap-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />{micError}
                 </span>
               )}
-              <span className="text-xs text-muted-foreground/50">또는 직접 입력</span>
+              {!micError && <span className="text-xs text-muted-foreground/50">또는 직접 입력</span>}
             </div>
 
-            {/* 직접 입력창 */}
             <div className="flex items-start gap-2">
-              <button
-                type="button"
+              <button type="button"
                 onClick={() => setSpeakerIdx(i => (i + 1) % SPEAKERS.length)}
                 title="클릭하여 화자 전환"
-                className={`shrink-0 mt-0.5 text-xs font-bold px-2.5 py-1 rounded-full border transition-all hover:scale-105 active:scale-95 ${SPEAKER_STYLE[speaker].badge}`}
-              >
+                className={`shrink-0 mt-0.5 text-xs font-bold px-2.5 py-1 rounded-full border transition-all hover:scale-105 active:scale-95 ${SPEAKER_STYLE[speaker].badge}`}>
                 {speaker}
               </button>
-              <textarea
-                ref={textareaRef}
-                rows={2}
+              <textarea ref={textareaRef} rows={2}
                 placeholder="발언 내용 직접 입력 (Enter로 추가)"
-                value={displayInput}
+                value={interim || input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed placeholder:text-muted-foreground/40"
-              />
-              <button
-                type="button"
-                onClick={() => addUtterance(input)}
+                className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed placeholder:text-muted-foreground/40" />
+              <button type="button" onClick={() => addUtterance(input)}
                 disabled={!input.trim()}
-                className="shrink-0 p-2 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-400 hover:bg-amber-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-              >
+                className="shrink-0 p-2 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-400 hover:bg-amber-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
                 <Send className="w-4 h-4" />
               </button>
             </div>
@@ -489,14 +436,12 @@ function LivePage() {
                 </span>
               )}
             </div>
-
             {utterances.map((u, idx) => {
               const style = SPEAKER_STYLE[u.speaker];
-              const prevSpeaker = idx > 0 ? utterances[idx - 1].speaker : null;
-              const speakerChanged = prevSpeaker !== null && prevSpeaker !== u.speaker;
+              const prev = idx > 0 ? utterances[idx - 1].speaker : null;
               return (
                 <div key={u.id}>
-                  {speakerChanged && (
+                  {prev && prev !== u.speaker && (
                     <div className="flex items-center gap-2 my-1 px-1">
                       <div className="flex-1 h-px bg-border/30" />
                       <ChevronRight className="w-3 h-3 text-muted-foreground/30" />
@@ -515,13 +460,9 @@ function LivePage() {
   );
 }
 
-/* ── 시작 화면 컴포넌트 ── */
+/* ── 시작 화면 ── */
 function StartScreen({
-  isSupported,
-  permissionDenied,
-  micError,
-  onStart,
-  onManual,
+  isSupported, permissionDenied, micError, onStart, onManual,
 }: {
   isSupported: boolean | null;
   permissionDenied: boolean;
@@ -530,81 +471,71 @@ function StartScreen({
   onManual: () => void;
 }) {
   const speakerDots = [
-    { label: "화자 A", color: "bg-blue-400",    text: "text-blue-400" },
-    { label: "화자 B", color: "bg-emerald-400", text: "text-emerald-400" },
-    { label: "화자 C", color: "bg-amber-400",   text: "text-amber-400" },
-    { label: "화자 D", color: "bg-rose-400",    text: "text-rose-400" },
+    { label: "A", color: "bg-blue-400",    text: "text-blue-400" },
+    { label: "B", color: "bg-emerald-400", text: "text-emerald-400" },
+    { label: "C", color: "bg-amber-400",   text: "text-amber-400" },
+    { label: "D", color: "bg-rose-400",    text: "text-rose-400" },
   ];
 
   return (
     <div className="glass rounded-2xl p-10 flex flex-col items-center gap-6 text-center">
-      {/* 아이콘 펄스 */}
       <div className="relative">
         <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-500 to-yellow-400 grid place-items-center shadow-xl shadow-amber-400/40">
           <Mic className="w-9 h-9 text-amber-950" />
         </div>
-        <span className="absolute inset-0 rounded-full bg-amber-400/30 animate-ping" style={{ animationDuration: "2s" }} />
+        <span className="absolute inset-0 rounded-full bg-amber-400/25 animate-ping" style={{ animationDuration: "2s" }} />
       </div>
 
       <div className="space-y-2">
         <h2 className="text-xl font-bold">대화 녹음을 시작하세요</h2>
         <p className="text-sm text-muted-foreground leading-relaxed max-w-sm">
-          여러 명이 발언할 때마다 화자가 자동으로 전환되고,<br />
-          각 발언을 즉시 팩트체크합니다.
+          발언마다 화자가 자동으로 전환되고<br />각 발언을 즉시 팩트체크합니다
         </p>
       </div>
 
-      {/* 화자 순환 표시 */}
       <div className="flex items-center gap-2">
         {speakerDots.map((sp, i) => (
           <div key={sp.label} className="flex items-center gap-1.5">
             <div className="flex flex-col items-center gap-1">
               <span className={`w-2.5 h-2.5 rounded-full ${sp.color}`} />
-              <span className={`text-[10px] font-semibold ${sp.text}`}>{sp.label.replace("화자 ", "")}</span>
+              <span className={`text-[10px] font-bold ${sp.text}`}>{sp.label}</span>
             </div>
             {i < 3 && <ChevronRight className="w-3 h-3 text-muted-foreground/30" />}
           </div>
         ))}
-        <ChevronRight className="w-3 h-3 text-muted-foreground/30" />
-        <span className="text-[10px] text-muted-foreground/40 font-semibold">순환</span>
+        <span className="text-[10px] text-muted-foreground/30 ml-1">…순환</span>
       </div>
 
-      {/* 기타 마이크 오류 안내 */}
-      {micError && !permissionDenied && (
-        <div className="w-full max-w-sm rounded-2xl border border-red-400/30 bg-red-400/8 px-5 py-4 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p className="text-sm font-semibold text-red-400">음성 인식 오류</p>
-            <p className="text-xs text-muted-foreground leading-relaxed">{micError}</p>
+      {/* 권한 거부 안내 */}
+      {permissionDenied && (
+        <div className="w-full max-w-sm rounded-2xl border border-orange-400/30 bg-orange-400/8 px-5 py-4 space-y-3 text-left">
+          <div className="flex items-start gap-3">
+            <MicOff className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-orange-400">마이크 접근이 차단되어 있습니다</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Chrome 주소창 왼쪽 <strong className="text-foreground/70">🔒 아이콘</strong> 클릭
+                → 마이크 <strong className="text-foreground/70">허용</strong>으로 변경 후 아래 버튼을 누르세요.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pl-8 text-[11px] text-muted-foreground/60">
+            <span className="bg-surface-2 border border-border/50 rounded px-1.5 py-0.5">🔒 클릭</span>
+            <ChevronRight className="w-3 h-3 text-muted-foreground/30" />
+            <span className="bg-surface-2 border border-border/50 rounded px-1.5 py-0.5">마이크 → 허용</span>
+            <ChevronRight className="w-3 h-3 text-muted-foreground/30" />
+            <span className="bg-surface-2 border border-border/50 rounded px-1.5 py-0.5">다시 시도</span>
           </div>
         </div>
       )}
 
-      {/* 마이크 권한 거부 안내 */}
-      {permissionDenied && (
-        <div className="w-full max-w-sm rounded-2xl border border-orange-400/30 bg-orange-400/8 px-5 py-4 space-y-3">
-          <div className="flex items-start gap-3">
-            <MicOff className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-orange-400">마이크 접근 권한이 차단되어 있습니다</p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                브라우저 주소창 왼쪽의 <strong className="text-foreground/70">자물쇠(🔒) 아이콘</strong>을 클릭하고,
-                마이크를 <strong className="text-foreground/70">허용</strong>으로 변경한 뒤 아래 버튼을 누르세요.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 pl-8">
-            <span className="text-[11px] text-muted-foreground/60 bg-surface-2 border border-border/50 rounded-lg px-2 py-1">
-              🔒 주소창 클릭
-            </span>
-            <ChevronRight className="w-3 h-3 text-muted-foreground/40" />
-            <span className="text-[11px] text-muted-foreground/60 bg-surface-2 border border-border/50 rounded-lg px-2 py-1">
-              마이크 → 허용
-            </span>
-            <ChevronRight className="w-3 h-3 text-muted-foreground/40" />
-            <span className="text-[11px] text-muted-foreground/60 bg-surface-2 border border-border/50 rounded-lg px-2 py-1">
-              아래 버튼 클릭
-            </span>
+      {/* 기타 오류 */}
+      {micError && !permissionDenied && (
+        <div className="w-full max-w-sm rounded-2xl border border-red-400/30 bg-red-400/8 px-5 py-4 flex items-start gap-3 text-left">
+          <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-red-400">음성 인식 오류</p>
+            <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">{micError}</p>
           </div>
         </div>
       )}
@@ -612,10 +543,10 @@ function StartScreen({
       {/* 시작 버튼 */}
       {isSupported === false ? (
         <div className="flex flex-col items-center gap-3">
-          <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <MicOff className="w-4 h-4" />
-            이 브라우저는 음성 인식을 지원하지 않습니다
-          </div>
+          <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <MicOff className="w-4 h-4" /> 이 브라우저는 음성 인식을 지원하지 않습니다
+          </p>
+          <p className="text-xs text-muted-foreground/60">Chrome 브라우저를 사용해 주세요</p>
           <button type="button" onClick={onManual}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-border text-sm font-semibold hover:bg-surface-2 transition-all">
             텍스트로 직접 입력
@@ -623,12 +554,8 @@ function StartScreen({
         </div>
       ) : (
         <div className="flex flex-col items-center gap-3">
-          <button
-            type="button"
-            onClick={onStart}
-            disabled={isSupported === null}
-            className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 text-amber-950 text-base font-bold shadow-xl shadow-amber-400/40 hover:scale-[1.03] hover:shadow-amber-400/60 disabled:opacity-40 transition-all duration-200 active:scale-95"
-          >
+          <button type="button" onClick={onStart} disabled={isSupported === null}
+            className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 text-amber-950 text-base font-bold shadow-xl shadow-amber-400/40 hover:scale-[1.03] hover:shadow-amber-400/60 disabled:opacity-40 transition-all duration-200 active:scale-95">
             <Mic className="w-5 h-5" />
             {permissionDenied ? "다시 시도" : "녹음 시작"}
           </button>
@@ -651,9 +578,8 @@ function UtteranceCard({ u, style }: { u: Utterance; style: typeof SPEAKER_STYLE
   return (
     <div className={`rounded-2xl border p-4 transition-all ${
       u.checking ? "border-border/40 bg-background/20"
-      : u.error ? "border-destructive/20 bg-destructive/5"
-      : style.bubble
-    }`}>
+      : u.error   ? "border-destructive/20 bg-destructive/5"
+      : style.bubble}`}>
       <div className="flex items-start justify-between gap-3 mb-2.5">
         <div className="flex items-center gap-2">
           <span className={`shrink-0 text-xs font-bold px-2.5 py-1 rounded-full border ${style.badge}`}>{u.speaker}</span>
