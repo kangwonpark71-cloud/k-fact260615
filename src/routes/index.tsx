@@ -377,7 +377,6 @@ function Home() {
             {/* 텍스트 / URL / 대화 입력 영역 */}
             {mode !== "voice" && (
               <textarea
-                required
                 rows={ytInfo ? 3 : 4}
                 placeholder={
                   mode === "chat"
@@ -392,7 +391,6 @@ function Home() {
                 }
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                minLength={30}
                 className="w-full bg-transparent outline-none resize-none placeholder:text-muted-foreground/50 text-foreground text-sm leading-relaxed"
               />
             )}
