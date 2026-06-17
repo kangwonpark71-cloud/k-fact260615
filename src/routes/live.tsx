@@ -61,6 +61,7 @@ function useSpeechRecognition({
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState<boolean | null>(null);
   const [permissionDenied, setPermissionDenied] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
   const [barHeights, setBarHeights] = useState<number[]>(Array(28).fill(3));
 
   const recRef = useRef<any>(null);
@@ -68,11 +69,19 @@ function useSpeechRecognition({
   const audioCtxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animRef = useRef<number>(0);
+  // 콜백을 ref로 저장 — 클로저 stale 방지
+  const onFinalRef = useRef(onFinal);
+  const onInterimRef = useRef(onInterim);
+  useEffect(() => { onFinalRef.current = onFinal; }, [onFinal]);
+  useEffect(() => { onInterimRef.current = onInterim; }, [onInterim]);
 
   useEffect(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     setIsSupported(!!SR);
-    return () => stopAudio();
+    return () => {
+      listeningRef.current = false;
+      stopAudio();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -88,6 +97,7 @@ function useSpeechRecognition({
   const startAudio = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!listeningRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
       streamRef.current = stream;
       const ctx = new AudioContext();
       audioCtxRef.current = ctx;
@@ -107,16 +117,37 @@ function useSpeechRecognition({
         animRef.current = requestAnimationFrame(tick);
       };
       tick();
-    } catch { /* 시각화 없이 진행 */ }
+    } catch { /* 파형 없이 음성 인식 계속 진행 */ }
   };
 
-  const start = useCallback(() => {
+  const doStop = useCallback(() => {
+    listeningRef.current = false;
+    try { recRef.current?.abort(); } catch {}
+    try { recRef.current?.stop(); } catch {}
+    recRef.current = null;
+    setIsListening(false);
+    onInterimRef.current("");
+    stopAudio();
+  }, []);
+
+  const doStart = useCallback(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) return;
+    if (!SR || listeningRef.current) return;
+
+    setMicError(null);
+    setPermissionDenied(false);
+
     const rec = new SR();
     rec.lang = "ko-KR";
     rec.continuous = true;
     rec.interimResults = true;
+    rec.maxAlternatives = 1;
+
+    rec.onstart = () => {
+      setIsListening(true);
+      startAudio();
+    };
+
     rec.onresult = (e: any) => {
       let interim = "";
       let final = "";
@@ -126,38 +157,72 @@ function useSpeechRecognition({
         else interim += t;
       }
       if (final) {
-        onInterim("");
-        onFinal(final.trim());
+        onInterimRef.current("");
+        onFinalRef.current(final.trim());
       } else {
-        onInterim(interim);
+        onInterimRef.current(interim);
       }
     };
+
     rec.onerror = (e: any) => {
-      if (e.error === "not-allowed") {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
         setPermissionDenied(true);
-        stop();
+        doStop();
+      } else if (e.error === "audio-capture") {
+        setMicError("마이크를 찾을 수 없습니다. 마이크가 연결되어 있는지 확인하세요.");
+        doStop();
+      } else if (e.error === "network") {
+        setMicError("네트워크 오류로 음성 인식을 사용할 수 없습니다. 인터넷 연결을 확인하세요.");
+        doStop();
+      } else if (e.error === "aborted" || e.error === "no-speech") {
+        // 무시 — onend에서 자동 재시작
+      } else {
+        setMicError(`음성 인식 오류 (${e.error}). Chrome 브라우저를 권장합니다.`);
+        doStop();
       }
     };
-    rec.onend = () => { if (listeningRef.current) { try { rec.start(); } catch {} } };
+
+    rec.onend = () => {
+      if (!listeningRef.current) {
+        setIsListening(false);
+        stopAudio();
+        return;
+      }
+      // 즉시 재시작하면 일부 브라우저에서 InvalidStateError 발생 → 150ms 딜레이
+      setTimeout(() => {
+        if (!listeningRef.current || !recRef.current) return;
+        try {
+          recRef.current.start();
+        } catch {
+          listeningRef.current = false;
+          setIsListening(false);
+          stopAudio();
+        }
+      }, 150);
+    };
+
     recRef.current = rec;
     listeningRef.current = true;
-    setIsListening(true);
-    rec.start();
-    startAudio();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onFinal, onInterim]);
 
-  const stop = useCallback(() => {
-    listeningRef.current = false;
-    recRef.current?.stop();
-    recRef.current = null;
-    setIsListening(false);
-    onInterim("");
-    stopAudio();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onInterim]);
+    try {
+      rec.start();
+    } catch {
+      listeningRef.current = false;
+      recRef.current = null;
+      setMicError("음성 인식을 시작할 수 없습니다. 페이지를 새로고침 후 다시 시도해 주세요.");
+    }
+  }, [doStop]);
 
-  return { isListening, isSupported, permissionDenied, setPermissionDenied, barHeights, start, stop };
+  return {
+    isListening,
+    isSupported,
+    permissionDenied,
+    micError,
+    setPermissionDenied,
+    barHeights,
+    start: doStart,
+    stop: doStop,
+  };
 }
 
 /* ── 메인 컴포넌트 ── */
@@ -207,7 +272,7 @@ function LivePage() {
 
   useEffect(() => { addRef.current = addUtterance; }, [addUtterance]);
 
-  const { isListening, isSupported, permissionDenied, setPermissionDenied, barHeights, start, stop } = useSpeechRecognition({
+  const { isListening, isSupported, permissionDenied, micError, setPermissionDenied, barHeights, start, stop } = useSpeechRecognition({
     onFinal: useCallback((text: string) => {
       if (text.length >= 4) {
         setTimeout(() => addRef.current(text), 0);
@@ -291,6 +356,7 @@ function LivePage() {
           <StartScreen
             isSupported={isSupported}
             permissionDenied={permissionDenied}
+            micError={micError}
             onStart={() => { setPermissionDenied(false); start(); }}
             onManual={() => { setShowManual(true); setTimeout(() => textareaRef.current?.focus(), 50); }}
           />
@@ -453,11 +519,13 @@ function LivePage() {
 function StartScreen({
   isSupported,
   permissionDenied,
+  micError,
   onStart,
   onManual,
 }: {
   isSupported: boolean | null;
   permissionDenied: boolean;
+  micError: string | null;
   onStart: () => void;
   onManual: () => void;
 }) {
@@ -500,6 +568,17 @@ function StartScreen({
         <ChevronRight className="w-3 h-3 text-muted-foreground/30" />
         <span className="text-[10px] text-muted-foreground/40 font-semibold">순환</span>
       </div>
+
+      {/* 기타 마이크 오류 안내 */}
+      {micError && !permissionDenied && (
+        <div className="w-full max-w-sm rounded-2xl border border-red-400/30 bg-red-400/8 px-5 py-4 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-red-400">음성 인식 오류</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">{micError}</p>
+          </div>
+        </div>
+      )}
 
       {/* 마이크 권한 거부 안내 */}
       {permissionDenied && (
