@@ -5,7 +5,7 @@ import {
   MessageSquare, Trash2, RefreshCw, Sparkles,
   CheckCircle2, XCircle, MinusCircle, HelpCircle, AlertCircle,
   ThumbsUp, ThumbsDown, TriangleAlert, Download,
-  Mic, Square, MicOff, ChevronRight, Send, Loader2,
+  Mic, Square, MicOff, ChevronRight, Send,
 } from "lucide-react";
 
 import { quickAnalyzeContent, type QuickCheckResult } from "@/lib/analyses.functions";
@@ -105,11 +105,6 @@ function useSpeechRecognition({
     rec.interimResults = true;
     rec.maxAlternatives = 1;
 
-    rec.onstart = () => {
-      retryRef.current = 0;
-      setRecStatus("listening");
-    };
-
     rec.onresult = (e: any) => {
       let interim = "";
       let final = "";
@@ -152,14 +147,17 @@ function useSpeechRecognition({
         doStop();
         return;
       }
-      // 즉시 재시작 시 Chrome에서 InvalidStateError → 200ms 딜레이
+      // 즉시 재시작 시 Chrome에서 InvalidStateError → 300ms 딜레이
       setTimeout(() => {
         if (!listeningRef.current || !recRef.current) return;
-        try { recRef.current.start(); } catch {
+        try {
+          recRef.current.start();
+          setRecStatus("listening");
+        } catch {
           listeningRef.current = false;
           setRecStatus("idle");
         }
-      }, 200);
+      }, 300);
     };
 
     recRef.current = rec;
@@ -167,6 +165,9 @@ function useSpeechRecognition({
 
     try {
       rec.start();
+      // onstart를 기다리지 않고 즉시 listening 상태로 전환
+      // Chrome/Windows에서 onstart 이벤트가 늦게 또는 발화되지 않는 경우 대응
+      setRecStatus("listening");
     } catch {
       listeningRef.current = false;
       recRef.current = null;
@@ -177,7 +178,6 @@ function useSpeechRecognition({
 
   return {
     isListening: recStatus === "listening",
-    isStarting: recStatus === "starting",
     isSupported,
     permissionDenied,
     micError,
@@ -253,7 +253,7 @@ function LivePage() {
 
   useEffect(() => { addRef.current = addUtterance; }, [addUtterance]);
 
-  const { isListening, isStarting, isSupported, permissionDenied, micError, setPermissionDenied, start, stop } =
+  const { isListening, isSupported, permissionDenied, micError, setPermissionDenied, start, stop } =
     useSpeechRecognition({
       onFinal: useCallback((text: string) => {
         if (text.length >= 4) setTimeout(() => addRef.current(text), 0);
@@ -281,7 +281,7 @@ function LivePage() {
 
   const handleReset = () => {
     setUtterances([]); setSpeakerIdx(0); setInput(""); setInterim("");
-    if (isListening || isStarting) stop();
+    if (isListening) stop();
   };
 
   const isAnalyzing = utterances.some(u => u.checking);
@@ -321,7 +321,7 @@ function LivePage() {
         </div>
 
         {/* ── 시작 화면 ── */}
-        {utterances.length === 0 && !isListening && !isStarting && (
+        {utterances.length === 0 && !isListening && (
           <StartScreen
             isSupported={isSupported}
             permissionDenied={permissionDenied}
@@ -329,14 +329,6 @@ function LivePage() {
             onStart={() => { setPermissionDenied(false); start(); }}
             onManual={() => { setShowManual(true); setTimeout(() => textareaRef.current?.focus(), 50); }}
           />
-        )}
-
-        {/* ── 마이크 연결 중 ── */}
-        {isStarting && (
-          <div className="glass rounded-2xl p-8 flex flex-col items-center gap-4">
-            <Loader2 className="w-10 h-10 text-amber-400 animate-spin" />
-            <p className="text-sm text-muted-foreground">마이크 연결 중…</p>
-          </div>
         )}
 
         {/* ── 녹음 중 인디케이터 ── */}
@@ -382,7 +374,7 @@ function LivePage() {
         )}
 
         {/* ── 중지 후 재시작 + 직접 입력 ── */}
-        {(utterances.length > 0 || showManual) && !isListening && !isStarting && (
+        {(utterances.length > 0 || showManual) && !isListening && (
           <div className="glass rounded-2xl p-4 space-y-3">
             <div className="flex items-center gap-2 flex-wrap">
               {isSupported !== false && (
