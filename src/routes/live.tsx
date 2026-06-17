@@ -60,6 +60,7 @@ function useSpeechRecognition({
 }) {
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState<boolean | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [barHeights, setBarHeights] = useState<number[]>(Array(28).fill(3));
 
   const recRef = useRef<any>(null);
@@ -133,7 +134,7 @@ function useSpeechRecognition({
     };
     rec.onerror = (e: any) => {
       if (e.error === "not-allowed") {
-        alert("마이크 접근 권한이 필요합니다. 브라우저 설정에서 허용해 주세요.");
+        setPermissionDenied(true);
         stop();
       }
     };
@@ -156,7 +157,7 @@ function useSpeechRecognition({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onInterim]);
 
-  return { isListening, isSupported, barHeights, start, stop };
+  return { isListening, isSupported, permissionDenied, setPermissionDenied, barHeights, start, stop };
 }
 
 /* ── 메인 컴포넌트 ── */
@@ -206,7 +207,7 @@ function LivePage() {
 
   useEffect(() => { addRef.current = addUtterance; }, [addUtterance]);
 
-  const { isListening, isSupported, barHeights, start, stop } = useSpeechRecognition({
+  const { isListening, isSupported, permissionDenied, setPermissionDenied, barHeights, start, stop } = useSpeechRecognition({
     onFinal: useCallback((text: string) => {
       if (text.length >= 4) {
         setTimeout(() => addRef.current(text), 0);
@@ -289,7 +290,8 @@ function LivePage() {
         {utterances.length === 0 && !isListening && (
           <StartScreen
             isSupported={isSupported}
-            onStart={start}
+            permissionDenied={permissionDenied}
+            onStart={() => { setPermissionDenied(false); start(); }}
             onManual={() => { setShowManual(true); setTimeout(() => textareaRef.current?.focus(), 50); }}
           />
         )}
@@ -450,10 +452,12 @@ function LivePage() {
 /* ── 시작 화면 컴포넌트 ── */
 function StartScreen({
   isSupported,
+  permissionDenied,
   onStart,
   onManual,
 }: {
   isSupported: boolean | null;
+  permissionDenied: boolean;
   onStart: () => void;
   onManual: () => void;
 }) {
@@ -497,6 +501,35 @@ function StartScreen({
         <span className="text-[10px] text-muted-foreground/40 font-semibold">순환</span>
       </div>
 
+      {/* 마이크 권한 거부 안내 */}
+      {permissionDenied && (
+        <div className="w-full max-w-sm rounded-2xl border border-orange-400/30 bg-orange-400/8 px-5 py-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <MicOff className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-orange-400">마이크 접근 권한이 차단되어 있습니다</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                브라우저 주소창 왼쪽의 <strong className="text-foreground/70">자물쇠(🔒) 아이콘</strong>을 클릭하고,
+                마이크를 <strong className="text-foreground/70">허용</strong>으로 변경한 뒤 아래 버튼을 누르세요.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pl-8">
+            <span className="text-[11px] text-muted-foreground/60 bg-surface-2 border border-border/50 rounded-lg px-2 py-1">
+              🔒 주소창 클릭
+            </span>
+            <ChevronRight className="w-3 h-3 text-muted-foreground/40" />
+            <span className="text-[11px] text-muted-foreground/60 bg-surface-2 border border-border/50 rounded-lg px-2 py-1">
+              마이크 → 허용
+            </span>
+            <ChevronRight className="w-3 h-3 text-muted-foreground/40" />
+            <span className="text-[11px] text-muted-foreground/60 bg-surface-2 border border-border/50 rounded-lg px-2 py-1">
+              아래 버튼 클릭
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 시작 버튼 */}
       {isSupported === false ? (
         <div className="flex flex-col items-center gap-3">
@@ -518,7 +551,7 @@ function StartScreen({
             className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 text-amber-950 text-base font-bold shadow-xl shadow-amber-400/40 hover:scale-[1.03] hover:shadow-amber-400/60 disabled:opacity-40 transition-all duration-200 active:scale-95"
           >
             <Mic className="w-5 h-5" />
-            녹음 시작
+            {permissionDenied ? "다시 시도" : "녹음 시작"}
           </button>
           <button type="button" onClick={onManual}
             className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors">
