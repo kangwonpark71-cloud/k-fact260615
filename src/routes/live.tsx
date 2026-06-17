@@ -2,10 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
-  MessageSquare, Send, Trash2, RefreshCw, Sparkles,
+  MessageSquare, Trash2, RefreshCw, Sparkles,
   CheckCircle2, XCircle, MinusCircle, HelpCircle, AlertCircle,
-  ThumbsUp, ThumbsDown, TriangleAlert, Users, Download, Loader2,
-  Mic, Square, MicOff,
+  ThumbsUp, ThumbsDown, TriangleAlert, Download,
+  Mic, Square, MicOff, ChevronRight, Send,
 } from "lucide-react";
 
 import { quickAnalyzeContent, type QuickCheckResult } from "@/lib/analyses.functions";
@@ -15,29 +15,29 @@ export const Route = createFileRoute("/live")({
   head: () => ({
     meta: [
       { title: "대화 분석 — K-Fact" },
-      { name: "description", content: "실시간 대화를 문장 단위로 팩트체크하고 기록합니다." },
+      { name: "description", content: "실시간 대화를 음성으로 자동 기록하고 팩트체크합니다." },
     ],
   }),
   component: LivePage,
 });
 
-/* ── 타입 ── */
+/* ── 상수 ── */
 type Speaker = "화자 A" | "화자 B" | "화자 C" | "화자 D";
 const SPEAKERS: Speaker[] = ["화자 A", "화자 B", "화자 C", "화자 D"];
 
-const SPEAKER_STYLE: Record<Speaker, { badge: string; bubble: string; dot: string }> = {
-  "화자 A": { badge: "bg-blue-500/20 border-blue-400/40 text-blue-400", bubble: "border-blue-400/20 bg-blue-500/5", dot: "bg-blue-400" },
-  "화자 B": { badge: "bg-emerald-500/20 border-emerald-400/40 text-emerald-400", bubble: "border-emerald-400/20 bg-emerald-500/5", dot: "bg-emerald-400" },
-  "화자 C": { badge: "bg-amber-500/20 border-amber-400/40 text-amber-400", bubble: "border-amber-400/20 bg-amber-500/5", dot: "bg-amber-400" },
-  "화자 D": { badge: "bg-rose-500/20 border-rose-400/40 text-rose-400", bubble: "border-rose-400/20 bg-rose-500/5", dot: "bg-rose-400" },
+const SPEAKER_STYLE: Record<Speaker, { badge: string; bubble: string; ring: string; dot: string }> = {
+  "화자 A": { badge: "bg-blue-500/20 border-blue-400/40 text-blue-400",     bubble: "border-blue-400/20 bg-blue-500/5",     ring: "ring-blue-400/40",    dot: "bg-blue-400" },
+  "화자 B": { badge: "bg-emerald-500/20 border-emerald-400/40 text-emerald-400", bubble: "border-emerald-400/20 bg-emerald-500/5", ring: "ring-emerald-400/40", dot: "bg-emerald-400" },
+  "화자 C": { badge: "bg-amber-500/20 border-amber-400/40 text-amber-400",   bubble: "border-amber-400/20 bg-amber-500/5",   ring: "ring-amber-400/40",   dot: "bg-amber-400" },
+  "화자 D": { badge: "bg-rose-500/20 border-rose-400/40 text-rose-400",     bubble: "border-rose-400/20 bg-rose-500/5",     ring: "ring-rose-400/40",    dot: "bg-rose-400" },
 };
 
 const VERDICT_META = {
-  "사실": { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-400/10 border-emerald-400/30", label: "사실" },
-  "부분 사실": { icon: MinusCircle, color: "text-yellow-400", bg: "bg-yellow-400/10 border-yellow-400/30", label: "부분 사실" },
-  "근거 부족": { icon: HelpCircle, color: "text-orange-400", bg: "bg-orange-400/10 border-orange-400/30", label: "근거 부족" },
-  "반대 근거 우세": { icon: XCircle, color: "text-red-400", bg: "bg-red-400/10 border-red-400/30", label: "반대 근거 우세" },
-  "미확인": { icon: AlertCircle, color: "text-muted-foreground", bg: "bg-border/20 border-border/40", label: "미확인" },
+  "사실":           { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-400/10 border-emerald-400/30", label: "사실" },
+  "부분 사실":      { icon: MinusCircle,  color: "text-yellow-400",  bg: "bg-yellow-400/10 border-yellow-400/30",  label: "부분 사실" },
+  "근거 부족":      { icon: HelpCircle,   color: "text-orange-400",  bg: "bg-orange-400/10 border-orange-400/30",  label: "근거 부족" },
+  "반대 근거 우세": { icon: XCircle,      color: "text-red-400",     bg: "bg-red-400/10 border-red-400/30",        label: "반대 근거 우세" },
+  "미확인":         { icon: AlertCircle,  color: "text-muted-foreground", bg: "bg-border/20 border-border/40",      label: "미확인" },
 } as const;
 
 type Utterance = {
@@ -60,7 +60,7 @@ function useSpeechRecognition({
 }) {
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState<boolean | null>(null);
-  const [barHeights, setBarHeights] = useState<number[]>(Array(20).fill(3));
+  const [barHeights, setBarHeights] = useState<number[]>(Array(28).fill(3));
 
   const recRef = useRef<any>(null);
   const listeningRef = useRef(false);
@@ -81,7 +81,7 @@ function useSpeechRecognition({
     audioCtxRef.current = null;
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
-    setBarHeights(Array(20).fill(3));
+    setBarHeights(Array(28).fill(3));
   };
 
   const startAudio = async () => {
@@ -91,17 +91,17 @@ function useSpeechRecognition({
       const ctx = new AudioContext();
       audioCtxRef.current = ctx;
       const analyser = ctx.createAnalyser();
-      analyser.fftSize = 128;
+      analyser.fftSize = 256;
       ctx.createMediaStreamSource(stream).connect(analyser);
       const buf = new Uint8Array(analyser.frequencyBinCount);
-      const step = Math.max(1, Math.floor(buf.length / 20));
+      const step = Math.max(1, Math.floor(buf.length / 28));
       const tick = () => {
         if (!listeningRef.current) return;
         analyser.getByteFrequencyData(buf);
-        setBarHeights(Array.from({ length: 20 }, (_, i) => {
+        setBarHeights(Array.from({ length: 28 }, (_, i) => {
           const slice = buf.slice(i * step, i * step + step);
           const avg = slice.reduce((a, b) => a + b, 0) / slice.length;
-          return Math.max(3, (avg / 255) * 32);
+          return Math.max(3, (avg / 255) * 48);
         }));
         animRef.current = requestAnimationFrame(tick);
       };
@@ -143,7 +143,7 @@ function useSpeechRecognition({
     setIsListening(true);
     rec.start();
     startAudio();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onFinal, onInterim]);
 
   const stop = useCallback(() => {
@@ -153,7 +153,7 @@ function useSpeechRecognition({
     setIsListening(false);
     onInterim("");
     stopAudio();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onInterim]);
 
   return { isListening, isSupported, barHeights, start, stop };
@@ -163,15 +163,18 @@ function useSpeechRecognition({
 function LivePage() {
   const doQuickCheck = useServerFn(quickAnalyzeContent);
 
-  const [speaker, setSpeaker] = useState<Speaker>("화자 A");
+  const [speakerIdx, setSpeakerIdx] = useState(0);
   const [input, setInput] = useState("");
   const [interim, setInterim] = useState("");
   const [utterances, setUtterances] = useState<Utterance[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const [showManual, setShowManual] = useState(false);
+
+  const speaker = SPEAKERS[speakerIdx];
+  const speakerIdxRef = useRef(speakerIdx);
+  useEffect(() => { speakerIdxRef.current = speakerIdx; }, [speakerIdx]);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // addUtterance를 ref로 저장하여 음성 콜백에서 항상 최신 참조
   const addRef = useRef<(text: string) => void>(() => {});
 
   useEffect(() => {
@@ -180,14 +183,16 @@ function LivePage() {
 
   const addUtterance = useCallback(async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || submitting) return;
+    if (!trimmed) return;
 
+    const currentSpeaker = SPEAKERS[speakerIdxRef.current];
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const now = new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-    setUtterances(prev => [...prev, { id, speaker, text: trimmed, time: now, checking: true, result: null, error: null }]);
+    setUtterances(prev => [...prev, { id, speaker: currentSpeaker, text: trimmed, time: now, checking: true, result: null, error: null }]);
     setInput("");
-    setSubmitting(true);
+    // 발언 완료 → 다음 화자로 자동 전환
+    setSpeakerIdx(i => (i + 1) % SPEAKERS.length);
     textareaRef.current?.focus();
 
     try {
@@ -196,20 +201,14 @@ function LivePage() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "분석 실패";
       setUtterances(prev => prev.map(u => u.id === id ? { ...u, checking: false, error: msg.slice(0, 80) } : u));
-    } finally {
-      setSubmitting(false);
     }
-  }, [speaker, submitting, doQuickCheck]);
+  }, [doQuickCheck]);
 
-  // 최신 addUtterance를 ref에 동기화
   useEffect(() => { addRef.current = addUtterance; }, [addUtterance]);
 
-  // 음성 인식: 확정 문장 → 자동 팩트체크 추가
   const { isListening, isSupported, barHeights, start, stop } = useSpeechRecognition({
     onFinal: useCallback((text: string) => {
-      setInput(text);
-      // 15자 이상이면 자동 제출
-      if (text.length >= 15) {
+      if (text.length >= 4) {
         setTimeout(() => addRef.current(text), 0);
       } else {
         setInput(text);
@@ -242,11 +241,16 @@ function LivePage() {
     URL.revokeObjectURL(url);
   };
 
-  const stats = utterances.reduce<Partial<Record<Speaker, number>>>((acc, u) => {
-    acc[u.speaker] = (acc[u.speaker] ?? 0) + 1;
-    return acc;
-  }, {});
+  const handleReset = () => {
+    setUtterances([]);
+    setSpeakerIdx(0);
+    setInput("");
+    setInterim("");
+    if (isListening) stop();
+  };
 
+  const isAnalyzing = utterances.some(u => u.checking);
+  const nextSpeaker = SPEAKERS[(speakerIdx + 1) % SPEAKERS.length];
   const displayInput = interim || input;
 
   return (
@@ -264,148 +268,156 @@ function LivePage() {
             </div>
             <div>
               <h1 className="text-lg font-bold leading-tight">실시간 대화 팩트체크</h1>
-              <p className="text-xs text-muted-foreground">텍스트 입력 또는 마이크로 발언을 추가하고 즉시 검증합니다</p>
+              <p className="text-xs text-muted-foreground">음성 발언마다 자동 화자 전환 및 팩트체크</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {utterances.length > 0 && (
-              <>
-                <button type="button" onClick={handleExport} title="결과 내보내기"
-                  className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors">
-                  <Download className="w-4 h-4" />
-                </button>
-                <button type="button" onClick={() => { setUtterances([]); if (isListening) stop(); }} title="전체 초기화"
-                  className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* 화자 선택 */}
-        <div className="glass rounded-2xl p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Users className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-            <span className="text-xs font-semibold text-muted-foreground tracking-wide">화자 선택</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {SPEAKERS.map(sp => {
-              const style = SPEAKER_STYLE[sp];
-              const isActive = speaker === sp;
-              const count = stats[sp] ?? 0;
-              return (
-                <button key={sp} type="button" onClick={() => setSpeaker(sp)}
-                  className={`flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
-                    isActive ? `${style.badge} scale-[1.02] shadow-md` : "border-border/40 text-muted-foreground hover:border-border hover:bg-surface-2/50"
-                  }`}>
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${isActive ? style.dot : "bg-muted-foreground/30"}`} />
-                    {sp}
-                  </div>
-                  {count > 0 && (
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? "bg-white/20" : "bg-border/40 text-muted-foreground"}`}>
-                      {count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 입력 영역 */}
-        <div className="glass rounded-2xl p-4 space-y-3">
-          <div className="flex items-start gap-3">
-            <span className={`shrink-0 mt-0.5 text-xs font-bold px-2.5 py-1 rounded-full border ${SPEAKER_STYLE[speaker].badge}`}>
-              {speaker}
-            </span>
-            <div className="flex-1 relative">
-              <textarea
-                ref={textareaRef}
-                rows={2}
-                placeholder={isListening ? "음성 인식 중… 말씀하세요" : "발언 내용을 입력하세요 (Enter로 추가, Shift+Enter 줄바꿈)"}
-                value={displayInput}
-                onChange={e => { if (!isListening) setInput(e.target.value); }}
-                onKeyDown={handleKeyDown}
-                disabled={submitting}
-                className={`w-full bg-transparent outline-none resize-none text-sm leading-relaxed disabled:opacity-60 ${
-                  interim ? "text-primary/70 italic placeholder:text-muted-foreground/40" : "placeholder:text-muted-foreground/50"
-                }`}
-              />
-              {isListening && (
-                <span className="inline-block w-0.5 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
-              )}
+          {utterances.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <button type="button" onClick={handleExport} title="결과 내보내기"
+                className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors">
+                <Download className="w-4 h-4" />
+              </button>
+              <button type="button" onClick={handleReset} title="전체 초기화"
+                className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
-          </div>
+          )}
+        </div>
 
-          {/* 음성 파형 (인식 중에만 표시) */}
-          {isListening && (
-            <div className="flex items-end gap-[2px] h-8 px-1">
+        {/* ── 시작 화면 (발언 없음 + 미녹음 상태) ── */}
+        {utterances.length === 0 && !isListening && (
+          <StartScreen
+            isSupported={isSupported}
+            onStart={start}
+            onManual={() => { setShowManual(true); setTimeout(() => textareaRef.current?.focus(), 50); }}
+          />
+        )}
+
+        {/* ── 녹음 중 화자 인디케이터 ── */}
+        {isListening && (
+          <div className={`glass rounded-2xl p-5 flex flex-col items-center gap-4 ring-2 ${SPEAKER_STYLE[speaker].ring} transition-all`}>
+            {/* 현재 화자 배지 (크게) */}
+            <div className="flex items-center gap-3">
+              <span className={`text-base font-bold px-4 py-2 rounded-full border-2 ${SPEAKER_STYLE[speaker].badge} shadow-lg`}>
+                {speaker}
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-sm text-red-400">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                음성 인식 중
+              </span>
+            </div>
+
+            {/* 파형 */}
+            <div className="flex items-end gap-[2px] h-12 w-full px-2">
               {barHeights.map((h, i) => (
                 <div key={i} className="flex-1 rounded-full transition-all duration-75"
                   style={{
                     height: `${h}px`,
-                    background: `oklch(${0.6 + (h / 32) * 0.2} ${0.12 + (h / 32) * 0.1} ${238 + i * 5})`,
+                    background: `oklch(${0.55 + (h / 48) * 0.25} ${0.15 + (h / 48) * 0.12} ${230 + i * 4})`,
                   }} />
               ))}
             </div>
-          )}
 
-          <div className="flex items-center justify-between border-t border-border/40 pt-3 gap-2">
-            <span className="text-[11px] text-muted-foreground/60">
-              {isListening
-                ? <span className="inline-flex items-center gap-1.5 text-red-400"><span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block" />음성 인식 중</span>
-                : `${input.length}자 · Enter로 추가`}
-            </span>
+            {/* 인식 중인 텍스트 */}
+            {interim && (
+              <p className="text-sm text-primary/70 italic text-center px-4 leading-relaxed">
+                {interim}
+                <span className="inline-block w-0.5 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
+              </p>
+            )}
+            {!interim && (
+              <p className="text-xs text-muted-foreground/50">말씀하세요 — 발언 완료 시 자동 기록됩니다</p>
+            )}
 
-            <div className="flex items-center gap-2">
-              {/* 마이크 버튼 */}
-              {isSupported === false ? (
-                <div title="이 브라우저는 음성 인식을 지원하지 않습니다">
-                  <MicOff className="w-4 h-4 text-muted-foreground/40" />
-                </div>
-              ) : isSupported === true && (
-                <button type="button" onClick={isListening ? stop : start}
-                  title={isListening ? "음성 인식 중지" : "마이크로 입력"}
-                  className={`relative p-2.5 rounded-xl border transition-all ${
-                    isListening
-                      ? "bg-red-500/20 border-red-400/40 text-red-400 hover:bg-red-500/30 shadow-md shadow-red-400/20"
-                      : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border hover:bg-surface-2"
-                  }`}>
-                  {isListening
-                    ? <><span className="absolute inset-0 rounded-xl bg-red-400/20 animate-ping" style={{ animationDuration: "1.4s" }} /><Square className="w-4 h-4 relative" /></>
-                    : <Mic className="w-4 h-4" />}
-                </button>
-              )}
-
-              {/* 추가 버튼 */}
-              <button type="button" onClick={() => addUtterance(input)}
-                disabled={!input.trim() || submitting || isListening}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-amber-950 text-sm font-bold shadow-md shadow-amber-400/30 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95">
-                {submitting ? <><Loader2 className="w-4 h-4 animate-spin" /> 분석 중…</> : <><Send className="w-4 h-4" /> 추가</>}
+            {/* 다음 화자 예고 + 정지 버튼 */}
+            <div className="flex items-center justify-between w-full gap-3">
+              <div className="flex items-center gap-1">
+                <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 shrink-0" />
+                <span className="text-[11px] text-muted-foreground/50">
+                  다음 발언 →{" "}
+                  <span className={`font-semibold ${SPEAKER_STYLE[nextSpeaker].badge.split(" ").find(c => c.startsWith("text-"))}`}>
+                    {nextSpeaker}
+                  </span>
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={stop}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/20 border border-red-400/40 text-red-400 text-sm font-semibold hover:bg-red-500/30 transition-all active:scale-95"
+              >
+                <Square className="w-4 h-4" />
+                녹음 중지
               </button>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* 발언 목록 */}
-        {utterances.length === 0 ? (
-          <div className="glass rounded-2xl p-10 text-center">
-            <MessageSquare className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground mb-1">아직 발언이 없습니다</p>
-            <p className="text-xs text-muted-foreground/60">텍스트로 입력하거나 마이크 버튼으로 음성 입력하세요</p>
+        {/* ── 녹음 중지 후 재시작 + 직접 입력 (발언 있을 때) ── */}
+        {(utterances.length > 0 || showManual) && !isListening && (
+          <div className="glass rounded-2xl p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              {/* 재녹음 버튼 */}
+              {isSupported !== false && (
+                <button
+                  type="button"
+                  onClick={start}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-amber-950 text-sm font-bold shadow-md shadow-amber-400/30 hover:opacity-90 transition-all active:scale-95"
+                >
+                  <Mic className="w-4 h-4" />
+                  {utterances.length > 0 ? "계속 녹음" : "녹음 시작"}
+                </button>
+              )}
+              {isSupported === false && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <MicOff className="w-3.5 h-3.5" /> 음성 미지원 브라우저
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground/50">또는 직접 입력</span>
+            </div>
+
+            {/* 직접 입력창 */}
+            <div className="flex items-start gap-2">
+              <button
+                type="button"
+                onClick={() => setSpeakerIdx(i => (i + 1) % SPEAKERS.length)}
+                title="클릭하여 화자 전환"
+                className={`shrink-0 mt-0.5 text-xs font-bold px-2.5 py-1 rounded-full border transition-all hover:scale-105 active:scale-95 ${SPEAKER_STYLE[speaker].badge}`}
+              >
+                {speaker}
+              </button>
+              <textarea
+                ref={textareaRef}
+                rows={2}
+                placeholder="발언 내용 직접 입력 (Enter로 추가)"
+                value={displayInput}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="flex-1 bg-transparent outline-none resize-none text-sm leading-relaxed placeholder:text-muted-foreground/40"
+              />
+              <button
+                type="button"
+                onClick={() => addUtterance(input)}
+                disabled={!input.trim()}
+                className="shrink-0 p-2 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-400 hover:bg-amber-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-        ) : (
+        )}
+
+        {/* ── 발언 목록 ── */}
+        {utterances.length > 0 && (
           <div className="space-y-3">
             <div className="flex items-center gap-2 px-1">
               <Sparkles className="w-3.5 h-3.5 text-accent shrink-0" />
               <span className="text-xs font-semibold text-muted-foreground tracking-wide">
                 대화 기록 ({utterances.length}건)
               </span>
-              {utterances.some(u => u.checking) && (
+              {isAnalyzing && (
                 <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground">
-                  <RefreshCw className="w-3 h-3 animate-spin" /> 분석 중…
+                  <RefreshCw className="w-3 h-3 animate-spin" /> 팩트체크 중…
                 </span>
               )}
             </div>
@@ -419,7 +431,7 @@ function LivePage() {
                   {speakerChanged && (
                     <div className="flex items-center gap-2 my-1 px-1">
                       <div className="flex-1 h-px bg-border/30" />
-                      <span className="text-[9px] text-muted-foreground/40 font-medium tracking-wider">화자 전환</span>
+                      <ChevronRight className="w-3 h-3 text-muted-foreground/30" />
                       <div className="flex-1 h-px bg-border/30" />
                     </div>
                   )}
@@ -435,6 +447,89 @@ function LivePage() {
   );
 }
 
+/* ── 시작 화면 컴포넌트 ── */
+function StartScreen({
+  isSupported,
+  onStart,
+  onManual,
+}: {
+  isSupported: boolean | null;
+  onStart: () => void;
+  onManual: () => void;
+}) {
+  const speakerDots = [
+    { label: "화자 A", color: "bg-blue-400",    text: "text-blue-400" },
+    { label: "화자 B", color: "bg-emerald-400", text: "text-emerald-400" },
+    { label: "화자 C", color: "bg-amber-400",   text: "text-amber-400" },
+    { label: "화자 D", color: "bg-rose-400",    text: "text-rose-400" },
+  ];
+
+  return (
+    <div className="glass rounded-2xl p-10 flex flex-col items-center gap-6 text-center">
+      {/* 아이콘 펄스 */}
+      <div className="relative">
+        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-500 to-yellow-400 grid place-items-center shadow-xl shadow-amber-400/40">
+          <Mic className="w-9 h-9 text-amber-950" />
+        </div>
+        <span className="absolute inset-0 rounded-full bg-amber-400/30 animate-ping" style={{ animationDuration: "2s" }} />
+      </div>
+
+      <div className="space-y-2">
+        <h2 className="text-xl font-bold">대화 녹음을 시작하세요</h2>
+        <p className="text-sm text-muted-foreground leading-relaxed max-w-sm">
+          여러 명이 발언할 때마다 화자가 자동으로 전환되고,<br />
+          각 발언을 즉시 팩트체크합니다.
+        </p>
+      </div>
+
+      {/* 화자 순환 표시 */}
+      <div className="flex items-center gap-2">
+        {speakerDots.map((sp, i) => (
+          <div key={sp.label} className="flex items-center gap-1.5">
+            <div className="flex flex-col items-center gap-1">
+              <span className={`w-2.5 h-2.5 rounded-full ${sp.color}`} />
+              <span className={`text-[10px] font-semibold ${sp.text}`}>{sp.label.replace("화자 ", "")}</span>
+            </div>
+            {i < 3 && <ChevronRight className="w-3 h-3 text-muted-foreground/30" />}
+          </div>
+        ))}
+        <ChevronRight className="w-3 h-3 text-muted-foreground/30" />
+        <span className="text-[10px] text-muted-foreground/40 font-semibold">순환</span>
+      </div>
+
+      {/* 시작 버튼 */}
+      {isSupported === false ? (
+        <div className="flex flex-col items-center gap-3">
+          <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+            <MicOff className="w-4 h-4" />
+            이 브라우저는 음성 인식을 지원하지 않습니다
+          </div>
+          <button type="button" onClick={onManual}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-border text-sm font-semibold hover:bg-surface-2 transition-all">
+            텍스트로 직접 입력
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-3">
+          <button
+            type="button"
+            onClick={onStart}
+            disabled={isSupported === null}
+            className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 text-amber-950 text-base font-bold shadow-xl shadow-amber-400/40 hover:scale-[1.03] hover:shadow-amber-400/60 disabled:opacity-40 transition-all duration-200 active:scale-95"
+          >
+            <Mic className="w-5 h-5" />
+            녹음 시작
+          </button>
+          <button type="button" onClick={onManual}
+            className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors">
+            또는 텍스트로 직접 입력
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── 발언 카드 ── */
 function UtteranceCard({ u, style }: { u: Utterance; style: typeof SPEAKER_STYLE["화자 A"] }) {
   const [expanded, setExpanded] = useState(false);
@@ -445,7 +540,7 @@ function UtteranceCard({ u, style }: { u: Utterance; style: typeof SPEAKER_STYLE
     <div className={`rounded-2xl border p-4 transition-all ${
       u.checking ? "border-border/40 bg-background/20"
       : u.error ? "border-destructive/20 bg-destructive/5"
-      : `${style.bubble}`
+      : style.bubble
     }`}>
       <div className="flex items-start justify-between gap-3 mb-2.5">
         <div className="flex items-center gap-2">
