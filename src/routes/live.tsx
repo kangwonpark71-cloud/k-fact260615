@@ -452,6 +452,61 @@ function LivePage() {
   );
 }
 
+/* ── 마이크 진단 ── */
+type DiagStep = { label: string; status: "ok" | "fail" | "warn"; detail: string };
+
+async function runMicDiagnostics(): Promise<DiagStep[]> {
+  const steps: DiagStep[] = [];
+
+  // 1. SpeechRecognition API 지원 여부
+  const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  steps.push(SR
+    ? { label: "SpeechRecognition API", status: "ok", detail: "지원됨" }
+    : { label: "SpeechRecognition API", status: "fail", detail: "미지원 — Chrome 브라우저를 사용하세요" });
+
+  // 2. navigator.permissions 로 마이크 권한 상태
+  try {
+    const perm = await navigator.permissions.query({ name: "microphone" as PermissionName });
+    const map: Record<string, DiagStep["status"]> = { granted: "ok", prompt: "warn", denied: "fail" };
+    steps.push({
+      label: "마이크 권한",
+      status: map[perm.state] ?? "warn",
+      detail: perm.state === "granted" ? "허용됨" : perm.state === "denied" ? "차단됨 — 브라우저 설정에서 허용 필요" : "미결정 — 팝업에서 허용 선택 필요",
+    });
+  } catch {
+    steps.push({ label: "마이크 권한", status: "warn", detail: "권한 상태 조회 불가" });
+  }
+
+  // 3. getUserMedia 실제 접근 테스트
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(t => t.stop());
+    steps.push({ label: "마이크 접근 (getUserMedia)", status: "ok", detail: "성공" });
+  } catch (e: any) {
+    const msg = e?.name === "NotAllowedError" ? "권한 거부" : e?.name === "NotFoundError" ? "마이크 없음" : String(e?.name ?? e);
+    steps.push({ label: "마이크 접근 (getUserMedia)", status: "fail", detail: msg });
+  }
+
+  // 4. SpeechRecognition 3초 시작 테스트
+  if (SR) {
+    const result = await new Promise<DiagStep>((resolve) => {
+      const rec = new SR();
+      rec.lang = "ko-KR";
+      rec.continuous = false;
+      rec.interimResults = false;
+      let started = false;
+      const timer = setTimeout(() => resolve({ label: "SpeechRecognition 시작", status: "warn", detail: "3초 내 응답 없음 — 네트워크 또는 Google 서버 문제일 수 있습니다" }), 3000);
+      rec.onstart = () => { started = true; clearTimeout(timer); rec.stop(); resolve({ label: "SpeechRecognition 시작", status: "ok", detail: "정상 시작됨" }); };
+      rec.onerror = (e: any) => { clearTimeout(timer); resolve({ label: "SpeechRecognition 시작", status: "fail", detail: `오류: ${e.error}` }); };
+      rec.onend = () => { if (!started) { clearTimeout(timer); resolve({ label: "SpeechRecognition 시작", status: "warn", detail: "즉시 종료 — 마이크가 다른 앱에서 사용 중이거나 네트워크 문제" }); } };
+      try { rec.start(); } catch (e: any) { clearTimeout(timer); resolve({ label: "SpeechRecognition 시작", status: "fail", detail: `start() 오류: ${e.message}` }); }
+    });
+    steps.push(result);
+  }
+
+  return steps;
+}
+
 /* ── 시작 화면 ── */
 function StartScreen({
   isSupported, permissionDenied, micError, onStart, onManual,
@@ -462,6 +517,18 @@ function StartScreen({
   onStart: () => void;
   onManual: () => void;
 }) {
+  const [diagSteps, setDiagSteps] = useState<DiagStep[] | null>(null);
+  const [diagRunning, setDiagRunning] = useState(false);
+  const [showWin11Guide, setShowWin11Guide] = useState(false);
+
+  const handleDiag = async () => {
+    setDiagRunning(true);
+    setDiagSteps(null);
+    const steps = await runMicDiagnostics();
+    setDiagSteps(steps);
+    setDiagRunning(false);
+  };
+
   const speakerDots = [
     { label: "A", color: "bg-blue-400",    text: "text-blue-400" },
     { label: "B", color: "bg-emerald-400", text: "text-emerald-400" },
@@ -469,8 +536,11 @@ function StartScreen({
     { label: "D", color: "bg-rose-400",    text: "text-rose-400" },
   ];
 
+  const statusIcon = (s: DiagStep["status"]) =>
+    s === "ok" ? "✅" : s === "fail" ? "❌" : "⚠️";
+
   return (
-    <div className="glass rounded-2xl p-10 flex flex-col items-center gap-6 text-center">
+    <div className="glass rounded-2xl p-8 flex flex-col items-center gap-6 text-center">
       <div className="relative">
         <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-500 to-yellow-400 grid place-items-center shadow-xl shadow-amber-400/40">
           <Mic className="w-9 h-9 text-amber-950" />
@@ -478,7 +548,7 @@ function StartScreen({
         <span className="absolute inset-0 rounded-full bg-amber-400/25 animate-ping" style={{ animationDuration: "2s" }} />
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <h2 className="text-xl font-bold">대화 녹음을 시작하세요</h2>
         <p className="text-sm text-muted-foreground leading-relaxed max-w-sm">
           발언마다 화자가 자동으로 전환되고<br />각 발언을 즉시 팩트체크합니다
@@ -500,35 +570,22 @@ function StartScreen({
 
       {/* 권한 거부 안내 */}
       {permissionDenied && (
-        <div className="w-full max-w-sm rounded-2xl border border-orange-400/30 bg-orange-400/8 px-5 py-4 space-y-3 text-left">
-          <div className="flex items-start gap-3">
-            <MicOff className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-orange-400">마이크 접근이 차단되어 있습니다</p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Chrome 주소창 왼쪽 <strong className="text-foreground/70">🔒 아이콘</strong> 클릭
-                → 마이크 <strong className="text-foreground/70">허용</strong>으로 변경 후 아래 버튼을 누르세요.
-              </p>
-            </div>
+        <div className="w-full max-w-sm rounded-2xl border border-orange-400/30 bg-orange-400/8 px-5 py-4 space-y-2 text-left">
+          <div className="flex items-start gap-2">
+            <MicOff className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
+            <p className="text-sm font-semibold text-orange-400">마이크 접근이 차단됨</p>
           </div>
-          <div className="flex items-center gap-2 pl-8 text-[11px] text-muted-foreground/60">
-            <span className="bg-surface-2 border border-border/50 rounded px-1.5 py-0.5">🔒 클릭</span>
-            <ChevronRight className="w-3 h-3 text-muted-foreground/30" />
-            <span className="bg-surface-2 border border-border/50 rounded px-1.5 py-0.5">마이크 → 허용</span>
-            <ChevronRight className="w-3 h-3 text-muted-foreground/30" />
-            <span className="bg-surface-2 border border-border/50 rounded px-1.5 py-0.5">다시 시도</span>
-          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed pl-6">
+            Chrome 주소창 왼쪽 🔒 클릭 → 마이크 <strong className="text-foreground/70">허용</strong> → 아래 "다시 시도"
+          </p>
         </div>
       )}
 
       {/* 기타 오류 */}
       {micError && !permissionDenied && (
-        <div className="w-full max-w-sm rounded-2xl border border-red-400/30 bg-red-400/8 px-5 py-4 flex items-start gap-3 text-left">
-          <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-red-400">음성 인식 오류</p>
-            <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">{micError}</p>
-          </div>
+        <div className="w-full max-w-sm rounded-2xl border border-red-400/30 bg-red-400/8 px-4 py-3 flex items-start gap-2 text-left">
+          <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-muted-foreground leading-relaxed">{micError}</p>
         </div>
       )}
 
@@ -536,18 +593,17 @@ function StartScreen({
       {isSupported === false ? (
         <div className="flex flex-col items-center gap-3">
           <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <MicOff className="w-4 h-4" /> 이 브라우저는 음성 인식을 지원하지 않습니다
+            <MicOff className="w-4 h-4" /> Chrome 브라우저에서만 지원됩니다
           </p>
-          <p className="text-xs text-muted-foreground/60">Chrome 브라우저를 사용해 주세요</p>
           <button type="button" onClick={onManual}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-border text-sm font-semibold hover:bg-surface-2 transition-all">
             텍스트로 직접 입력
           </button>
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-col items-center gap-3 w-full max-w-sm">
           <button type="button" onClick={onStart} disabled={isSupported === null}
-            className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 text-amber-950 text-base font-bold shadow-xl shadow-amber-400/40 hover:scale-[1.03] hover:shadow-amber-400/60 disabled:opacity-40 transition-all duration-200 active:scale-95">
+            className="w-full inline-flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-400 text-amber-950 text-base font-bold shadow-xl shadow-amber-400/40 hover:scale-[1.02] hover:shadow-amber-400/60 disabled:opacity-40 transition-all duration-150 active:scale-95">
             <Mic className="w-5 h-5" />
             {permissionDenied ? "다시 시도" : "녹음 시작"}
           </button>
@@ -557,6 +613,51 @@ function StartScreen({
           </button>
         </div>
       )}
+
+      {/* ── 진단 도구 ── */}
+      <div className="w-full max-w-sm border-t border-border/30 pt-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground/60">녹음이 안 된다면</span>
+          <button type="button" onClick={handleDiag} disabled={diagRunning}
+            className="text-xs px-3 py-1.5 rounded-lg border border-border/50 text-muted-foreground hover:text-foreground hover:border-border hover:bg-surface-2 disabled:opacity-50 transition-all">
+            {diagRunning ? "진단 중…" : "🔍 마이크 진단 실행"}
+          </button>
+        </div>
+
+        {/* 진단 결과 */}
+        {diagSteps && (
+          <div className="rounded-xl border border-border/40 bg-background/30 overflow-hidden text-left">
+            {diagSteps.map((s, i) => (
+              <div key={i} className={`px-3 py-2.5 text-xs ${i > 0 ? "border-t border-border/30" : ""}`}>
+                <div className="flex items-center gap-2">
+                  <span>{statusIcon(s.status)}</span>
+                  <span className="font-semibold text-foreground/80">{s.label}</span>
+                </div>
+                <p className="text-muted-foreground mt-0.5 pl-5 leading-relaxed">{s.detail}</p>
+              </div>
+            ))}
+
+            {/* 진단 결과 기반 조치 안내 */}
+            {diagSteps.some(s => s.status === "fail" && s.label.includes("SpeechRecognition 시작")) && (
+              <div className="border-t border-border/30 px-3 py-3 bg-amber-400/5">
+                <button type="button" onClick={() => setShowWin11Guide(v => !v)}
+                  className="text-[11px] text-amber-400 hover:underline">
+                  Windows 11 마이크 설정 확인 방법 {showWin11Guide ? "▲" : "▼"}
+                </button>
+                {showWin11Guide && (
+                  <ol className="mt-2 space-y-1 text-[11px] text-muted-foreground leading-relaxed list-decimal list-inside">
+                    <li>Windows <strong className="text-foreground/70">시작</strong> → <strong className="text-foreground/70">설정</strong> (⚙️)</li>
+                    <li><strong className="text-foreground/70">개인정보 보호 및 보안</strong> → <strong className="text-foreground/70">마이크</strong></li>
+                    <li><strong className="text-foreground/70">앱이 마이크에 액세스하도록 허용</strong> 켜기</li>
+                    <li>목록에서 <strong className="text-foreground/70">Google Chrome</strong> 허용 확인</li>
+                    <li>Chrome 재시작 후 다시 시도</li>
+                  </ol>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
