@@ -58,11 +58,11 @@ type PipelineMeta = {
 };
 
 const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; bg: string; border: string; label: string }> = {
-  "사실":           { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-400/10", border: "border-emerald-400/30", label: "사실" },
-  "부분 사실":      { icon: MinusCircle,  color: "text-yellow-400",  bg: "bg-yellow-400/10",  border: "border-yellow-400/30",  label: "부분 사실" },
-  "근거 부족":      { icon: HelpCircle,   color: "text-orange-400",  bg: "bg-orange-400/10",  border: "border-orange-400/30",  label: "근거 부족" },
-  "반대 근거 우세": { icon: XCircle,      color: "text-red-400",     bg: "bg-red-400/10",     border: "border-red-400/30",     label: "반대 근거 우세" },
-  "미확인":         { icon: AlertCircle,  color: "text-slate-400",   bg: "bg-slate-400/10",   border: "border-slate-400/30",   label: "미확인" },
+  "사실":           { icon: CheckCircle2, color: "text-verdict-true",    bg: "bg-verdict-true/10",    border: "border-verdict-true/30",    label: "사실" },
+  "부분 사실":      { icon: MinusCircle,  color: "text-verdict-partial", bg: "bg-verdict-partial/10", border: "border-verdict-partial/30", label: "부분 사실" },
+  "근거 부족":      { icon: HelpCircle,   color: "text-verdict-weak",    bg: "bg-verdict-weak/10",    border: "border-verdict-weak/30",    label: "근거 부족" },
+  "반대 근거 우세": { icon: XCircle,      color: "text-verdict-false",   bg: "bg-verdict-false/10",   border: "border-verdict-false/30",   label: "반대 근거 우세" },
+  "미확인":         { icon: AlertCircle,  color: "text-verdict-unknown", bg: "bg-verdict-unknown/10", border: "border-verdict-unknown/30", label: "미확인" },
 };
 
 function AnalysisPage() {
@@ -183,26 +183,43 @@ function AnalysisPage() {
           <ArrowLeft className="w-4 h-4" /> 새 분석
         </Link>
 
-        {/* ① 헤더 카드 */}
-        <div className="glass rounded-2xl p-5 sm:p-8 shadow-[var(--shadow-card)]">
-          <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
-            <h1 className="text-xl sm:text-3xl font-bold leading-tight max-w-2xl">{dataRow.title as string}</h1>
-            <VerdictBadge verdict={(dataRow.overall_verdict as string) ?? "미확인"} size="lg" />
-          </div>
-          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed mb-5">{dataRow.summary as string}</p>
-
-          <div className="flex items-center gap-4 flex-wrap text-sm">
-            <ConfidenceBar value={(dataRow.overall_confidence as number) ?? 0} />
-            {(dataRow.source_url as string | null | undefined) && (
-              <a href={dataRow.source_url as string} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors text-xs sm:text-sm">
-                <ExternalLink className="w-3.5 h-3.5" /> 원문 보기
-              </a>
-            )}
-            <span className="text-muted-foreground text-xs ml-auto">
+        {/* ① 검증 문서 헤더 */}
+        <div className="border border-border/60 bg-surface shadow-[var(--shadow-card)]">
+          {/* 문서 상단 레이블 바 */}
+          <div className="px-5 sm:px-7 py-2 border-b border-border/40 flex items-center justify-between gap-3 bg-surface-2/50">
+            <span className="text-[9px] font-bold tracking-widest uppercase text-muted-foreground/60 font-mono">K-Fact 팩트체크 판정서</span>
+            <span className="text-[9px] text-muted-foreground/40 font-mono">
               {new Date(dataRow.created_at as string).toLocaleString("ko-KR")}
             </span>
-            <ShareButton />
+          </div>
+
+          <div className="px-5 sm:px-7 py-5 sm:py-7">
+            {/* 제목 + 스탬프 */}
+            <div className="flex items-start gap-4 mb-4">
+              <div className="flex-1 min-w-0">
+                <h1 className="font-display text-xl sm:text-2xl font-bold leading-snug text-foreground">{dataRow.title as string}</h1>
+              </div>
+              <div className="shrink-0 flex flex-col items-end gap-2">
+                <VerdictBadge verdict={(dataRow.overall_verdict as string) ?? "미확인"} size="lg" />
+                <ConfidenceBar value={(dataRow.overall_confidence as number) ?? 0} />
+              </div>
+            </div>
+
+            {/* 요약 */}
+            <p className="text-sm text-muted-foreground leading-relaxed border-t border-border/30 pt-4">{dataRow.summary as string}</p>
+
+            {/* 원문 링크 + 공유 */}
+            <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border/30">
+              {(dataRow.source_url as string | null | undefined) && (
+                <a href={dataRow.source_url as string} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-accent hover:text-accent/80 transition-colors text-xs">
+                  <ExternalLink className="w-3.5 h-3.5" /> 원문 보기
+                </a>
+              )}
+              <div className="ml-auto">
+                <ShareButton />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -257,15 +274,15 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
   if (!bias_type && !fake_probability && !hasSignals && !hasUrls) return null;
 
   const fpct = fake_probability ?? 0;
-  const fpColor = fpct >= 70 ? "text-red-400" : fpct >= 40 ? "text-orange-400" : "text-emerald-400";
-  const barColor = fpct >= 70 ? "bg-red-400" : fpct >= 40 ? "bg-orange-400" : "bg-emerald-400";
+  const fpColor = fpct >= 70 ? "text-verdict-false border-verdict-false/50" : fpct >= 40 ? "text-verdict-partial border-verdict-partial/50" : "text-verdict-true border-verdict-true/50";
+  const barColor = fpct >= 70 ? "bg-verdict-false" : fpct >= 40 ? "bg-verdict-partial" : "bg-verdict-true";
 
   return (
-    <div className="glass rounded-xl border border-border/50 overflow-hidden">
-      <div className="px-4 sm:px-5 py-3 border-b border-border/30 flex items-center gap-2">
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">3단계 AI 파이프라인 분석</span>
+    <div className="border border-border/50 bg-surface overflow-hidden">
+      <div className="px-4 sm:px-5 py-2.5 border-b border-border/30 flex items-center gap-2 bg-surface-2/40">
+        <span className="font-mono text-[9px] font-bold text-muted-foreground/60 uppercase tracking-widest">AI 파이프라인 분석</span>
         {bias_type && bias_type !== "중립" && (
-          <span className="text-[10px] font-medium text-orange-400 bg-orange-400/10 border border-orange-400/20 px-2 py-0.5 rounded-full ml-auto">
+          <span className="font-mono text-[9px] font-bold text-verdict-partial border border-verdict-partial/30 px-2 py-0.5 rounded-sm ml-auto uppercase tracking-widest">
             {bias_type} 편향
           </span>
         )}
@@ -275,11 +292,11 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
         {fpct > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-[11px] text-muted-foreground font-medium">Stage 1 — 문체 가짜 가능성 지수</span>
-              <span className={`text-xs font-bold ml-auto ${fpColor}`}>{fpct}%</span>
+              <span className="text-[11px] text-muted-foreground font-medium">문체 가짜 가능성 지수</span>
+              <span className={`font-mono text-xs font-bold border rounded-sm px-1.5 py-0.5 ml-auto ${fpColor}`}>{fpct}%</span>
             </div>
-            <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden">
-              <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${fpct}%` }} />
+            <div className="h-1 bg-surface-2 overflow-hidden">
+              <div className={`h-full ${barColor} transition-all`} style={{ width: `${fpct}%` }} />
             </div>
             <p className="text-[10px] text-muted-foreground/50 mt-1">LIAR Dataset / FakeNewsNet 패턴 기반 TF-IDF 분석</p>
           </div>
@@ -327,11 +344,11 @@ function InputSummary({ text }: { text: string }) {
   const hasMore = text.length > 200;
 
   return (
-    <div className="glass rounded-xl border border-border/50 overflow-hidden">
+    <div className="border border-border/50 bg-surface overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2.5 px-4 sm:px-5 py-3.5 text-left hover:bg-surface/40 transition-colors"
+        className="w-full flex items-center gap-2.5 px-4 sm:px-5 py-3 text-left hover:bg-surface-2/50 transition-colors"
       >
         <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
         <span className="text-sm font-medium flex-1">분석 원문</span>
@@ -496,9 +513,9 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
   }
 
   return (
-    <div className="glass rounded-xl p-4 sm:p-5 shadow-[var(--shadow-card)]">
-      <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-        주장 한눈에 보기
+    <div className="border border-border/50 bg-surface shadow-[var(--shadow-card)] p-4 sm:p-5">
+      <h2 className="font-mono text-[9px] font-bold text-muted-foreground/60 uppercase tracking-widest mb-3">
+        주장 요약
       </h2>
 
       {/* 판정 분포 */}
@@ -525,26 +542,26 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
           const Icon = meta.icon;
           const isExpanded = expandedIdx === i;
           const highlight = isHighlight(c.verdict);
-          const glowClass = c.verdict === "사실"
-            ? "shadow-[0_0_18px_rgba(52,211,153,0.18)] border-l-[3px] border-l-emerald-400"
+          const accentClass = c.verdict === "사실"
+            ? "border-l-[3px] border-l-verdict-true"
             : c.verdict === "반대 근거 우세"
-              ? "shadow-[0_0_18px_rgba(248,113,113,0.18)] border-l-[3px] border-l-red-400"
+              ? "border-l-[3px] border-l-verdict-false"
               : "";
 
           return (
-            <div key={i} className={`rounded-lg overflow-hidden ${highlight ? glowClass : ""}`}>
+            <div key={i} className={`overflow-hidden ${highlight ? accentClass : ""}`}>
               <button
                 type="button"
                 onClick={() => setExpandedIdx(isExpanded ? null : i)}
-                className={`w-full flex items-start text-left transition-all cursor-pointer active:scale-[0.99] ${meta.bg} ${meta.border} border ${
+                className={`w-full flex items-start text-left transition-colors cursor-pointer active:scale-[0.99] ${meta.bg} ${meta.border} border ${
                   highlight
-                    ? "gap-3 px-4 py-4 hover:brightness-105"
-                    : "gap-2.5 rounded-lg px-3 py-2.5 hover:brightness-110"
+                    ? "gap-3 px-4 py-3.5 hover:bg-opacity-80"
+                    : "gap-2.5 px-3 py-2.5 hover:bg-opacity-80"
                 }`}
               >
                 {highlight ? (
-                  /* 강조 아이콘 */
-                  <div className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center border-2 ${meta.border} ${meta.bg} mt-0.5`}>
+                  /* 강조 스탬프 아이콘 */
+                  <div className={`shrink-0 w-8 h-8 flex items-center justify-center border-2 ${meta.border} ${meta.bg} mt-0.5`}>
                     <Icon className={`w-4 h-4 ${meta.color}`} />
                   </div>
                 ) : (
@@ -660,13 +677,13 @@ function ClaimCard({ index, claim, reviewing }: { index: number; claim: Claim; r
     claim.suggested_sources.length > 0;
 
   return (
-    <article className={`glass rounded-xl shadow-[var(--shadow-card)] overflow-hidden border ${meta.border}`}>
+    <article className={`border-l-[3px] ${meta.border} border border-border/50 bg-surface shadow-[var(--shadow-card)]`}>
       {/* 헤더 (항상 표시) */}
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
         disabled={!hasDetails}
-        className="w-full text-left px-4 sm:px-5 py-3.5 hover:bg-surface/30 transition-colors disabled:cursor-default"
+        className="w-full text-left px-4 sm:px-5 py-3.5 hover:bg-surface-2/50 transition-colors disabled:cursor-default"
       >
         <div className="flex items-start gap-3">
           <span className="shrink-0 w-6 h-6 rounded-md bg-surface-2 text-[10px] font-mono grid place-items-center text-muted-foreground mt-0.5">
@@ -742,26 +759,31 @@ function ClaimCard({ index, claim, reviewing }: { index: number; claim: Claim; r
   );
 }
 
+/* 신뢰도를 원형 게이지 대신 인증 스탬프 형태로 표현 */
 function ConfidenceBar({ value, compact }: { value: number; compact?: boolean }) {
-  const color =
-    value >= 70 ? "bg-emerald-400" : value >= 40 ? "bg-yellow-400" : "bg-red-400";
+  const [stampColor, barColor] =
+    value >= 70
+      ? ["text-verdict-true border-verdict-true/50", "bg-verdict-true"]
+      : value >= 40
+      ? ["text-verdict-partial border-verdict-partial/50", "bg-verdict-partial"]
+      : ["text-verdict-false border-verdict-false/50", "bg-verdict-false"];
+
   if (compact) {
     return (
-      <div className="flex items-center gap-1.5">
-        <div className="w-16 sm:w-20 h-1 rounded-full bg-surface-2 overflow-hidden">
-          <div className={`h-full ${color}`} style={{ width: `${value}%` }} />
-        </div>
-        <span className="text-xs text-muted-foreground tabular-nums">{value}%</span>
-      </div>
+      <span className={`font-mono text-[10px] font-bold border rounded-sm px-1.5 py-0.5 ${stampColor}`}>
+        {value}%
+      </span>
     );
   }
   return (
-    <div className="flex items-center gap-3 min-w-[160px]">
-      <span className="text-xs text-muted-foreground">신뢰도</span>
-      <div className="flex-1 h-1.5 rounded-full bg-surface-2 overflow-hidden min-w-[80px]">
-        <div className={`h-full ${color} transition-all`} style={{ width: `${value}%` }} />
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] text-muted-foreground font-medium tracking-wider uppercase">신뢰도</span>
+      <span className={`font-mono text-sm font-bold border-2 rounded-sm px-2.5 py-1 ${stampColor}`}>
+        {value}%
+      </span>
+      <div className="w-16 h-1 bg-surface-2 overflow-hidden">
+        <div className={`h-full ${barColor} transition-all`} style={{ width: `${value}%` }} />
       </div>
-      <span className="text-sm font-medium tabular-nums">{value}%</span>
     </div>
   );
 }

@@ -2,25 +2,27 @@ import { CheckCircle2, AlertTriangle, HelpCircle, XCircle, Minus } from "lucide-
 
 type Verdict = "사실" | "부분 사실" | "근거 부족" | "반대 근거 우세" | "미확인";
 
-const styles: Record<Verdict, { bg: string; text: string; ring: string; Icon: typeof CheckCircle2 }> = {
-  "사실": { bg: "bg-verdict-true/15", text: "text-verdict-true", ring: "ring-verdict-true/30", Icon: CheckCircle2 },
-  "부분 사실": { bg: "bg-verdict-partial/15", text: "text-verdict-partial", ring: "ring-verdict-partial/30", Icon: AlertTriangle },
-  "근거 부족": { bg: "bg-verdict-weak/15", text: "text-verdict-weak", ring: "ring-verdict-weak/30", Icon: HelpCircle },
-  "반대 근거 우세": { bg: "bg-verdict-false/15", text: "text-verdict-false", ring: "ring-verdict-false/30", Icon: XCircle },
-  "미확인": { bg: "bg-verdict-unknown/15", text: "text-verdict-unknown", ring: "ring-verdict-unknown/30", Icon: Minus },
+const styles: Record<Verdict, { border: string; text: string; bg: string; Icon: typeof CheckCircle2 }> = {
+  "사실":           { border: "border-verdict-true",    text: "text-verdict-true",    bg: "bg-verdict-true/10",    Icon: CheckCircle2 },
+  "부분 사실":      { border: "border-verdict-partial", text: "text-verdict-partial", bg: "bg-verdict-partial/10", Icon: AlertTriangle },
+  "근거 부족":      { border: "border-verdict-weak",    text: "text-verdict-weak",    bg: "bg-verdict-weak/10",    Icon: HelpCircle },
+  "반대 근거 우세": { border: "border-verdict-false",   text: "text-verdict-false",   bg: "bg-verdict-false/10",   Icon: XCircle },
+  "미확인":         { border: "border-verdict-unknown", text: "text-verdict-unknown", bg: "bg-verdict-unknown/10", Icon: Minus },
 };
 
 export function VerdictBadge({ verdict, size = "md" }: { verdict: string; size?: "sm" | "md" | "lg" }) {
-  const v = (styles[verdict as Verdict] ?? styles["미확인"]);
+  const v = styles[verdict as Verdict] ?? styles["미확인"];
   const Icon = v.Icon;
-  const sizes = {
-    sm: "text-xs px-2 py-0.5 gap-1",
-    md: "text-sm px-3 py-1 gap-1.5",
-    lg: "text-base px-4 py-1.5 gap-2",
+  const sizeClass = {
+    sm: "text-[9px] px-1.5 py-0.5 gap-0.5 border",
+    md: "text-[10px] px-2.5 py-1 gap-1 border",
+    lg: "text-xs px-3 py-1.5 gap-1.5 border-2",
   }[size];
+  const iconSize = { sm: "w-2.5 h-2.5", md: "w-3 h-3", lg: "w-3.5 h-3.5" }[size];
+
   return (
-    <span className={`inline-flex items-center font-medium rounded-full ring-1 ${v.bg} ${v.text} ${v.ring} ${sizes}`}>
-      <Icon className={size === "sm" ? "w-3 h-3" : size === "lg" ? "w-4 h-4" : "w-3.5 h-3.5"} />
+    <span className={`stamp inline-flex items-center font-bold uppercase tracking-widest rounded-sm ${v.bg} ${v.text} ${v.border} ${sizeClass}`}>
+      <Icon className={iconSize} />
       {verdict}
     </span>
   );

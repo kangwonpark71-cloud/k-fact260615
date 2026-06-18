@@ -28,13 +28,13 @@ export function SiteHeader() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
           {/* 로고 */}
           <Link to="/" className="flex items-center gap-2.5 group" onClick={close}>
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-accent grid place-items-center shadow-[var(--shadow-glow)]">
-              <ShieldCheck className="w-5 h-5 text-primary-foreground" />
+            <div className="w-9 h-9 rounded-sm border-2 border-primary/40 grid place-items-center bg-primary/5 group-hover:border-primary/60 transition-colors">
+              <ShieldCheck className="w-5 h-5 text-primary" />
             </div>
             <div className="flex flex-col leading-tight">
-              <span className="font-display font-bold text-base">K-Fact</span>
-              <span className="hidden sm:block text-[10px] text-muted-foreground tracking-wider uppercase">
-                Evidence-first fact assist
+              <span className="font-display font-bold text-base tracking-tight">K-Fact</span>
+              <span className="hidden sm:block text-[10px] text-muted-foreground tracking-widest uppercase">
+                사실검증 보조
               </span>
             </div>
           </Link>
@@ -43,10 +43,10 @@ export function SiteHeader() {
           <nav className="hidden sm:flex items-center gap-1">
             <button
               onClick={toggleTheme}
-              aria-label={theme === "rose" ? "밤하늘 테마로 전환" : "자연스러운 색조 테마로 전환"}
+              aria-label={theme === "navy" ? "딥 다크 테마로 전환" : "기본 테마로 전환"}
               className="w-9 h-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-all"
             >
-              {theme === "rose" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+              {theme === "night" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
             <Link
               to="/live"
@@ -98,7 +98,7 @@ export function SiteHeader() {
               aria-label="테마 변경"
               className="w-11 h-11 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-all"
             >
-              {theme === "rose" ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+              {theme === "night" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
             <button
               onClick={() => setDrawerOpen(true)}

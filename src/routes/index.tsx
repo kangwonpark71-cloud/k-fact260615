@@ -29,11 +29,11 @@ export const Route = createFileRoute("/")({
 });
 
 const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; bg: string; label: string }> = {
-  "사실": { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-400/10 border-emerald-400/30", label: "사실" },
-  "부분 사실": { icon: MinusCircle, color: "text-yellow-400", bg: "bg-yellow-400/10 border-yellow-400/30", label: "부분 사실" },
-  "근거 부족": { icon: HelpCircle, color: "text-orange-400", bg: "bg-orange-400/10 border-orange-400/30", label: "근거 부족" },
-  "반대 근거 우세": { icon: XCircle, color: "text-red-400", bg: "bg-red-400/10 border-red-400/30", label: "반대 근거 우세" },
-  "미확인": { icon: AlertCircle, color: "text-muted-foreground", bg: "bg-border/30 border-border", label: "미확인" },
+  "사실":           { icon: CheckCircle2, color: "text-verdict-true",    bg: "bg-verdict-true/10 border-verdict-true/30",       label: "사실" },
+  "부분 사실":      { icon: MinusCircle,  color: "text-verdict-partial", bg: "bg-verdict-partial/10 border-verdict-partial/30", label: "부분 사실" },
+  "근거 부족":      { icon: HelpCircle,   color: "text-verdict-weak",    bg: "bg-verdict-weak/10 border-verdict-weak/30",       label: "근거 부족" },
+  "반대 근거 우세": { icon: XCircle,      color: "text-verdict-false",   bg: "bg-verdict-false/10 border-verdict-false/30",     label: "반대 근거 우세" },
+  "미확인":         { icon: AlertCircle,  color: "text-verdict-unknown", bg: "bg-verdict-unknown/10 border-verdict-unknown/30", label: "미확인" },
 };
 
 const QUICK_CHECK_DEBOUNCE = 2500;
