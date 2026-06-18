@@ -35,6 +35,9 @@ export const Route = createFileRoute("/analysis/$id")({
 
 type Claim = {
   claim: string;
+  subject?: string;       // Stage 2: SPO
+  predicate?: string;     // Stage 2: SPO
+  object?: string;        // Stage 2: SPO
   verdict: string;
   confidence: number;
   reasoning: string;
@@ -42,6 +45,15 @@ type Claim = {
   counter_points: string[];
   unknowns: string[];
   suggested_sources: { name: string; type: string }[];
+  evidence_urls?: string[];  // Stage 3: Tavily
+};
+
+type PipelineMeta = {
+  bias_type?: string;
+  fake_probability?: number;
+  style_signals?: string[];
+  evidence_urls?: string[];
+  items: Claim[];
 };
 
 const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; bg: string; border: string; label: string }> = {
@@ -111,7 +123,15 @@ function AnalysisPage() {
     );
   }
 
-  const claims = (data.claims as unknown as Claim[]) ?? [];
+  // 구 형식(배열) + 신 형식(파이프라인 메타 객체) 모두 처리
+  const rawClaims = data.claims as unknown;
+  const pipelineMeta: PipelineMeta | null =
+    rawClaims && !Array.isArray(rawClaims) && typeof rawClaims === "object"
+      ? rawClaims as PipelineMeta
+      : null;
+  const claims: Claim[] = Array.isArray(rawClaims)
+    ? rawClaims
+    : (pipelineMeta?.items ?? []);
 
   return (
     <div className="min-h-screen pb-16 sm:pb-0">
@@ -145,15 +165,20 @@ function AnalysisPage() {
           </div>
         </div>
 
-        {/* ② 원문 요약 (접기/펼치기) */}
+        {/* ② 파이프라인 메타: Stage 1 + Stage 3 결과 */}
+        {pipelineMeta && (
+          <PipelineMetaPanel meta={pipelineMeta} />
+        )}
+
+        {/* ③ 원문 요약 (접기/펼치기) */}
         {data.input_text && (
           <InputSummary text={data.input_text as string} />
         )}
 
-        {/* ③ 주장 한눈에 보기 */}
+        {/* ④ 주장 한눈에 보기 */}
         {claims.length > 0 && <ClaimOverview claims={claims} />}
 
-        {/* ④ 상세 주장 카드 */}
+        {/* ⑤ 상세 주장 카드 */}
         <section className="space-y-3">
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
             주장별 상세 분석
@@ -168,6 +193,77 @@ function AnalysisPage() {
           중요한 의사결정 전에는 표기된 출처 유형의 1차 자료를 직접 확인하세요.
         </p>
       </main>
+    </div>
+  );
+}
+
+/* ── Stage 1+3 파이프라인 메타 패널 ── */
+function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
+  const { bias_type, fake_probability, style_signals, evidence_urls } = meta;
+  const hasSignals = (style_signals ?? []).length > 0;
+  const hasUrls = (evidence_urls ?? []).length > 0;
+  if (!bias_type && !fake_probability && !hasSignals && !hasUrls) return null;
+
+  const fpct = fake_probability ?? 0;
+  const fpColor = fpct >= 70 ? "text-red-400" : fpct >= 40 ? "text-orange-400" : "text-emerald-400";
+  const barColor = fpct >= 70 ? "bg-red-400" : fpct >= 40 ? "bg-orange-400" : "bg-emerald-400";
+
+  return (
+    <div className="glass rounded-xl border border-border/50 overflow-hidden">
+      <div className="px-4 sm:px-5 py-3 border-b border-border/30 flex items-center gap-2">
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">3단계 AI 파이프라인 분석</span>
+        {bias_type && bias_type !== "중립" && (
+          <span className="text-[10px] font-medium text-orange-400 bg-orange-400/10 border border-orange-400/20 px-2 py-0.5 rounded-full ml-auto">
+            {bias_type} 편향
+          </span>
+        )}
+      </div>
+      <div className="px-4 sm:px-5 py-3 space-y-3">
+        {/* Stage 1: 가짜 가능성 */}
+        {fpct > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-[11px] text-muted-foreground font-medium">Stage 1 — 문체 가짜 가능성 지수</span>
+              <span className={`text-xs font-bold ml-auto ${fpColor}`}>{fpct}%</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-surface-2 overflow-hidden">
+              <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${fpct}%` }} />
+            </div>
+            <p className="text-[10px] text-muted-foreground/50 mt-1">LIAR Dataset / FakeNewsNet 패턴 기반 TF-IDF 분석</p>
+          </div>
+        )}
+
+        {/* Stage 1: 경고 신호 */}
+        {hasSignals && (
+          <div>
+            <p className="text-[11px] font-semibold text-muted-foreground mb-1.5">감지된 문체 신호</p>
+            <div className="space-y-1">
+              {(style_signals ?? []).map((s, i) => (
+                <div key={i} className="flex items-start gap-1.5">
+                  <span className="text-[10px] text-orange-400 shrink-0 mt-0.5">•</span>
+                  <span className="text-[11px] text-muted-foreground/80 leading-relaxed">{s}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Stage 3: Tavily 증거 URL */}
+        {hasUrls && (
+          <div>
+            <p className="text-[11px] font-semibold text-muted-foreground mb-1.5">Stage 3 — Tavily 실시간 검색 근거</p>
+            <div className="space-y-1">
+              {(evidence_urls ?? []).map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-[11px] text-primary/70 hover:text-primary transition-colors group truncate">
+                  <ExternalLink className="w-3 h-3 shrink-0 opacity-50 group-hover:opacity-100" />
+                  <span className="truncate">{url}</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -525,7 +621,15 @@ function ClaimCard({ index, claim }: { index: number; claim: Claim }) {
             {String(index).padStart(2, "0")}
           </span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium leading-snug mb-2 pr-4">{claim.claim}</p>
+            <p className="text-sm font-medium leading-snug mb-1.5 pr-4">{claim.claim}</p>
+            {/* Stage 2 SPO 구조 */}
+            {(claim.subject || claim.predicate || claim.object) && (
+              <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                {claim.subject   && <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground/70">주어: {claim.subject}</span>}
+                {claim.predicate && <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground/70">서술: {claim.predicate}</span>}
+                {claim.object    && <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground/70">대상: {claim.object}</span>}
+              </div>
+            )}
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-semibold ${meta.bg} ${meta.border} ${meta.color}`}>
                 <Icon className="w-3 h-3" /> {meta.label}
@@ -556,6 +660,11 @@ function ClaimCard({ index, claim }: { index: number; claim: Claim }) {
             {claim.counter_points.length > 0 && (
               <PointList Icon={ThumbsDown} title="반박 가능성" items={claim.counter_points} tone="false"
                 links={claim.counter_points.map(p => `https://news.google.com/search?q=${encodeURIComponent(p.slice(0, 70))}&hl=ko&gl=KR&ceid=KR:ko`)}
+              />
+            )}
+            {(claim.evidence_urls ?? []).length > 0 && (
+              <PointList Icon={ExternalLink} title="Tavily 실시간 검색 근거" items={claim.evidence_urls!} tone="weak"
+                links={claim.evidence_urls}
               />
             )}
             {claim.unknowns.length > 0 && (
