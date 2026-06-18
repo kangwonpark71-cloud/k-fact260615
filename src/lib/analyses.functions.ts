@@ -5,7 +5,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 
 import { createModelInstance, type SupportedProvider } from "./ai-gateway.server";
-import { getEnv, getCfAIBinding, getCfCtx } from "./runtime-env.server";
+import { getEnv, getCfAIBinding, getCfCtx, getCfBinding } from "./runtime-env.server";
 import { decryptSecret } from "./crypto.server";
 import {
   buildStyleAnalysis,
@@ -296,24 +296,28 @@ async function generateWithFallback<T extends z.ZodType>(params: {
   // 최종 폴백: CF Workers AI 네이티브 바인딩
   if (cfAIBinding) {
     const cfModels = [
-      "@cf/meta/llama-3.2-3b-instruct",        // 경량, json_object 지원
-      "@cf/meta/llama-3.3-70b-instruct-fp8-fast", // 고품질
-      "@cf/meta/llama-3.1-70b-instruct",        // 70B 안정 버전
-      "@cf/mistral/mistral-7b-instruct-v0.1",   // Mistral v0.1
+      "@cf/meta/llama-3.2-3b-instruct",           // 경량 최우선
+      "@cf/meta/llama-3.3-70b-instruct-fp8-fast", // fast 버전
     ];
 
     const cfSystem = params.system + CF_JSON_HINT;
 
     for (const cfModel of cfModels) {
       try {
-        const cfResult = await cfAIBinding.run(cfModel, {
-          messages: [
-            { role: "system", content: cfSystem },
-            { role: "user", content: params.prompt },
-          ],
-          response_format: { type: "json_object" },
-          max_tokens: 3000,
-        });
+        // 각 모델당 18초 타임아웃
+        const cfResult = await Promise.race([
+          cfAIBinding.run(cfModel, {
+            messages: [
+              { role: "system", content: cfSystem },
+              { role: "user", content: params.prompt },
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: 2000,
+          }),
+          new Promise<never>((_, rej) =>
+            setTimeout(() => rej(new Error(`CF AI 타임아웃: ${cfModel}`)), 18000)
+          ),
+        ]);
 
         const raw: string =
           typeof cfResult === "string"
@@ -401,23 +405,51 @@ function validatePublicUrl(rawUrl: string): void {
   }
 }
 
+/* ── KV 폴백: DB 없을 때 NEWS_CACHE KV에 분석 결과 임시 저장 (1시간 TTL) ── */
+type KVNamespace = {
+  get(key: string, type: "json"): Promise<unknown>;
+  put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+};
+
+function getAnalysisKV(): KVNamespace | null {
+  return getCfBinding<KVNamespace>("NEWS_CACHE");
+}
+
+async function kvGet(id: string): Promise<Record<string, unknown> | null> {
+  const kv = getAnalysisKV();
+  if (!kv) return null;
+  try { return (await kv.get(`analysis:${id}`, "json")) as Record<string, unknown> | null; } catch { return null; }
+}
+
+async function kvPut(id: string, data: Record<string, unknown>): Promise<void> {
+  const kv = getAnalysisKV();
+  if (!kv) return;
+  try { await kv.put(`analysis:${id}`, JSON.stringify(data), { expirationTtl: 3600 }); } catch {}
+}
+
 /* ── Rate limit: 세션/사용자당 일일 분석 횟수 제한 ── */
 const RATE_LIMIT_ANON = 10;
 const RATE_LIMIT_USER = 30;
 
 async function checkRateLimit(sessionId: string, userId: string | null): Promise<void> {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const base = supabaseAdmin.from("analyses")
-    .select("id", { count: "exact", head: true })
-    .gte("created_at", todayStart.toISOString());
-  const { count } = await (userId
-    ? base.eq("user_id", userId)
-    : base.eq("session_id", sessionId));
-  const limit = userId ? RATE_LIMIT_USER : RATE_LIMIT_ANON;
-  if ((count ?? 0) >= limit) {
-    throw new Error(`일일 분석 한도(${limit}건)에 도달했습니다. 내일 다시 시도하세요.`);
+  if (!getEnv("SUPABASE_SERVICE_ROLE_KEY")) return; // DB 없으면 건너뜀
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const base = supabaseAdmin.from("analyses")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", todayStart.toISOString());
+    const { count, error } = await (userId
+      ? base.eq("user_id", userId)
+      : base.eq("session_id", sessionId));
+    if (error) return;
+    const limit = userId ? RATE_LIMIT_USER : RATE_LIMIT_ANON;
+    if ((count ?? 0) >= limit) {
+      throw new Error(`일일 분석 한도(${limit}건)에 도달했습니다. 내일 다시 시도하세요.`);
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("일일 분석 한도")) throw e;
   }
 }
 
@@ -427,41 +459,51 @@ async function checkUrlCache(
   sessionId: string,
   userId: string | null,
 ): Promise<string | null> {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  let q = supabaseAdmin
-    .from("analyses")
-    .select("id")
-    .eq("source_url", sourceUrl)
-    .eq("status", "completed")
-    .gte("created_at", since)
-    .order("created_at", { ascending: false })
-    .limit(1);
-  if (userId) {
-    q = q.eq("user_id", userId);
-  } else {
-    q = q.eq("session_id", sessionId).is("user_id", null);
-  }
-  const { data } = await q;
-  return data?.[0]?.id ?? null;
+  if (!getEnv("SUPABASE_SERVICE_ROLE_KEY")) return null; // DB 없으면 건너뜀
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    let q = supabaseAdmin
+      .from("analyses")
+      .select("id")
+      .eq("source_url", sourceUrl)
+      .eq("status", "completed")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (userId) {
+      q = q.eq("user_id", userId);
+    } else {
+      q = q.eq("session_id", sessionId).is("user_id", null);
+    }
+    const { data, error } = await q;
+    if (error) return null;
+    return data?.[0]?.id ?? null;
+  } catch { return null; }
 }
+
+type AnalysisPayload = Record<string, unknown>;
 
 /* ── 백그라운드 AI 분석 처리 — 3단계 파이프라인 ── */
 async function processAnalysis(
   analysisId: string,
   inputText: string,
   sourceUrl: string | undefined,
-): Promise<void> {
-  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+): Promise<AnalysisPayload> {
+  const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
   try {
-    // ── URL 본문 가져오기 ──
+    // ── URL 본문 가져오기 (5초 타임아웃) ──
     let bodyText = inputText;
     if (sourceUrl && inputText.length < 200) {
       try {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 5000);
         const res = await fetch(sourceUrl, {
           headers: { "User-Agent": "Mozilla/5.0 FactGuardBot" },
           redirect: "error",
+          signal: ac.signal,
         });
+        clearTimeout(timer);
         if (res.ok) {
           const html = await res.text();
           const stripped = html
@@ -531,7 +573,8 @@ ${bodyText.slice(0, 7000)}
       evidence_urls: (evidenceMap[i] ?? []).slice(0, 2).map(e => e.url).filter(Boolean),
     }));
 
-    await supabaseAdmin.from("analyses").update({
+    const completedPayload = {
+      id: analysisId,
       status: "completed",
       input_text: bodyText.slice(0, 8000),
       title: parsed.title,
@@ -545,17 +588,32 @@ ${bodyText.slice(0, 7000)}
         evidence_urls: evidenceUrls,
         items: enrichedClaims,
       },
-    }).eq("id", analysisId);
+      created_at: new Date().toISOString(),
+    };
+
+    if (hasDB) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: updateErr } = await supabaseAdmin.from("analyses").update(completedPayload as any).eq("id", analysisId);
+      if (updateErr) await kvPut(analysisId, completedPayload);
+    } else {
+      await kvPut(analysisId, completedPayload);
+    }
+    return completedPayload;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    try {
-      await supabaseAdmin.from("analyses").update({
-        status: "failed",
-        title: "분석 실패",
-        summary: msg.slice(0, 300),
-        claims: [],
-      }).eq("id", analysisId);
-    } catch { /* 실패 업데이트 오류 무시 */ }
+    const failPayload: AnalysisPayload = { id: analysisId, status: "failed", title: "분석 실패", summary: msg.slice(0, 300), claims: [] };
+    if (hasDB) {
+      try {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error: failErr } = await supabaseAdmin.from("analyses").update(failPayload as any).eq("id", analysisId);
+        if (failErr) await kvPut(analysisId, failPayload);
+      } catch { await kvPut(analysisId, failPayload); }
+    } else {
+      await kvPut(analysisId, failPayload);
+    }
+    return failPayload;
   }
 }
 
@@ -574,38 +632,53 @@ export const analyzeContent = createServerFn({ method: "POST" })
       if (cachedId) return { id: cachedId, cached: true, pending: false };
     }
 
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: pending, error: insertErr } = await supabaseAdmin
-      .from("analyses")
-      .insert({
-        session_id: data.sessionId,
-        user_id: userId,
-        source_url: sourceUrl ?? null,
-        input_text: data.text.slice(0, 8000),
-        status: "pending",
-        title: null,
-        summary: null,
-        overall_verdict: null,
-        overall_confidence: null,
-        claims: [],
-      })
-      .select("id")
-      .single();
-    if (insertErr) throw new Error("저장 실패: " + insertErr.message);
+    const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
+    let analysisId: string;
 
-    const analysisId = pending.id as string;
-    const workPromise = processAnalysis(analysisId, data.text, sourceUrl);
+    if (hasDB) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: pending, error: insertErr } = await supabaseAdmin
+        .from("analyses")
+        .insert({
+          session_id: data.sessionId,
+          user_id: userId,
+          source_url: sourceUrl ?? null,
+          input_text: data.text.slice(0, 8000),
+          status: "pending",
+          title: null,
+          summary: null,
+          overall_verdict: null,
+          overall_confidence: null,
+          claims: [],
+        })
+        .select("id")
+        .single();
 
-    const cfCtx = getCfCtx();
-    if (cfCtx) {
-      // CF Workers: 응답 즉시 반환 후 백그라운드 처리
-      cfCtx.waitUntil(workPromise);
-      return { id: analysisId, cached: false, pending: true };
+      if (insertErr) {
+        console.warn("[analyzeContent] DB insert 실패 — KV 폴백:", insertErr.message);
+        analysisId = crypto.randomUUID();
+      } else {
+        analysisId = pending.id as string;
+      }
     } else {
-      // 로컬 개발: 동기적으로 처리 후 반환
-      await workPromise;
-      return { id: analysisId, cached: false, pending: false };
+      // DB 없음 → KV 폴백
+      analysisId = crypto.randomUUID();
     }
+
+    // KV에 pending 상태 저장 (DB 없거나 insert 실패 시)
+    if (!hasDB) {
+      await kvPut(analysisId, {
+        id: analysisId, status: "pending",
+        session_id: data.sessionId, user_id: userId,
+        source_url: sourceUrl ?? null, input_text: data.text.slice(0, 8000),
+        created_at: new Date().toISOString(),
+        title: null, summary: null, overall_verdict: null, overall_confidence: null, claims: [],
+      });
+    }
+    // 동기 실행: 분석 완료 후 결과를 클라이언트에 직접 전달 (KV/DB 조회 불필요)
+    const analysisResult = await processAnalysis(analysisId, data.text, sourceUrl);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return { id: analysisId, cached: false, pending: false, analysisResult } as any;
   });
 
 export const getAnalysis = createServerFn({ method: "GET" })
@@ -614,21 +687,50 @@ export const getAnalysis = createServerFn({ method: "GET" })
   )
   .handler(async ({ data }) => {
     const userId = await getOptionalUserId();
+    const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
+
+    // KV 먼저 확인 (DB 없는 환경에서 불필요한 HTTP 요청 차단)
+    const kvRow = await kvGet(data.id);
+    if (kvRow) {
+      const ownedByUser = userId && kvRow.user_id === userId;
+      const ownedBySession = !kvRow.user_id && kvRow.session_id === data.sessionId;
+      // KV에 완료된 결과가 있으면 바로 반환 (pending이면 DB도 확인)
+      if (kvRow.status !== "pending" || !hasDB) {
+        if (!ownedByUser && !ownedBySession) throw new Error("이 분석을 볼 권한이 없습니다.");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return kvRow as any;
+      }
+    }
+
+    if (!hasDB) {
+      if (kvRow) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return kvRow as any;
+      }
+      throw new Error("분석을 찾을 수 없습니다.");
+    }
+
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: row, error } = await supabaseAdmin
       .from("analyses")
       .select("*")
       .eq("id", data.id)
       .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!row) throw new Error("분석을 찾을 수 없습니다.");
 
-    // 권한 확인: 본인 user_id이거나 익명 분석(소유자 없음)인 경우 본인 session_id와 일치
+    if (error || !row) {
+      if (kvRow) {
+        const ownedByUser = userId && kvRow.user_id === userId;
+        const ownedBySession = !kvRow.user_id && kvRow.session_id === data.sessionId;
+        if (!ownedByUser && !ownedBySession) throw new Error("이 분석을 볼 권한이 없습니다.");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return kvRow as any;
+      }
+      throw new Error(error ? error.message : "분석을 찾을 수 없습니다.");
+    }
+
     const ownedByUser = userId && row.user_id === userId;
     const ownedBySession = !row.user_id && row.session_id === data.sessionId;
-    if (!ownedByUser && !ownedBySession) {
-      throw new Error("이 분석을 볼 권한이 없습니다.");
-    }
+    if (!ownedByUser && !ownedBySession) throw new Error("이 분석을 볼 권한이 없습니다.");
     return row;
   });
 

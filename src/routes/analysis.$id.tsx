@@ -6,6 +6,7 @@ import {
   ArrowLeft, ExternalLink, ThumbsUp, ThumbsDown, HelpCircle,
   BookOpen, Share2, Check, ChevronDown, ChevronUp, FileText,
   AlertTriangle, CheckCircle2, XCircle, MinusCircle, AlertCircle,
+  Loader2,
 } from "lucide-react";
 
 import { getAnalysis } from "@/lib/analyses.functions";
@@ -70,61 +71,85 @@ function AnalysisPage() {
   const [sessionId, setSessionId] = useState<string>("");
   useEffect(() => { setSessionId(getSessionId()); }, []);
 
-  const { data, isLoading } = useQuery({
+  // sessionStorage에서 분析 결果를 직접 읽음 (네비게이션 시 저장된 서버 결과)
+  const [preloadedResult] = useState<Record<string, unknown> | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const stored = sessionStorage.getItem(`kfact:${id}`);
+      if (stored) {
+        sessionStorage.removeItem(`kfact:${id}`);
+        return JSON.parse(stored) as Record<string, unknown>;
+      }
+    } catch {}
+    return null;
+  });
+
+  const [pollCount, setPollCount] = useState(0);
+
+  const { data: fetchedData, isLoading, isError } = useQuery({
     queryKey: ["analysis", id, sessionId],
-    queryFn: () => fetchAnalysis({ data: { id, sessionId } }),
-    enabled: !!sessionId,
-    // pending 상태면 2초마다 폴링
+    queryFn: async () => {
+      const result = await fetchAnalysis({ data: { id, sessionId } });
+      setPollCount(c => c + 1);
+      return result;
+    },
+    // preloaded 결果가 있으면 서버 조회 불필요
+    enabled: !!sessionId && !preloadedResult,
     refetchInterval: (q) => {
       const status = (q.state.data as { status?: string } | undefined)?.status;
-      return status === "pending" ? 2000 : false;
+      return (status === "pending" && pollCount < 20) ? 2000 : false;
     },
   });
 
-  const status = (data as { status?: string } | undefined)?.status;
-  const isPending = isLoading || !data || status === "pending";
+  const data = preloadedResult ?? (fetchedData as Record<string, unknown> | undefined);
+  const dataRow = data ?? {} as Record<string, unknown>;
+  const status = data?.status as string | undefined;
+  const isTimedOut = pollCount >= 20 && status === "pending";
   const isFailed = status === "failed";
+  // preloadedResult가 있으면 절대 pending/loading으로 빠지지 않음
+  const isPendingStatus = !preloadedResult && (isLoading || isError || !data || status === "pending");
 
-  if (isPending) {
+  // pending/failed/timeout → 메시지창(배너) 표시
+  if (isPendingStatus || isFailed || isTimedOut) {
+    const isErr = isFailed || isTimedOut;
     return (
       <div className="min-h-screen pb-16 sm:pb-0">
         <SiteHeader />
         <BottomNav />
-        <div className="max-w-4xl mx-auto px-6 py-24 text-center space-y-4">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto animate-pulse">
-            <BookOpen className="w-8 h-8 text-primary" />
+        <div className="flex items-center justify-center min-h-[60vh] px-4">
+          <div className={`w-full max-w-md rounded-2xl border p-6 shadow-lg space-y-4 ${isErr ? "border-destructive/40 bg-destructive/5" : "border-primary/30 bg-primary/5"}`}>
+            <div className="flex items-center gap-3">
+              {isErr
+                ? <AlertTriangle className="w-6 h-6 text-destructive shrink-0" />
+                : <Loader2 className="w-6 h-6 text-primary shrink-0 animate-spin" />}
+              <p className="font-semibold text-base">
+                {isTimedOut ? "분석 시간 초과"
+                  : isFailed ? "분석 실패"
+                  : "AI 분석 중…"}
+              </p>
+            </div>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {isTimedOut
+                ? "분석 처리가 지연되고 있습니다. 잠시 후 다시 시도해 주세요."
+                : isFailed
+                ? ((data?.summary as string | undefined) ?? "AI 분석 중 오류가 발생했습니다.")
+                : "팩트체크 결과를 생성하고 있습니다. 잠시 기다려주세요."}
+            </p>
+            <Link
+              to="/"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium"
+            >
+              <ArrowLeft className="w-4 h-4" /> 홈으로 돌아가기
+            </Link>
           </div>
-          <p className="text-lg font-semibold">AI 분석 중…</p>
-          <p className="text-sm text-muted-foreground">백그라운드에서 처리 중입니다. 잠시 기다려주세요.</p>
-          <div className="flex justify-center gap-1.5 pt-2">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (isFailed) {
-    return (
-      <div className="min-h-screen pb-16 sm:pb-0">
-        <SiteHeader />
-        <BottomNav />
-        <div className="max-w-4xl mx-auto px-6 py-24 text-center space-y-4">
-          <AlertTriangle className="w-12 h-12 text-destructive mx-auto" />
-          <p className="text-lg font-semibold">분석 실패</p>
-          <p className="text-sm text-muted-foreground">{(data as { summary?: string })?.summary ?? "AI 분석 중 오류가 발생했습니다."}</p>
-          <Link to="/" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium mt-4">
-            <ArrowLeft className="w-4 h-4" /> 다시 시도
-          </Link>
         </div>
       </div>
     );
   }
 
   // 구 형식(배열) + 신 형식(파이프라인 메타 객체) 모두 처리
-  const rawClaims = data.claims as unknown;
+  // dataRow is declared above
+  const rawClaims = dataRow.claims as unknown;
   const pipelineMeta: PipelineMeta | null =
     rawClaims && !Array.isArray(rawClaims) && typeof rawClaims === "object"
       ? rawClaims as PipelineMeta
@@ -145,21 +170,21 @@ function AnalysisPage() {
         {/* ① 헤더 카드 */}
         <div className="glass rounded-2xl p-5 sm:p-8 shadow-[var(--shadow-card)]">
           <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
-            <h1 className="text-xl sm:text-3xl font-bold leading-tight max-w-2xl">{data.title}</h1>
-            <VerdictBadge verdict={data.overall_verdict ?? "미확인"} size="lg" />
+            <h1 className="text-xl sm:text-3xl font-bold leading-tight max-w-2xl">{dataRow.title as string}</h1>
+            <VerdictBadge verdict={(dataRow.overall_verdict as string) ?? "미확인"} size="lg" />
           </div>
-          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed mb-5">{data.summary}</p>
+          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed mb-5">{dataRow.summary as string}</p>
 
           <div className="flex items-center gap-4 flex-wrap text-sm">
-            <ConfidenceBar value={data.overall_confidence ?? 0} />
-            {data.source_url && (
-              <a href={data.source_url} target="_blank" rel="noopener noreferrer"
+            <ConfidenceBar value={(dataRow.overall_confidence as number) ?? 0} />
+            {(dataRow.source_url as string | null | undefined) && (
+              <a href={dataRow.source_url as string} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors text-xs sm:text-sm">
                 <ExternalLink className="w-3.5 h-3.5" /> 원문 보기
               </a>
             )}
             <span className="text-muted-foreground text-xs ml-auto">
-              {new Date(data.created_at).toLocaleString("ko-KR")}
+              {new Date(dataRow.created_at as string).toLocaleString("ko-KR")}
             </span>
             <ShareButton />
           </div>
@@ -171,8 +196,8 @@ function AnalysisPage() {
         )}
 
         {/* ③ 원문 요약 (접기/펼치기) */}
-        {data.input_text && (
-          <InputSummary text={data.input_text as string} />
+        {(dataRow.input_text as string | null | undefined) && (
+          <InputSummary text={dataRow.input_text as string} />
         )}
 
         {/* ④ 주장 한눈에 보기 */}

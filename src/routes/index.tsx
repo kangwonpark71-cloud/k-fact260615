@@ -165,9 +165,12 @@ function Home() {
     setLoading(true);
     try {
       const sessionId = getSessionId();
-      const res = await analyze({
-        data: { url: mode === "url" ? url : undefined, text, sessionId },
-      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = await analyze({ data: { url: mode === "url" ? url : undefined, text, sessionId } }) as any;
+      // 분석 결과를 sessionStorage에 저장 → analysis 페이지에서 즉시 사용 (KV/DB 조회 불필요)
+      if (res.analysisResult) {
+        try { sessionStorage.setItem(`kfact:${res.id}`, JSON.stringify(res.analysisResult)); } catch {}
+      }
       navigate({ to: "/analysis/$id", params: { id: res.id } });
     } catch (e) {
       setErr(sanitizeServerError(e));
@@ -214,7 +217,11 @@ function Home() {
     setLoading(true);
     try {
       const sessionId = getSessionId();
-      const res = await analyze({ data: { url: trendUrl, text: "", sessionId } });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = await analyze({ data: { url: trendUrl, text: "", sessionId } }) as any;
+      if (res.analysisResult) {
+        try { sessionStorage.setItem(`kfact:${res.id}`, JSON.stringify(res.analysisResult)); } catch {}
+      }
       navigate({ to: "/analysis/$id", params: { id: res.id } });
     } catch (e) {
       setErr(sanitizeServerError(e));
