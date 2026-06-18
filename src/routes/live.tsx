@@ -51,7 +51,8 @@ type Utterance = {
 };
 
 /* ── 음성 인식 훅 ──
-   getUserMedia 완전 제거 → SpeechRecognition 단독 사용으로 모바일/PC 마이크 충돌 방지 */
+   getUserMedia 없이 SpeechRecognition 단독 사용.
+   service-not-allowed(Chrome 재시작 제한)는 권한 차단이 아닌 backoff 재시도로 처리. */
 type RecStatus = "idle" | "starting" | "listening";
 
 function useSpeechRecognition({
@@ -66,11 +67,12 @@ function useSpeechRecognition({
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
 
-  const recRef = useRef<any>(null);
+  const recRef      = useRef<any>(null);
   const listeningRef = useRef(false);
-  const retryRef = useRef(0);
+  const retryRef    = useRef(0);
+  const startRecRef = useRef<() => void>(() => {}); // onend 재시작용
 
-  const onFinalRef = useRef(onFinal);
+  const onFinalRef   = useRef(onFinal);
   const onInterimRef = useRef(onInterim);
   useEffect(() => { onFinalRef.current = onFinal; }, [onFinal]);
   useEffect(() => { onInterimRef.current = onInterim; }, [onInterim]);
@@ -97,78 +99,88 @@ function useSpeechRecognition({
     setMicError(null);
     setPermissionDenied(false);
     setRecStatus("starting");
-
-    const rec = new SR();
-    rec.lang = "ko-KR";
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.maxAlternatives = 1;
-
-    rec.onstart = () => {
-      retryRef.current = 0;
-      setRecStatus("listening");
-    };
-
-    rec.onresult = (e: any) => {
-      let interim = "";
-      let final = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) final += t;
-        else interim += t;
-      }
-      if (final) {
-        onInterimRef.current("");
-        onFinalRef.current(final.trim());
-      } else {
-        onInterimRef.current(interim);
-      }
-    };
-
-    rec.onerror = (e: any) => {
-      const err = e.error as string;
-      if (err === "not-allowed" || err === "service-not-allowed") {
-        setPermissionDenied(true);
-        doStop();
-      } else if (err === "audio-capture") {
-        setMicError("마이크를 찾을 수 없습니다. 마이크가 연결되어 있는지 확인하세요.");
-        doStop();
-      } else if (err === "network") {
-        setMicError("네트워크 오류입니다. 인터넷 연결을 확인하세요.");
-        doStop();
-      }
-      // aborted / no-speech → onend에서 자동 재시작
-    };
-
-    rec.onend = () => {
-      if (!listeningRef.current) { setRecStatus("idle"); return; }
-      retryRef.current += 1;
-      if (retryRef.current > 15) {
-        setMicError("음성 인식이 반복 중단됩니다. 페이지를 새로고침 후 다시 시도해 주세요.");
-        doStop();
-        return;
-      }
-      // 즉시 재시작 시 Chrome에서 InvalidStateError → 200ms 딜레이
-      setTimeout(() => {
-        if (!listeningRef.current || !recRef.current) return;
-        try { recRef.current.start(); } catch {
-          listeningRef.current = false;
-          setRecStatus("idle");
-        }
-      }, 200);
-    };
-
-    recRef.current = rec;
     listeningRef.current = true;
 
-    try {
-      rec.start();
-    } catch {
-      listeningRef.current = false;
-      recRef.current = null;
-      setRecStatus("idle");
-      setMicError("음성 인식을 시작할 수 없습니다. 페이지를 새로고침 후 다시 시도해 주세요.");
-    }
+    const startRec = () => {
+      const rec = new SR();
+      rec.lang = "ko-KR";
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+
+      rec.onstart = () => {
+        retryRef.current = 0;
+        setRecStatus("listening");
+      };
+
+      rec.onresult = (e: any) => {
+        let interim = "";
+        let final = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (e.results[i].isFinal) final += t;
+          else interim += t;
+        }
+        if (final) {
+          onInterimRef.current("");
+          onFinalRef.current(final.trim());
+        } else {
+          onInterimRef.current(interim);
+        }
+      };
+
+      rec.onerror = (e: any) => {
+        const err = e.error as string;
+        if (err === "not-allowed") {
+          // 실제 권한 거부만 차단으로 처리
+          setPermissionDenied(true);
+          doStop();
+        } else if (err === "audio-capture") {
+          setMicError("마이크를 찾을 수 없습니다. 마이크가 연결되어 있는지 확인하세요.");
+          doStop();
+        } else if (err === "network") {
+          setMicError("네트워크 오류입니다. 인터넷 연결을 확인하세요.");
+          doStop();
+        }
+        // service-not-allowed: Chrome 재시작 횟수 제한 → onend backoff로 재시도
+        // no-speech / aborted → onend에서 자동 재시작
+      };
+
+      rec.onend = () => {
+        if (!listeningRef.current) { setRecStatus("idle"); return; }
+        retryRef.current += 1;
+        if (retryRef.current > 20) {
+          setMicError("음성 인식이 반복 중단됩니다. 페이지를 새로고침 후 다시 시도해 주세요.");
+          doStop();
+          return;
+        }
+        // service-not-allowed 등 Chrome 재시작 제한 → backoff 후 새 인스턴스 재시작
+        const delay = Math.min(300 * Math.pow(1.5, retryRef.current - 1), 4000);
+        setTimeout(() => {
+          if (!listeningRef.current) return;
+          // 기존 인스턴스 재사용 우선
+          const cur = recRef.current;
+          if (cur) {
+            try { cur.start(); setRecStatus("listening"); return; } catch {}
+          }
+          // 실패 시 새 인스턴스로 재시작
+          startRecRef.current();
+        }, delay);
+      };
+
+      recRef.current = rec;
+      try {
+        rec.start();
+      } catch {
+        listeningRef.current = false;
+        recRef.current = null;
+        setRecStatus("idle");
+        setMicError("음성 인식을 시작할 수 없습니다. 페이지를 새로고침 후 다시 시도해 주세요.");
+      }
+    };
+
+    startRecRef.current = startRec;
+    startRec();
   }, [doStop]);
 
   return {
