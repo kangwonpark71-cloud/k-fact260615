@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
   ArrowRight, Link2, FileText, Sparkles, ShieldCheck,
@@ -35,6 +35,127 @@ const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; b
   "반대 근거 우세": { icon: XCircle,      color: "text-verdict-false",   bg: "bg-verdict-false/10 border-verdict-false/30",     label: "반대 근거 우세" },
   "미확인":         { icon: AlertCircle,  color: "text-verdict-unknown", bg: "bg-verdict-unknown/10 border-verdict-unknown/30", label: "미확인" },
 };
+
+/* ═══════════════════════════════════════════════════════
+   Hero 애니메이션 상수
+   ═══════════════════════════════════════════════════════ */
+const HERO_LINE1 = "판정하지 않습니다.";
+const HERO_LINE2 = "근거를 구조화합니다.";
+const CHAR_MS    = 42;   // 글자 당 딜레이 ms
+const L1_START   = 160;  // 첫 줄 시작
+const L2_START   = L1_START + HERO_LINE1.length * CHAR_MS + 180;
+const DESC_START = L2_START + HERO_LINE2.length * CHAR_MS + 230;
+
+/* 파티클 좌표 (고정값 — 리렌더 방지) */
+const HERO_PARTICLES = Object.freeze(
+  Array.from({ length: 18 }, (_, i) => ({
+    x: ((i * 13 + 7)  % 95) + 2,
+    y: ((i * 19 + 11) % 72) + 4,
+    sz: 1.4 + (i % 4) * 0.4,
+    delay: ((i * 0.26) % 3.8).toFixed(2),
+    dur:   (3.8 + (i % 6)).toFixed(1),
+  }))
+);
+
+/* ── 파티클 배경 ── */
+function ParticleField() {
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
+      {HERO_PARTICLES.map((p, i) => (
+        <span
+          key={i}
+          className="absolute rounded-full will-change-transform"
+          style={{
+            left: `${p.x}%`,
+            top:  `${p.y}%`,
+            width:  `${p.sz}px`,
+            height: `${p.sz}px`,
+            background: "var(--color-accent)",
+            animation: `particle-drift ${p.dur}s ${p.delay}s ease-in-out infinite`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ── 글자별 블러 등장 ── */
+function RevealChars({
+  text, startMs, className, extraClass,
+}: { text: string; startMs: number; className?: string; extraClass?: string }) {
+  return (
+    <span className={className} aria-label={text}>
+      {[...text].map((ch, i) => (
+        <span
+          key={i}
+          className={`char-anim inline-block will-change-transform ${extraClass ?? ""}`}
+          style={{
+            opacity: 0,
+            animation: `char-blur-in 0.48s cubic-bezier(0.22, 1, 0.36, 1) ${startMs + i * CHAR_MS}ms both`,
+          }}
+        >
+          {ch === " " ? " " : ch}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
+   Hero 섹션
+   ═══════════════════════════════════════════════════════ */
+function HeroSection() {
+  return (
+    <section className="relative text-center mb-8 sm:mb-14 py-4 sm:py-8 overflow-hidden">
+      <ParticleField />
+
+      {/* 배지 */}
+      <div
+        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass mb-5 sm:mb-8"
+        style={{ opacity: 0, animation: "badge-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 60ms both" }}
+      >
+        <Sparkles className="w-3.5 h-3.5 text-accent" />
+        <span className="text-xs tracking-wide text-muted-foreground">AI 사실검증 보조</span>
+      </div>
+
+      {/* 메인 헤드라인 */}
+      <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold leading-[1.12] mb-4 sm:mb-6 select-none">
+        <RevealChars
+          text={HERO_LINE1}
+          startMs={L1_START}
+          className="block"
+        />
+        <RevealChars
+          text={HERO_LINE2}
+          startMs={L2_START}
+          className="block hero-shimmer"
+        />
+      </h1>
+
+      {/* 스캔 라인 구분선 */}
+      <div
+        className="mx-auto mb-6 sm:mb-8 h-px origin-center"
+        style={{
+          maxWidth: 360,
+          background: "linear-gradient(90deg, transparent, var(--color-accent), transparent)",
+          opacity: 0,
+          animation: `draw-rule-fade 1.2s ease-out ${DESC_START - 180}ms both`,
+        }}
+      />
+
+      {/* 설명 텍스트 */}
+      <p
+        className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed"
+        style={{ opacity: 0, animation: `fade-slide-up 0.75s ease-out ${DESC_START}ms both` }}
+      >
+        기사나 게시물 본문을 넣으면&nbsp;
+        <strong className="text-foreground/80 font-semibold">핵심 주장 단위로 분리</strong>하고,
+        <br className="hidden sm:block" />
+        <strong className="text-foreground/80 font-semibold">지지·반박·미확인 근거</strong>와 신뢰도를 한 화면에 보여드립니다.
+      </p>
+    </section>
+  );
+}
 
 const QUICK_CHECK_DEBOUNCE = 2500;
 const QUICK_CHECK_MIN = 80;
@@ -237,22 +358,7 @@ function Home() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-36 sm:pb-32">
         {/* Hero */}
-        <section className="text-center mb-8 sm:mb-12">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass mb-5 sm:mb-6">
-            <Sparkles className="w-3.5 h-3.5 text-accent" />
-            <span className="text-xs sm:text-xs tracking-wide text-muted-foreground">AI 사실검증 보조</span>
-          </div>
-          <h1 className="text-2xl sm:text-4xl md:text-5xl font-bold leading-[1.15] mb-4 sm:mb-5">
-            판정하지 않습니다.
-            <br />
-            <span className="gradient-text">근거를 구조화합니다.</span>
-          </h1>
-          <p className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            기사나 게시물 본문을 넣으면 핵심 주장 단위로 분리하고,
-            <br className="hidden md:block" />
-            지지·반박·미확인 근거와 신뢰도를 한 화면에 보여드립니다.
-          </p>
-        </section>
+        <HeroSection />
 
         {/* 메인 2열 레이아웃: 좌=입력폼, 우=실시간 뉴스 */}
         <div className="grid xl:grid-cols-[1fr_420px] gap-6 items-start">
@@ -712,17 +818,17 @@ function Home() {
 
         {/* Features */}
         <section className="grid sm:grid-cols-3 gap-4 mt-12 sm:mt-16">
-          <Feature
+          <Feature index={0}
             Icon={Search}
             title="주장 단위 분리"
             desc="기사 전체가 아닌 검증 가능한 핵심 주장 3~7개를 따로 뽑아냅니다."
           />
-          <Feature
+          <Feature index={1}
             Icon={Scale}
             title="지지·반박 양면 평가"
             desc="지지 근거와 반박 근거, 그리고 확인 불가능한 항목을 동시에 표시합니다."
           />
-          <Feature
+          <Feature index={2}
             Icon={ShieldCheck}
             title="단정 대신 신뢰도"
             desc="허위 판정 리스크를 줄이기 위해 모든 결과를 확률/근거 기반으로 표현합니다."
@@ -781,17 +887,48 @@ function TabButton({
 }
 
 function Feature({
-  Icon,
-  title,
-  desc,
+  Icon, title, desc, index,
 }: {
   Icon: typeof Search;
   title: string;
   desc: string;
+  index: number;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); io.disconnect(); } },
+      { threshold: 0.15 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
   return (
-    <div className="glass rounded-xl p-5 sm:p-5 flex gap-4 sm:block">
-      <Icon className="w-6 h-6 sm:w-5 sm:h-5 text-primary sm:mb-3 shrink-0 mt-0.5" />
+    <div
+      ref={ref}
+      className="glass rounded-xl p-5 sm:p-5 flex gap-4 sm:block reveal-item"
+      style={visible ? {
+        opacity: 1,
+        transform: "none",
+        transitionDelay: `${index * 120}ms`,
+      } : {
+        transitionDelay: `${index * 120}ms`,
+      }}
+      data-visible={visible ? "true" : undefined}
+    >
+      <div className="shrink-0 sm:mb-3">
+        <div
+          className="w-9 h-9 sm:w-8 sm:h-8 rounded-lg border border-primary/20 bg-primary/8 flex items-center justify-center"
+          style={visible ? { animation: `float-pulse 3s ${index * 400}ms ease-in-out infinite` } : undefined}
+        >
+          <Icon className="w-5 h-5 sm:w-4 sm:h-4 text-primary" />
+        </div>
+      </div>
       <div>
         <h3 className="font-semibold text-base sm:text-base mb-1.5">{title}</h3>
         <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
