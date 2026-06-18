@@ -132,9 +132,25 @@ function useSpeechRecognition({
       rec.onerror = (e: any) => {
         const err = e.error as string;
         if (err === "not-allowed") {
-          // 실제 권한 거부만 차단으로 처리
-          setPermissionDenied(true);
-          doStop();
+          // Permissions API로 실제 denied 여부 이중 확인
+          // → denied: 진짜 권한 차단 UI 표시
+          // → granted/prompt: Chrome 일시 오류 → "다시 눌러 시도" 안내
+          (async () => {
+            try {
+              const perm = await navigator.permissions.query({ name: "microphone" as PermissionName });
+              if (perm.state === "denied") {
+                setPermissionDenied(true);
+              } else {
+                setMicError("마이크를 일시적으로 사용할 수 없습니다. 마이크 버튼을 다시 눌러 시도하세요.");
+              }
+            } catch {
+              // Permissions API 미지원(Firefox 등) → 일단 차단 UI
+              setPermissionDenied(true);
+            }
+            doStop();
+          })();
+        } else if (err === "service-not-allowed") {
+          // Chrome 재시작 횟수 제한 → onend backoff로 재시도 (권한 차단 아님)
         } else if (err === "audio-capture") {
           setMicError("마이크를 찾을 수 없습니다. 마이크가 연결되어 있는지 확인하세요.");
           doStop();
@@ -142,7 +158,6 @@ function useSpeechRecognition({
           setMicError("네트워크 오류입니다. 인터넷 연결을 확인하세요.");
           doStop();
         }
-        // service-not-allowed: Chrome 재시작 횟수 제한 → onend backoff로 재시도
         // no-speech / aborted → onend에서 자동 재시작
       };
 
