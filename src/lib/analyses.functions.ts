@@ -1068,6 +1068,89 @@ ${data.text.slice(0, 3000)}
     }
   });
 
+/* ═══════════════════════════════════════════════════════
+   쉽게 보기 — SIMPLIFY_PROMPT + ANALOGY_PROMPT
+   ═══════════════════════════════════════════════════════ */
+const SIMPLIFY_SYSTEM = `당신은 한국 중고등학생을 위한 팩트체크 해설사입니다.
+복잡한 분석 결과를 아주 쉽고 친근하게, ~예요/~해요 말투로 설명합니다.
+전문용어 없이, 짧은 문장으로, 공감 가는 비유를 활용합니다.
+모든 설명은 반드시 JSON 형식으로 반환합니다.`;
+
+const SimplifiedClaimSchema = z.object({
+  index:            z.number().int(),
+  friendly_verdict: z.string().max(40),       // 예: "사실이에요!", "틀린 내용이에요"
+  analogy:          z.string().max(250),       // 10대 일상 비유 1문장
+  simple_reasoning: z.string().max(400),       // 쉬운 판정 이유
+  simple_supporting: z.array(z.string().max(160)).max(4),
+  simple_counter:    z.array(z.string().max(160)).max(4),
+});
+
+const SimplifiedResultSchema = z.object({
+  simple_summary: z.string().max(300),
+  claims:         z.array(SimplifiedClaimSchema),
+});
+
+export type SimplifiedClaim  = z.infer<typeof SimplifiedClaimSchema>;
+export type SimplifiedResult = z.infer<typeof SimplifiedResultSchema>;
+
+export const simplifyAnalysis = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({
+      summary: z.string().default(""),
+      claims: z.array(z.object({
+        claim:             z.string(),
+        verdict:           z.string(),
+        confidence:        z.number(),
+        reasoning:         z.string(),
+        supporting_points: z.array(z.string()),
+        counter_points:    z.array(z.string()),
+      })),
+    }).parse(input),
+  )
+  .handler(async ({ data }): Promise<SimplifiedResult> => {
+    const claimsJson = JSON.stringify(
+      data.claims.map((c, i) => ({
+        index: i,
+        claim: c.claim,
+        verdict: c.verdict,
+        confidence: c.confidence,
+        reasoning: c.reasoning,
+        supporting: c.supporting_points,
+        counter: c.counter_points,
+      })),
+      null, 2,
+    ).slice(0, 4000);
+
+    const prompt = `다음 팩트체크 결과를 한국 중고등학생이 이해하기 쉽도록 변환해줘.
+
+원칙:
+1. 한자어·전문용어 → 일상 단어 (예: "검증" → "확인", "근거" → "이유", "우세" → "더 많아요")
+2. 한 문장 20단어 이내, "~예요/~해요" 친근한 말투
+3. 숫자는 유지하되 의미를 쉽게 풀어서 설명
+4. 각 주장마다 10대 일상 비유 한 문장 (analogy 필드):
+   예) "이건 친구가 '시험 취소됐대'라고 했는데 선생님한테 확인 안 한 것과 비슷해요"
+5. friendly_verdict: 판정을 아주 쉽게
+   - 사실 → "맞는 내용이에요 ✓"
+   - 부분 사실 → "일부만 맞아요 ◑"
+   - 근거 부족 → "확인하기 어려워요 ?"
+   - 반대 근거 우세 → "틀린 내용이에요 ✗"
+   - 미확인 → "아직 모르겠어요 …"
+6. 출처 이름 친근하게: "Reuters" → "외국 유명 뉴스", "WHO" → "세계 건강 전문가들"
+7. simple_summary도 같은 기준으로 쉽게
+
+전체 요약: "${data.summary}"
+
+주장 목록 (JSON):
+${claimsJson}`;
+
+    return generateWithFallback({
+      schema: SimplifiedResultSchema,
+      system: SIMPLIFY_SYSTEM,
+      prompt,
+      temperature: 0.45,
+    });
+  });
+
 export const claimAnonymousAnalyses = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ sessionId: z.string().min(1) }).parse(input))
   .handler(async ({ data }) => {

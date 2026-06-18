@@ -9,7 +9,7 @@ import {
   Loader2,
 } from "lucide-react";
 
-import { getAnalysis, continueAnalysis } from "@/lib/analyses.functions";
+import { getAnalysis, continueAnalysis, simplifyAnalysis, type SimplifiedClaim, type SimplifiedResult } from "@/lib/analyses.functions";
 import { getSessionId } from "@/lib/session";
 import { SiteHeader, BottomNav } from "@/components/SiteHeader";
 import { VerdictBadge } from "@/components/VerdictBadge";
@@ -69,14 +69,64 @@ const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; b
   "미확인":         { icon: AlertCircle,  color: "text-verdict-unknown", bg: "bg-verdict-unknown/10", border: "border-verdict-unknown/30", label: "미확인" },
 };
 
+/* ── 신뢰도 직관 레이블 ── */
+function getConfidenceLabel(v: number): { emoji: string; text: string; color: string } {
+  if (v >= 86) return { emoji: "✅", text: "아주 믿을만해요",         color: "text-verdict-true" };
+  if (v >= 71) return { emoji: "😊", text: "꽤 믿을만해요",           color: "text-verdict-true" };
+  if (v >= 51) return { emoji: "🤔", text: "어느 정도 맞을 수 있어요", color: "text-verdict-partial" };
+  if (v >= 31) return { emoji: "😕", text: "조금 불확실해요",          color: "text-verdict-unknown" };
+  return            { emoji: "😰", text: "거의 확인 안 됐어요",       color: "text-verdict-false" };
+}
+
+/* ── 읽기 모드 토글 ── */
+function ReadingModeToggle({
+  mode, onChange, loading,
+}: { mode: "detailed" | "simple"; onChange: (m: "detailed" | "simple") => void; loading: boolean }) {
+  return (
+    <div className="flex items-center gap-1 p-1 rounded-xl bg-surface-2 w-fit shadow-sm">
+      <button
+        type="button"
+        onClick={() => onChange("detailed")}
+        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+          mode === "detailed"
+            ? "bg-surface text-foreground shadow-sm border border-border/40"
+            : "text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        📋 자세히 보기
+      </button>
+      <button
+        type="button"
+        disabled={loading}
+        onClick={() => onChange("simple")}
+        className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
+          mode === "simple"
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
+        } disabled:opacity-50`}
+      >
+        {loading
+          ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 변환 중…</>
+          : <>👀 쉽게 보기</>}
+      </button>
+    </div>
+  );
+}
+
 function AnalysisPage() {
   const { id } = Route.useParams();
   const fetchAnalysis = useServerFn(getAnalysis);
   const runPhase2 = useServerFn(continueAnalysis);
+  const runSimplify = useServerFn(simplifyAnalysis);
   const [sessionId, setSessionId] = useState<string>("");
   useEffect(() => { setSessionId(getSessionId()); }, []);
   const [phase2Result, setPhase2Result] = useState<Record<string, unknown> | null>(null);
   const [phase2Loading, setPhase2Loading] = useState(false);
+
+  /* 쉽게 보기 상태 */
+  const [readingMode, setReadingMode] = useState<"detailed" | "simple">("detailed");
+  const [simplifiedData, setSimplifiedData] = useState<SimplifiedResult | null>(null);
+  const [simplifyLoading, setSimplifyLoading] = useState(false);
 
   // sessionStorage에서 분析 결果를 직접 읽음 (네비게이션 시 저장된 서버 결과)
   const [preloadedResult] = useState<Record<string, unknown> | null>(() => {
@@ -181,6 +231,31 @@ function AnalysisPage() {
   // 영토·주권 분쟁 주장 여부 — 고지 배너 표시 여부 결정
   const hasDisputedTerritory = claims.some(c => c.claim_type === "DISPUTED_TERRITORY");
 
+  /* 읽기 모드 전환 핸들러 */
+  const handleReadingMode = async (m: "detailed" | "simple") => {
+    setReadingMode(m);
+    if (m === "simple" && !simplifiedData && !simplifyLoading) {
+      setSimplifyLoading(true);
+      try {
+        const result = await runSimplify({
+          data: {
+            summary: (dataRow.summary as string | undefined) ?? "",
+            claims: claims.map(c => ({
+              claim:             c.claim,
+              verdict:           c.verdict,
+              confidence:        c.confidence,
+              reasoning:         c.reasoning,
+              supporting_points: c.supporting_points,
+              counter_points:    c.counter_points,
+            })),
+          },
+        });
+        setSimplifiedData(result);
+      } catch { /* 실패 시 원본 표시 유지 */ }
+      finally { setSimplifyLoading(false); }
+    }
+  };
+
   return (
     <div className="min-h-screen pb-16 sm:pb-0">
       <SiteHeader />
@@ -265,16 +340,55 @@ function AnalysisPage() {
           </div>
         )}
 
+        {/* ④ 읽기 모드 토글 */}
+        {claims.length > 0 && (
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+            <ReadingModeToggle
+              mode={readingMode}
+              onChange={handleReadingMode}
+              loading={simplifyLoading}
+            />
+            {readingMode === "simple" && simplifiedData && (
+              <div className="text-xs text-muted-foreground bg-surface-2/60 border border-border/40 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                <span className="text-base">👀</span>
+                중고등학생도 이해하기 쉬운 말로 바꿔드렸어요!
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 쉽게 보기 - 전체 요약 */}
+        {readingMode === "simple" && simplifiedData?.simple_summary && (
+          <div className="border border-primary/30 bg-primary/5 rounded-xl px-4 py-3 flex items-start gap-3">
+            <span className="text-xl shrink-0">💡</span>
+            <div>
+              <p className="text-[10px] font-bold text-primary uppercase tracking-widest mb-1">한 줄 요약 (쉬운 버전)</p>
+              <p className="text-sm text-foreground/90 leading-relaxed">{simplifiedData.simple_summary}</p>
+            </div>
+          </div>
+        )}
+
         {/* ④ 주장 한눈에 보기 */}
         {claims.length > 0 && <ClaimOverview claims={claims} phase2Loading={phase2Loading} />}
 
         {/* ⑤ 상세 주장 카드 */}
         <section className="space-y-3">
-          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
-            주장별 상세 분析
-          </h2>
+          <div className="flex items-center justify-between px-1">
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              주장별 상세 분석
+            </h2>
+            {readingMode === "simple" && (
+              <span className="text-[10px] text-primary/70 font-medium">👀 쉬운 설명 모드</span>
+            )}
+          </div>
           {claims.map((c, i) => (
-            <ClaimCard key={i} index={i + 1} claim={c} reviewing={phase2Loading && c.verdict !== "반대 근거 우세"} />
+            <ClaimCard
+              key={i}
+              index={i + 1}
+              claim={c}
+              reviewing={phase2Loading && c.verdict !== "반대 근거 우세"}
+              simpleData={readingMode === "simple" ? (simplifiedData?.claims[i] ?? null) : null}
+            />
           ))}
         </section>
 
@@ -717,8 +831,24 @@ function getVerdictDisplay(claim: Claim): { verdictLabel: string; basisLabel: st
   return { verdictLabel: claim.verdict, basisLabel: null };
 }
 
+/* ── 신뢰도 이모지 + 텍스트 표시 ── */
+function ConfidenceEmoji({ value, large }: { value: number; large?: boolean }) {
+  const { emoji, text, color } = getConfidenceLabel(value);
+  return (
+    <span className={`inline-flex items-center gap-1 font-medium ${color} ${large ? "text-sm" : "text-xs"}`}>
+      <span>{emoji}</span>
+      <span className={large ? "" : "hidden sm:inline"}>{text}</span>
+    </span>
+  );
+}
+
 /* ── 상세 클레임 카드 (접기/펼치기) ── */
-function ClaimCard({ index, claim, reviewing }: { index: number; claim: Claim; reviewing?: boolean }) {
+function ClaimCard({ index, claim, reviewing, simpleData }: {
+  index: number;
+  claim: Claim;
+  reviewing?: boolean;
+  simpleData?: SimplifiedClaim | null;
+}) {
   const [expanded, setExpanded] = useState(false);
   const { verdictLabel, basisLabel } = getVerdictDisplay(claim);
   const isOpinion = claim.judgment_basis === "의견/견해";
@@ -726,6 +856,7 @@ function ClaimCard({ index, claim, reviewing }: { index: number; claim: Claim; r
     ? { icon: HelpCircle, color: "text-muted-foreground", bg: "bg-surface-2", border: "border-border/40", label: "의견/견해" }
     : (VERDICT_META[verdictLabel] ?? VERDICT_META["미확인"]);
   const Icon = meta.icon;
+  const isSimple = !!simpleData;
 
   const hasDetails =
     claim.reasoning ||
@@ -738,6 +869,17 @@ function ClaimCard({ index, claim, reviewing }: { index: number; claim: Claim; r
 
   return (
     <article className={`border-l-[3px] ${meta.border} border border-border/50 bg-surface shadow-[var(--shadow-card)]`}>
+
+      {/* ── 쉬운 모드: 아날로지 비유 배너 ── */}
+      {isSimple && simpleData?.analogy && (
+        <div className="mx-4 sm:mx-5 mt-4 mb-0 flex items-start gap-2.5 bg-primary/6 border border-primary/20 rounded-lg px-3 py-2.5">
+          <span className="text-base shrink-0">🎯</span>
+          <p className="text-xs text-foreground/80 leading-relaxed italic">
+            {simpleData.analogy}
+          </p>
+        </div>
+      )}
+
       {/* 헤더 (항상 표시) */}
       <button
         type="button"
@@ -751,31 +893,46 @@ function ClaimCard({ index, claim, reviewing }: { index: number; claim: Claim; r
           </span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium leading-snug mb-1.5 pr-4">{claim.claim}</p>
-            {/* Stage 2 SPO 구조 */}
-            {(claim.subject || claim.predicate || claim.object) && (
+
+            {/* 자세히 모드: SPO 구조 */}
+            {!isSimple && (claim.subject || claim.predicate || claim.object) && (
               <div className="flex items-center gap-1.5 flex-wrap mb-2">
                 {claim.subject   && <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground/70">주어: {claim.subject}</span>}
                 {claim.predicate && <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground/70">서술: {claim.predicate}</span>}
                 {claim.object    && <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground/70">대상: {claim.object}</span>}
               </div>
             )}
+
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-              {/* 주장 유형 배지 */}
-              <span className={`font-mono text-[9px] font-bold border px-1.5 py-0.5 rounded-sm uppercase tracking-widest ${claimTypeMeta.color}`}>
-                {claimTypeMeta.label}
-              </span>
+              {/* 주장 유형 배지 (자세히 모드만) */}
+              {!isSimple && (
+                <span className={`font-mono text-[9px] font-bold border px-1.5 py-0.5 rounded-sm uppercase tracking-widest ${claimTypeMeta.color}`}>
+                  {claimTypeMeta.label}
+                </span>
+              )}
               {/* 판정 기준 접두어 */}
               {basisLabel && (
                 <span className="font-mono text-[9px] font-bold border border-verdict-partial/50 text-verdict-partial bg-verdict-partial/10 px-1.5 py-0.5 rounded-sm uppercase tracking-widest">
                   {basisLabel}
                 </span>
               )}
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 border text-xs font-semibold rounded-sm ${meta.bg} ${meta.border} ${meta.color}`}>
-                <Icon className="w-3 h-3" /> {isOpinion ? "의견/견해" : meta.label}
-              </span>
+
+              {/* 쉬운 모드: friendly_verdict / 자세히 모드: meta 배지 */}
+              {isSimple && simpleData?.friendly_verdict ? (
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 border text-sm font-bold rounded-lg ${meta.bg} ${meta.border} ${meta.color}`}>
+                  {simpleData.friendly_verdict}
+                </span>
+              ) : (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 border text-xs font-semibold rounded-sm ${meta.bg} ${meta.border} ${meta.color}`}>
+                  <Icon className="w-3 h-3" /> {isOpinion ? "의견/견해" : meta.label}
+                </span>
+              )}
+
               {reviewing
                 ? <span className="inline-flex items-center gap-1 text-[10px] text-primary/70 font-medium"><Loader2 className="w-3 h-3 animate-spin" />심층 검토 중…</span>
-                : <ConfidenceBar value={claim.confidence} compact />}
+                : isSimple
+                  ? <ConfidenceEmoji value={claim.confidence} />
+                  : <ConfidenceBar value={claim.confidence} compact />}
             </div>
           </div>
           {hasDetails && (
@@ -789,40 +946,82 @@ function ClaimCard({ index, claim, reviewing }: { index: number; claim: Claim; r
       {/* 상세 내용 (펼쳤을 때) */}
       {expanded && (
         <div className="px-4 sm:px-5 pb-4 pt-1 border-t border-border/40 space-y-3">
-          {claim.reasoning && (
+
+          {/* 쉬운 모드: simple_reasoning */}
+          {isSimple && simpleData?.simple_reasoning && (
+            <div className="flex items-start gap-2 pl-9">
+              <p className="text-sm text-foreground/85 leading-relaxed font-medium">
+                {simpleData.simple_reasoning}
+              </p>
+            </div>
+          )}
+
+          {/* 자세히 모드: 원본 reasoning */}
+          {!isSimple && claim.reasoning && (
             <p className="text-sm text-muted-foreground leading-relaxed pl-9">{claim.reasoning}</p>
           )}
-          <div className="pl-9 grid sm:grid-cols-2 gap-2.5">
-            {claim.supporting_points.length > 0 && (
-              <PointList Icon={ThumbsUp} title="지지 근거" items={claim.supporting_points} tone="true"
-                links={claim.supporting_points.map(p => `https://news.google.com/search?q=${encodeURIComponent(p.slice(0, 70))}&hl=ko&gl=KR&ceid=KR:ko`)}
-              />
-            )}
-            {claim.counter_points.length > 0 && (
-              <PointList Icon={ThumbsDown} title="반박 가능성" items={claim.counter_points} tone="false"
-                links={claim.counter_points.map(p => `https://news.google.com/search?q=${encodeURIComponent(p.slice(0, 70))}&hl=ko&gl=KR&ceid=KR:ko`)}
-              />
-            )}
-            {(claim.evidence_urls ?? []).length > 0 && (
-              <PointList Icon={ExternalLink} title="Tavily 실시간 검색 근거" items={claim.evidence_urls!} tone="weak"
-                links={claim.evidence_urls}
-              />
-            )}
-            {claim.unknowns.length > 0 && (
-              <PointList Icon={AlertTriangle} title="미확인 항목" items={claim.unknowns} tone="unknown"
-                links={claim.unknowns.map(u => `https://www.google.com/search?q=${encodeURIComponent(u.slice(0, 70))}`)}
-              />
-            )}
-            {claim.suggested_sources.length > 0 && (
-              <PointList
-                Icon={BookOpen}
-                title="확인 권장 출처"
-                items={claim.suggested_sources.map((s) => `${s.name}${s.type && s.type !== "일반" ? ` (${s.type})` : ""}`)}
-                tone="weak"
-                links={claim.suggested_sources.map(s => generateSourceUrl(s.name, s.type, claim.claim))}
-              />
-            )}
-          </div>
+
+          {/* 쉬운 모드: simple 근거 목록 */}
+          {isSimple ? (
+            <div className="pl-9 grid sm:grid-cols-2 gap-2.5">
+              {(simpleData?.simple_supporting ?? []).length > 0 && (
+                <PointList Icon={ThumbsUp} title="😊 이래서 맞는 것 같아요" items={simpleData!.simple_supporting} tone="true"
+                  links={simpleData!.simple_supporting.map(p => `https://news.google.com/search?q=${encodeURIComponent(p.slice(0, 70))}&hl=ko&gl=KR&ceid=KR:ko`)}
+                />
+              )}
+              {(simpleData?.simple_counter ?? []).length > 0 && (
+                <PointList Icon={ThumbsDown} title="🤔 이래서 의심스러워요" items={simpleData!.simple_counter} tone="false"
+                  links={simpleData!.simple_counter.map(p => `https://news.google.com/search?q=${encodeURIComponent(p.slice(0, 70))}&hl=ko&gl=KR&ceid=KR:ko`)}
+                />
+              )}
+              {/* 신뢰도 시각화 */}
+              <div className="sm:col-span-2 flex items-center gap-3 py-2">
+                <span className="text-xs text-muted-foreground">신뢰도</span>
+                <div className="flex-1 h-2.5 rounded-full bg-border/40 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-700 ${
+                      claim.confidence >= 70 ? "bg-verdict-true" :
+                      claim.confidence >= 40 ? "bg-verdict-partial" : "bg-verdict-false"
+                    }`}
+                    style={{ width: `${claim.confidence}%` }}
+                  />
+                </div>
+                <ConfidenceEmoji value={claim.confidence} large />
+              </div>
+            </div>
+          ) : (
+            <div className="pl-9 grid sm:grid-cols-2 gap-2.5">
+              {claim.supporting_points.length > 0 && (
+                <PointList Icon={ThumbsUp} title="지지 근거" items={claim.supporting_points} tone="true"
+                  links={claim.supporting_points.map(p => `https://news.google.com/search?q=${encodeURIComponent(p.slice(0, 70))}&hl=ko&gl=KR&ceid=KR:ko`)}
+                />
+              )}
+              {claim.counter_points.length > 0 && (
+                <PointList Icon={ThumbsDown} title="반박 가능성" items={claim.counter_points} tone="false"
+                  links={claim.counter_points.map(p => `https://news.google.com/search?q=${encodeURIComponent(p.slice(0, 70))}&hl=ko&gl=KR&ceid=KR:ko`)}
+                />
+              )}
+              {(claim.evidence_urls ?? []).length > 0 && (
+                <PointList Icon={ExternalLink} title="Tavily 실시간 검색 근거" items={claim.evidence_urls!} tone="weak"
+                  links={claim.evidence_urls}
+                />
+              )}
+              {claim.unknowns.length > 0 && (
+                <PointList Icon={AlertTriangle} title="미확인 항목" items={claim.unknowns} tone="unknown"
+                  links={claim.unknowns.map(u => `https://www.google.com/search?q=${encodeURIComponent(u.slice(0, 70))}`)}
+                />
+              )}
+              {claim.suggested_sources.length > 0 && (
+                <PointList
+                  Icon={BookOpen}
+                  title="확인 권장 출처"
+                  items={claim.suggested_sources.map((s) => `${s.name}${s.type && s.type !== "일반" ? ` (${s.type})` : ""}`)}
+                  tone="weak"
+                  links={claim.suggested_sources.map(s => generateSourceUrl(s.name, s.type, claim.claim))}
+                />
+              )}
+            </div>
+          )}
         </div>
       )}
     </article>
