@@ -264,7 +264,9 @@ async function generateWithFallback<T extends z.ZodType>(params: {
 }): Promise<z.infer<T>> {
   const { keys, dbError } = await getAllActiveKeys();
 
-  if (keys.length === 0) {
+  // keys가 없어도 CF AI 바인딩 폴백이 있으면 계속 진행
+  const cfAIBinding = getCfAIBinding() as any;
+  if (keys.length === 0 && !cfAIBinding) {
     const hint = dbError ? ` (${dbError})` : "";
     throw new Error(
       `등록된 AI API 키가 없습니다. 관리자 대시보드에서 API 키를 등록하거나 환경 변수를 설정하세요.${hint}`,
@@ -292,8 +294,6 @@ async function generateWithFallback<T extends z.ZodType>(params: {
   }
 
   // 최종 폴백: CF Workers AI 네이티브 바인딩
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cfAIBinding = getCfAIBinding() as any;
   if (cfAIBinding) {
     const cfModels = [
       "@cf/meta/llama-3.2-3b-instruct",        // 경량, json_object 지원
