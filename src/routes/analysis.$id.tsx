@@ -472,9 +472,9 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
   return (
     <div className="border border-border/50 bg-surface overflow-hidden">
       <div className="px-4 sm:px-5 py-2.5 border-b border-border/30 flex items-center gap-2 bg-surface-2/40">
-        <span className="font-mono text-[9px] font-bold text-muted-foreground/60 uppercase tracking-widest">AI 파이프라인 분석</span>
+        <span className="font-mono text-[13px] font-bold text-muted-foreground/60 uppercase tracking-widest">AI 파이프라인 분석</span>
         {bias_type && bias_type !== "중립" && (
-          <span className="font-mono text-[9px] font-bold text-verdict-partial border border-verdict-partial/30 px-2 py-0.5 rounded-sm ml-auto uppercase tracking-widest">
+          <span className="font-mono text-[13px] font-bold text-verdict-partial border border-verdict-partial/30 px-2 py-0.5 rounded-sm ml-auto uppercase tracking-widest">
             {bias_type} 편향
           </span>
         )}
@@ -484,25 +484,25 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
         {fpct > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-[11px] text-muted-foreground font-medium">문체 가짜 가능성 지수</span>
-              <span className={`font-mono text-xs font-bold border rounded-sm px-1.5 py-0.5 ml-auto ${fpColor}`}>{fpct}%</span>
+              <span className="text-[17px] text-muted-foreground font-medium">문체 가짜 가능성 지수</span>
+              <span className={`font-mono text-[18px] font-bold border rounded-sm px-1.5 py-0.5 ml-auto ${fpColor}`}>{fpct}%</span>
             </div>
             <div className="h-1 bg-surface-2 overflow-hidden">
               <div className={`h-full ${barColor} transition-all`} style={{ width: `${fpct}%` }} />
             </div>
-            <p className="text-[10px] text-muted-foreground/50 mt-1">LIAR Dataset / FakeNewsNet 패턴 기반 TF-IDF 분석</p>
+            <p className="text-[15px] text-muted-foreground/50 mt-1">LIAR Dataset / FakeNewsNet 패턴 기반 TF-IDF 분석</p>
           </div>
         )}
 
         {/* Stage 1: 경고 신호 */}
         {hasSignals && (
           <div>
-            <p className="text-[11px] font-semibold text-muted-foreground mb-1.5">감지된 문체 신호</p>
+            <p className="text-[17px] font-semibold text-muted-foreground mb-1.5">감지된 문체 신호</p>
             <div className="space-y-1">
               {(style_signals ?? []).map((s, i) => (
                 <div key={i} className="flex items-start gap-1.5">
-                  <span className="text-[10px] text-orange-400 shrink-0 mt-0.5">•</span>
-                  <span className="text-[11px] text-muted-foreground/80 leading-relaxed">{s}</span>
+                  <span className="text-[15px] text-orange-400 shrink-0 mt-0.5">•</span>
+                  <span className="text-[17px] text-muted-foreground/80 leading-relaxed">{s}</span>
                 </div>
               ))}
             </div>
@@ -512,11 +512,11 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
         {/* Stage 3: Tavily 증거 URL */}
         {hasUrls && (
           <div>
-            <p className="text-[11px] font-semibold text-muted-foreground mb-1.5">Stage 3 — Tavily 실시간 검색 근거</p>
+            <p className="text-[17px] font-semibold text-muted-foreground mb-1.5">Stage 3 — Tavily 실시간 검색 근거</p>
             <div className="space-y-1">
               {(evidence_urls ?? []).map((url, i) => (
                 <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-[11px] text-primary/70 hover:text-primary transition-colors group truncate">
+                  className="flex items-center gap-1.5 text-[17px] text-primary/70 hover:text-primary transition-colors group truncate">
                   <ExternalLink className="w-3 h-3 shrink-0 opacity-50 group-hover:opacity-100" />
                   <span className="truncate">{url}</span>
                 </a>
