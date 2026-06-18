@@ -9,7 +9,7 @@ import {
   Loader2,
 } from "lucide-react";
 
-import { getAnalysis } from "@/lib/analyses.functions";
+import { getAnalysis, continueAnalysis } from "@/lib/analyses.functions";
 import { getSessionId } from "@/lib/session";
 import { SiteHeader, BottomNav } from "@/components/SiteHeader";
 import { VerdictBadge } from "@/components/VerdictBadge";
@@ -68,8 +68,11 @@ const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; b
 function AnalysisPage() {
   const { id } = Route.useParams();
   const fetchAnalysis = useServerFn(getAnalysis);
+  const runPhase2 = useServerFn(continueAnalysis);
   const [sessionId, setSessionId] = useState<string>("");
   useEffect(() => { setSessionId(getSessionId()); }, []);
+  const [phase2Result, setPhase2Result] = useState<Record<string, unknown> | null>(null);
+  const [phase2Loading, setPhase2Loading] = useState(false);
 
   // sessionStorage에서 분析 결果를 직접 읽음 (네비게이션 시 저장된 서버 결과)
   const [preloadedResult] = useState<Record<string, unknown> | null>(() => {
@@ -101,13 +104,26 @@ function AnalysisPage() {
     },
   });
 
-  const data = preloadedResult ?? (fetchedData as Record<string, unknown> | undefined);
+  const data = phase2Result ?? preloadedResult ?? (fetchedData as Record<string, unknown> | undefined);
   const dataRow = data ?? {} as Record<string, unknown>;
   const status = data?.status as string | undefined;
   const isTimedOut = pollCount >= 20 && status === "pending";
   const isFailed = status === "failed";
   // preloadedResult가 있으면 절대 pending/loading으로 빠지지 않음
   const isPendingStatus = !preloadedResult && (isLoading || isError || !data || status === "pending");
+
+  // Phase 2 자동 트리거: Phase 1 완료 후 sessionId 확보 시 심층 분析 시작
+  useEffect(() => {
+    if (!sessionId || status !== "phase1_complete" || phase2Loading || phase2Result) return;
+    setPhase2Loading(true);
+    const inputText = (dataRow.input_text as string | undefined) ?? "";
+    const srcUrl = (dataRow.source_url as string | null | undefined) ?? undefined;
+    runPhase2({ data: { id, sessionId, text: inputText, sourceUrl: srcUrl } })
+      .then(r => setPhase2Result(r as Record<string, unknown>))
+      .catch(() => {})
+      .finally(() => setPhase2Loading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, status]);
 
   // pending/failed/timeout → 메시지창(배너) 표시
   if (isPendingStatus || isFailed || isTimedOut) {
@@ -200,16 +216,27 @@ function AnalysisPage() {
           <InputSummary text={dataRow.input_text as string} />
         )}
 
+        {/* Phase 2 심층 분析 진행 중 배너 */}
+        {phase2Loading && (
+          <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl border border-primary/30 bg-primary/5">
+            <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground/90">Tavily 심층 검색 중…</p>
+              <p className="text-xs text-muted-foreground">실시간 뉴스·공식 자료로 미확인·사실 항목을 재검증하고 있습니다.</p>
+            </div>
+          </div>
+        )}
+
         {/* ④ 주장 한눈에 보기 */}
-        {claims.length > 0 && <ClaimOverview claims={claims} />}
+        {claims.length > 0 && <ClaimOverview claims={claims} phase2Loading={phase2Loading} />}
 
         {/* ⑤ 상세 주장 카드 */}
         <section className="space-y-3">
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
-            주장별 상세 분석
+            주장별 상세 분析
           </h2>
           {claims.map((c, i) => (
-            <ClaimCard key={i} index={i + 1} claim={c} />
+            <ClaimCard key={i} index={i + 1} claim={c} reviewing={phase2Loading && c.verdict !== "반대 근거 우세"} />
           ))}
         </section>
 
@@ -405,7 +432,7 @@ function EvidenceLinks({
 }
 
 /* ── 주장 한눈에 보기 ── */
-function ClaimOverview({ claims }: { claims: Claim[] }) {
+function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loading?: boolean }) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [showUnknown, setShowUnknown] = useState(false);
 
@@ -569,7 +596,7 @@ function ClaimOverview({ claims }: { claims: Claim[] }) {
           >
             <AlertCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
             <span className="text-[11px] text-muted-foreground/60 font-medium">
-              미확인 {unknownClaims.length}건 — 근거 부족으로 판정 보류
+              미확인 {unknownClaims.length}건 — {phase2Loading ? "심층 검토 중…" : "근거 부족으로 판정 보류"}
             </span>
             <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground/40">
               {showUnknown ? "접기" : "펼치기"}
@@ -620,7 +647,7 @@ function ClaimOverview({ claims }: { claims: Claim[] }) {
 }
 
 /* ── 상세 클레임 카드 (접기/펼치기) ── */
-function ClaimCard({ index, claim }: { index: number; claim: Claim }) {
+function ClaimCard({ index, claim, reviewing }: { index: number; claim: Claim; reviewing?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const meta = VERDICT_META[claim.verdict] ?? VERDICT_META["미확인"];
   const Icon = meta.icon;
@@ -659,7 +686,9 @@ function ClaimCard({ index, claim }: { index: number; claim: Claim }) {
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-semibold ${meta.bg} ${meta.border} ${meta.color}`}>
                 <Icon className="w-3 h-3" /> {meta.label}
               </span>
-              <ConfidenceBar value={claim.confidence} compact />
+              {reviewing
+                ? <span className="inline-flex items-center gap-1 text-[10px] text-primary/70 font-medium"><Loader2 className="w-3 h-3 animate-spin" />심층 검토 중…</span>
+                : <ConfidenceBar value={claim.confidence} compact />}
             </div>
           </div>
           {hasDetails && (

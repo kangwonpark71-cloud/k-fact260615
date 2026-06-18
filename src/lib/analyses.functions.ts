@@ -107,6 +107,27 @@ const SYSTEM_PROMPT = `당신은 다국어 팩트체크 AI 'FactGuard'입니다.
 10. **bias_type**: 전체 텍스트 편향 유형 — "정치적", "경제적", "사회적", "과학적", "역사적", "중립" 중 하나
 11. **Stage 3 검색 결과 활용**: 제공된 Tavily 검색 결과가 있으면 판정 근거로 적극 활용하세요`;
 
+/* ── Phase 1 전용 시스템 프롬프트 (빠른 거짓 탐지) ── */
+const PHASE1_SYSTEM = `당신은 1차 팩트체크 AI 'FactGuard Phase-1'입니다. 외부 검색 없이 학습 데이터만으로 텍스트의 명백히 거짓인 주장을 신속히 식별합니다.
+
+## 핵심 역할
+속도 우선 판정 — 불확실한 항목은 "미확인"으로 분류 → 2차 심층 검토(Tavily 검색)에서 업데이트됩니다.
+
+## 판정 기준
+**반대 근거 우세** (confidence 70+): 역사·과학·법령·공식 통계와 명백히 상충. 반증이 확실할 때만.
+**사실** (confidence 75+): 알려진 사실과 명확히 일치. 높은 확신 필요.
+**부분 사실** (confidence 50~74): 핵심은 맞지만 수치·맥락이 과장·왜곡.
+**근거 부족** (confidence 20~49): 검증 가능하나 확신 부족.
+**미확인** (confidence 10~40): 불확실 또는 실시간 데이터 필요 → Phase 2에서 Tavily로 재판정.
+
+## 핵심 원칙
+1. "반대 근거 우세"는 명백한 반증이 있을 때만 — 역사·과학·공식 기록과 명확히 상충
+2. 확신 없으면 "미확인" (2차 검토에서 개선됨)
+3. reasoning: 왜 그 판정인지 2~3문장, 구체적 근거 포함
+4. URL 생성 금지, suggested_sources는 기관 유형만
+5. 언어: 입력 언어로 응답 (판정 enum은 한국어 고정)
+6. title 12자 내외, SPO(subject·predicate·object) 모두 채우기`;
+
 // ── 멀티 키 관리 ──
 
 type KeyEntry = {
@@ -483,105 +504,169 @@ async function checkUrlCache(
 }
 
 type AnalysisPayload = Record<string, unknown>;
+type Phase1Claim = { claim: string; verdict: string; [key: string]: unknown };
 
-/* ── 백그라운드 AI 분석 처리 — 3단계 파이프라인 ── */
-async function processAnalysis(
+/* ── URL 본문 fetch 공통 유틸 (5초 타임아웃) ── */
+async function fetchUrlBody(sourceUrl: string, fallback: string): Promise<string> {
+  if (!sourceUrl || fallback.length >= 200) return fallback;
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 5000);
+    const res = await fetch(sourceUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 FactGuardBot" },
+      redirect: "error",
+      signal: ac.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return fallback;
+    const html = await res.text();
+    const stripped = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    return stripped.length > fallback.length ? stripped.slice(0, 8000) : fallback;
+  } catch { return fallback; }
+}
+
+/* ── Phase 1: 학습 데이터 기반 신속 거짓 탐지 (Tavily 없음, ~3~5s) ── */
+async function processAnalysisPhase1(
   analysisId: string,
   inputText: string,
   sourceUrl: string | undefined,
+  meta: { sessionId: string; userId: string | null },
 ): Promise<AnalysisPayload> {
-  const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
-  try {
-    // ── URL 본문 가져오기 (5초 타임아웃) ──
-    let bodyText = inputText;
-    if (sourceUrl && inputText.length < 200) {
-      try {
-        const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), 5000);
-        const res = await fetch(sourceUrl, {
-          headers: { "User-Agent": "Mozilla/5.0 FactGuardBot" },
-          redirect: "error",
-          signal: ac.signal,
-        });
-        clearTimeout(timer);
-        if (res.ok) {
-          const html = await res.text();
-          const stripped = html
-            .replace(/<script[\s\S]*?<\/script>/gi, " ")
-            .replace(/<style[\s\S]*?<\/style>/gi, " ")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/\s+/g, " ")
-            .trim();
-          if (stripped.length > bodyText.length) bodyText = stripped.slice(0, 8000);
-        }
-      } catch { /* URL 가져오기 실패 → 원본 텍스트 사용 */ }
-    }
+  const bodyText = await fetchUrlBody(sourceUrl ?? "", inputText);
+  const styleAnalysis = buildStyleAnalysis(bodyText);
+  const styleBlock = styleAnalysisToPromptBlock(styleAnalysis);
 
-    // ── Stage 1: JS 문체 특징 추출 (동기, 즉각) ──
-    const styleAnalysis = buildStyleAnalysis(bodyText);
-    const styleBlock = styleAnalysisToPromptBlock(styleAnalysis);
+  const prompt = `${styleBlock}
 
-    // ── Stage 3 선행: Tavily 검색 (비동기 병렬, LLM과 동시) ──
-    // 본문 첫 3문장을 검색 쿼리로 사용 (LLM 주장 추출 전)
-    const searchQueries = bodyText
-      .split(/(?<=[.!?。])\s+/)
-      .map(s => s.trim())
-      .filter(s => s.length >= 20)
-      .slice(0, 3)
-      .map(s => s.slice(0, 120));
-    if (searchQueries.length === 0 && bodyText.length > 0) {
-      searchQueries.push(bodyText.slice(0, 120));
-    }
+[1차 빠른 팩트체크 — 학습 데이터만 사용, Tavily 없음]
+아래 본문에서 검증 가능한 핵심 주장 3~7개를 추출하고 1차 판정을 내리세요.
 
-    // LLM 호출과 Tavily 검색을 병렬 실행
-    const [evidenceMap] = await Promise.all([
-      searchEvidenceForClaims(searchQueries),
-    ]);
-
-    // ── Stage 3: 검색 결과 포맷팅 ──
-    const evidenceBlock = formatEvidenceBlock(searchQueries, evidenceMap);
-    const evidenceUrls = extractEvidenceUrls(evidenceMap);
-
-    // ── Stage 2+3: LLM 통합 프롬프트 (SPO 주장 추출 + 검색 기반 판정) ──
-    const prompt = `${styleBlock}
-
-${evidenceBlock}
-
-[Stage 2 — SPO 주장 추출 + Stage 3 — 팩트체크 판정]
-위 Stage 1 문체 분석과 Stage 3 검색 결과를 참고하여:
-1. 아래 본문에서 검증 가능한 핵심 주장 3~7개를 추출하세요
-2. 각 주장을 subject(주어)-predicate(서술어)-object(목적어) SPO 구조로 분해하세요
-3. 검색 결과가 있으면 판정 근거로 적극 활용하세요
-4. bias_type: 전체 편향 유형 판단 (정치적/경제적/사회적/과학적/역사적/중립)${sourceUrl ? `\n원본 URL: ${sourceUrl}` : ""}
-
-판정 원칙:
-• 역사·과학·법령·통계로 알 수 있는 것 → "사실" 또는 "반대 근거 우세"로 단호하게 판정
-• Tavily 검색 결과로 반박 가능한 주장 → "반대 근거 우세"
-• "미확인"은 오직 실시간 데이터(현재 주가·날씨·진행 중 사건)가 필수일 때만
-• Stage 1 가짜 가능성 지수 ${styleAnalysis.fakeProbability}% 반영 — 높을수록 비판적 검토
+핵심: "반대 근거 우세"는 명백한 반증이 있을 때만. 불확실하면 "미확인"으로 분류 (2차 Tavily 재판정 예정).
+• bias_type: 텍스트 편향 유형 (정치적/경제적/사회적/과학적/역사적/중립)
+• Stage 2 SPO: subject·predicate·object 모두 채우기
+• Stage 1 가짜 가능성 지수 ${styleAnalysis.fakeProbability}% 반영${sourceUrl ? `
+• 원본 URL: ${sourceUrl}` : ""}
 
 분석할 본문:
 """
 ${bodyText.slice(0, 7000)}
 """`;
 
-    const parsed = await generateWithFallback({ schema: AnalysisSchema, system: SYSTEM_PROMPT, prompt, cfHint: "analysis" });
+  const parsed = await generateWithFallback({
+    schema: AnalysisSchema,
+    system: PHASE1_SYSTEM,
+    prompt,
+    cfHint: "analysis",
+  });
 
-    // ── 후처리: Stage 1 결과 + Stage 3 URL 병합 ──
+  const phase1Payload: AnalysisPayload = {
+    id: analysisId,
+    status: "phase1_complete",
+    phase: 1,
+    session_id: meta.sessionId,
+    user_id: meta.userId,
+    source_url: sourceUrl ?? null,
+    input_text: bodyText.slice(0, 8000),
+    title: parsed.title,
+    summary: parsed.summary,
+    overall_verdict: parsed.overall_verdict,
+    overall_confidence: parsed.overall_confidence,
+    claims: {
+      phase: 1,
+      bias_type: parsed.bias_type,
+      fake_probability: styleAnalysis.fakeProbability,
+      style_signals: styleAnalysis.signals,
+      items: parsed.claims,
+    },
+    created_at: new Date().toISOString(),
+  };
+
+  await kvPut(analysisId, phase1Payload);
+  return phase1Payload;
+}
+
+/* ── Phase 2: Tavily 검색 기반 심층 분析 (~15~25s) ── */
+async function processAnalysisPhase2(
+  analysisId: string,
+  bodyText: string,
+  sourceUrl: string | undefined,
+  phase1Claims: Phase1Claim[],
+): Promise<AnalysisPayload> {
+  const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  try {
+    const styleAnalysis = buildStyleAnalysis(bodyText);
+    const styleBlock = styleAnalysisToPromptBlock(styleAnalysis);
+
+    // 비-거짓 주장 우선 Tavily 검색 (거짓은 Phase 1에서 이미 확인)
+    const uncertainClaims = phase1Claims.filter(c => c.verdict !== "반대 근거 우세");
+    const searchBase = uncertainClaims.length > 0 ? uncertainClaims : phase1Claims;
+    const searchQueries: string[] = searchBase
+      .slice(0, 3)
+      .map(c => String(c.claim ?? "").slice(0, 120))
+      .filter(q => q.length >= 10);
+    if (searchQueries.length === 0) {
+      bodyText.split(/(?<=[.!?。])\s+/).filter(s => s.length >= 20).slice(0, 3)
+        .forEach(s => searchQueries.push(s.slice(0, 120)));
+    }
+    if (searchQueries.length === 0) searchQueries.push(bodyText.slice(0, 120));
+
+    const [evidenceMap] = await Promise.all([searchEvidenceForClaims(searchQueries)]);
+    const evidenceBlock = formatEvidenceBlock(searchQueries, evidenceMap);
+    const evidenceUrls = extractEvidenceUrls(evidenceMap);
+
+    const phase1Ref = phase1Claims.length > 0
+      ? "\n[Phase 1 1차 판정 — 참고]\n" + phase1Claims.map((c, i) =>
+          `${i + 1}. [${c.verdict}] ${String(c.claim ?? "").slice(0, 80)}`
+        ).join("\n") + "\n"
+      : "";
+
+    const prompt = `${styleBlock}
+${phase1Ref}
+${evidenceBlock}
+
+[2차 심층 팩트체크 — Tavily 검색 기반 재판정]
+Phase 1 결과를 Tavily 증거로 업데이트하세요:
+• "반대 근거 우세": 판정 유지, Tavily 근거로 보강
+• "미확인"/"근거 부족": Tavily 결과로 재판정 — 증거 있으면 사실/반대근거우세 업데이트
+• "사실": Tavily로 확인·조정
+• bias_type 재평가, Stage 2 SPO 채우기
+• Stage 1 가짜 가능성 지수 ${styleAnalysis.fakeProbability}% 반영${sourceUrl ? `
+• 원본 URL: ${sourceUrl}` : ""}
+
+분析할 본문:
+"""
+${bodyText.slice(0, 7000)}
+"""`;
+
+    const parsed = await generateWithFallback({
+      schema: AnalysisSchema,
+      system: SYSTEM_PROMPT,
+      prompt,
+      cfHint: "analysis",
+    });
+
     const enrichedClaims = parsed.claims.map((c, i) => ({
       ...c,
       evidence_urls: (evidenceMap[i] ?? []).slice(0, 2).map(e => e.url).filter(Boolean),
     }));
 
-    const completedPayload = {
+    const completedPayload: AnalysisPayload = {
       id: analysisId,
       status: "completed",
+      phase: 2,
       input_text: bodyText.slice(0, 8000),
+      source_url: sourceUrl ?? null,
       title: parsed.title,
       summary: `[가짜가능성:${styleAnalysis.fakeProbability}%] ${parsed.summary}`,
       overall_verdict: parsed.overall_verdict,
       overall_confidence: parsed.overall_confidence,
       claims: {
+        phase: 2,
         bias_type: parsed.bias_type,
         fake_probability: styleAnalysis.fakeProbability,
         style_signals: styleAnalysis.signals,
@@ -602,17 +687,11 @@ ${bodyText.slice(0, 7000)}
     return completedPayload;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    const failPayload: AnalysisPayload = { id: analysisId, status: "failed", title: "분석 실패", summary: msg.slice(0, 300), claims: [] };
-    if (hasDB) {
-      try {
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error: failErr } = await supabaseAdmin.from("analyses").update(failPayload as any).eq("id", analysisId);
-        if (failErr) await kvPut(analysisId, failPayload);
-      } catch { await kvPut(analysisId, failPayload); }
-    } else {
-      await kvPut(analysisId, failPayload);
-    }
+    const failPayload: AnalysisPayload = {
+      id: analysisId, status: "phase2_failed", phase: 2,
+      title: "심층 분析 실패", summary: msg.slice(0, 300), claims: [],
+    };
+    await kvPut(analysisId, failPayload);
     return failPayload;
   }
 }
@@ -675,8 +754,7 @@ export const analyzeContent = createServerFn({ method: "POST" })
         title: null, summary: null, overall_verdict: null, overall_confidence: null, claims: [],
       });
     }
-    // 동기 실행: 분석 완료 후 결과를 클라이언트에 직접 전달 (KV/DB 조회 불필요)
-    const analysisResult = await processAnalysis(analysisId, data.text, sourceUrl);
+    const analysisResult = await processAnalysisPhase1(analysisId, data.text, sourceUrl, { sessionId: data.sessionId, userId });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return { id: analysisId, cached: false, pending: false, analysisResult } as any;
   });
@@ -733,6 +811,55 @@ export const getAnalysis = createServerFn({ method: "GET" })
     if (!ownedByUser && !ownedBySession) throw new Error("이 분석을 볼 권한이 없습니다.");
     return row;
   });
+
+/* ── Phase 2 심층 분析 트리거 (클라이언트에서 Phase 1 완료 후 호출) ── */
+export const continueAnalysis = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({
+      id: z.string().uuid(),
+      sessionId: z.string().min(1),
+      text: z.string().default(""),
+      sourceUrl: z.string().optional(),
+    }).parse(input),
+  )
+  .handler(async ({ data }) => {
+    const userId = await getOptionalUserId();
+
+    // KV에서 Phase 1 결과 조회 (소유권 확인 + 저장된 본문 사용)
+    const kvRow = await kvGet(data.id);
+
+    // 소유권 검사
+    if (kvRow) {
+      const ownedByUser = userId && kvRow.user_id === userId;
+      const ownedBySession = !kvRow.user_id && kvRow.session_id === data.sessionId;
+      if (!ownedByUser && !ownedBySession) throw new Error("이 분析을 볼 권한이 없습니다.");
+    }
+
+    // Phase 1에서 저장된 본문 사용 (URL fetch 결과 포함)
+    const bodyText = (kvRow?.input_text as string | undefined) ?? data.text;
+    const sourceUrl = (kvRow?.source_url as string | null | undefined) ?? data.sourceUrl;
+
+    // Phase 1 주장 목록 전달 (Tavily 검색 방향 최적화용)
+    const claimsData = (kvRow?.claims as Record<string, unknown> | null) ?? {};
+    const phase1Claims: Phase1Claim[] = Array.isArray(claimsData.items)
+      ? (claimsData.items as Phase1Claim[])
+      : [];
+
+    if (!bodyText || bodyText.length < 10) {
+      throw new Error("분析할 본문이 없습니다.");
+    }
+
+    // Phase 2 실행 (Tavily 검색 + 심층 LLM)
+    const result = await processAnalysisPhase2(
+      data.id,
+      bodyText,
+      sourceUrl ?? undefined,
+      phase1Claims,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return result as any;
+  });
+
 
 export const listAnalyses = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ sessionId: z.string().min(1) }).parse(input))
