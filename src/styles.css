@@ -5,7 +5,6 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  /* 저널리즘 세리프 + 그로테스크 산세리프 */
   --font-display: "Noto Serif KR", "Georgia", "Nanum Myeongjo", serif;
   --font-sans: "Pretendard", "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -44,17 +43,19 @@
   --color-verdict-false: var(--verdict-false);
   --color-verdict-unknown: var(--verdict-unknown);
 
-  /* 문서 스타일: 그라디언트 최소화 */
   --gradient-aurora: none;
   --gradient-mesh: none;
   --shadow-glow: 0 4px 20px 0 oklch(0.65 0.10 230 / 0.15);
-  --shadow-card: 0 0 0 1px oklch(1 0 0 / 0.08), 0 2px 8px 0 oklch(0 0 0 / 0.30);
 }
 
-:root {
+/* ═══════════════════════════════════════════════════════
+   1. 다크 (dark) — 딥 네이비 저널리즘 다크모드 [기본]
+   ═══════════════════════════════════════════════════════ */
+:root,
+:root[data-theme="dark"] {
   --radius: 0.35rem;
+  --shadow-card: 0 0 0 1px oklch(1 0 0 / 0.08), 0 2px 8px 0 oklch(0 0 0 / 0.30);
 
-  /* ── 딥 네이비 문서 팔레트 ── */
   --background: oklch(0.13 0.04 235);
   --foreground: oklch(0.94 0.015 235);
   --surface: oklch(0.19 0.05 235);
@@ -77,96 +78,232 @@
   --input: oklch(1 0 0 / 0.08);
   --ring: oklch(0.68 0.10 228 / 0.5);
 
-  /* 판정 3색: 채도 낮춤 — "경고"가 아닌 "차분한 판정" */
-  --verdict-true:    oklch(0.58 0.13 160);   /* 포레스트 그린 */
-  --verdict-partial: oklch(0.64 0.14 75);    /* 머티드 앰버/골드 */
-  --verdict-weak:    oklch(0.52 0.04 235);   /* 슬레이트 */
-  --verdict-false:   oklch(0.50 0.16 15);    /* 브릭 레드 */
-  --verdict-unknown: oklch(0.60 0.09 70);    /* 웜 카키 */
+  --verdict-true:    oklch(0.58 0.13 160);
+  --verdict-partial: oklch(0.64 0.14 75);
+  --verdict-weak:    oklch(0.52 0.04 235);
+  --verdict-false:   oklch(0.50 0.16 15);
+  --verdict-unknown: oklch(0.60 0.09 70);
 }
 
+/* ═══════════════════════════════════════════════════════
+   2. 라이트 (light) — 밝은 문서/신문 스타일
+   ═══════════════════════════════════════════════════════ */
+:root[data-theme="light"] {
+  --radius: 0.35rem;
+  --shadow-card: 0 0 0 1px oklch(0 0 0 / 0.07), 0 2px 8px 0 oklch(0 0 0 / 0.08);
+
+  --background: oklch(0.97 0.006 90);
+  --foreground: oklch(0.14 0.03 235);
+  --surface: oklch(0.93 0.008 90);
+  --surface-2: oklch(0.88 0.012 90);
+  --card: oklch(0.99 0.002 90);
+  --card-foreground: oklch(0.14 0.03 235);
+  --popover: oklch(0.99 0.002 90);
+  --popover-foreground: oklch(0.14 0.03 235);
+  --primary: oklch(0.28 0.09 235);
+  --primary-foreground: oklch(0.97 0.003 90);
+  --secondary: oklch(0.86 0.012 90);
+  --secondary-foreground: oklch(0.14 0.03 235);
+  --muted: oklch(0.89 0.008 90);
+  --muted-foreground: oklch(0.44 0.04 235);
+  --accent: oklch(0.42 0.12 235);
+  --accent-foreground: oklch(0.97 0.003 90);
+  --destructive: oklch(0.46 0.18 25);
+  --destructive-foreground: oklch(0.97 0 0);
+  --border: oklch(0 0 0 / 0.12);
+  --input: oklch(0 0 0 / 0.06);
+  --ring: oklch(0.42 0.12 235 / 0.4);
+
+  --verdict-true:    oklch(0.40 0.14 160);
+  --verdict-partial: oklch(0.48 0.16 75);
+  --verdict-weak:    oklch(0.38 0.05 235);
+  --verdict-false:   oklch(0.42 0.18 25);
+  --verdict-unknown: oklch(0.46 0.10 75);
+}
+
+/* ═══════════════════════════════════════════════════════
+   3. 10대 (teen) — Z세대 네온 바이브
+   ═══════════════════════════════════════════════════════ */
+:root[data-theme="teen"] {
+  --radius: 0.9rem;
+  --shadow-card: 0 0 0 1px oklch(0.75 0.22 330 / 0.15), 0 4px 20px 0 oklch(0 0 0 / 0.40);
+
+  --background: oklch(0.11 0.04 290);
+  --foreground: oklch(0.95 0.01 300);
+  --surface: oklch(0.17 0.06 290);
+  --surface-2: oklch(0.23 0.07 290);
+  --card: oklch(0.17 0.06 290);
+  --card-foreground: oklch(0.95 0.01 300);
+  --popover: oklch(0.14 0.05 290);
+  --popover-foreground: oklch(0.95 0.01 300);
+  --primary: oklch(0.78 0.22 330);
+  --primary-foreground: oklch(0.12 0.05 290);
+  --secondary: oklch(0.25 0.08 290);
+  --secondary-foreground: oklch(0.95 0.01 300);
+  --muted: oklch(0.22 0.06 290);
+  --muted-foreground: oklch(0.66 0.08 290);
+  --accent: oklch(0.80 0.20 210);
+  --accent-foreground: oklch(0.12 0.05 290);
+  --destructive: oklch(0.60 0.22 25);
+  --destructive-foreground: oklch(0.97 0 0);
+  --border: oklch(1 0 0 / 0.13);
+  --input: oklch(1 0 0 / 0.09);
+  --ring: oklch(0.78 0.22 330 / 0.55);
+
+  --verdict-true:    oklch(0.72 0.22 145);
+  --verdict-partial: oklch(0.78 0.20 95);
+  --verdict-weak:    oklch(0.55 0.10 290);
+  --verdict-false:   oklch(0.64 0.22 25);
+  --verdict-unknown: oklch(0.70 0.18 330);
+}
+
+/* ═══════════════════════════════════════════════════════
+   4. 30대 (thirties) — 프로페셔널 모던 라이트
+   ═══════════════════════════════════════════════════════ */
+:root[data-theme="thirties"] {
+  --radius: 0.45rem;
+  --shadow-card: 0 0 0 1px oklch(0 0 0 / 0.06), 0 2px 12px 0 oklch(0 0 0 / 0.09);
+
+  --background: oklch(0.96 0.005 240);
+  --foreground: oklch(0.16 0.04 240);
+  --surface: oklch(0.92 0.007 240);
+  --surface-2: oklch(0.86 0.010 240);
+  --card: oklch(0.99 0.002 240);
+  --card-foreground: oklch(0.16 0.04 240);
+  --popover: oklch(0.99 0.002 240);
+  --popover-foreground: oklch(0.16 0.04 240);
+  --primary: oklch(0.40 0.18 250);
+  --primary-foreground: oklch(0.97 0 0);
+  --secondary: oklch(0.88 0.009 240);
+  --secondary-foreground: oklch(0.16 0.04 240);
+  --muted: oklch(0.91 0.007 240);
+  --muted-foreground: oklch(0.46 0.05 240);
+  --accent: oklch(0.48 0.18 250);
+  --accent-foreground: oklch(0.97 0 0);
+  --destructive: oklch(0.48 0.18 25);
+  --destructive-foreground: oklch(0.97 0 0);
+  --border: oklch(0 0 0 / 0.10);
+  --input: oklch(0 0 0 / 0.06);
+  --ring: oklch(0.48 0.18 250 / 0.40);
+
+  --verdict-true:    oklch(0.38 0.14 160);
+  --verdict-partial: oklch(0.46 0.16 75);
+  --verdict-weak:    oklch(0.40 0.06 240);
+  --verdict-false:   oklch(0.42 0.18 25);
+  --verdict-unknown: oklch(0.46 0.10 75);
+}
+
+/* ═══════════════════════════════════════════════════════
+   5. 60대 (senior) — 고대비 큰 글씨 접근성 모드
+   ═══════════════════════════════════════════════════════ */
+:root[data-theme="senior"] {
+  font-size: 112.5%;
+  --radius: 0.5rem;
+  --shadow-card: 0 0 0 2px oklch(0 0 0 / 0.12), 0 2px 12px 0 oklch(0 0 0 / 0.12);
+
+  --background: oklch(0.99 0 0);
+  --foreground: oklch(0.07 0.01 240);
+  --surface: oklch(0.94 0.004 240);
+  --surface-2: oklch(0.88 0.007 240);
+  --card: oklch(1.00 0 0);
+  --card-foreground: oklch(0.07 0.01 240);
+  --popover: oklch(1.00 0 0);
+  --popover-foreground: oklch(0.07 0.01 240);
+  --primary: oklch(0.22 0.12 240);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.89 0.007 240);
+  --secondary-foreground: oklch(0.07 0.01 240);
+  --muted: oklch(0.91 0.005 240);
+  --muted-foreground: oklch(0.28 0.04 240);
+  --accent: oklch(0.28 0.14 240);
+  --accent-foreground: oklch(0.99 0 0);
+  --destructive: oklch(0.38 0.20 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0 0 0 / 0.22);
+  --input: oklch(0 0 0 / 0.09);
+  --ring: oklch(0.28 0.14 240 / 0.5);
+
+  --verdict-true:    oklch(0.28 0.14 160);
+  --verdict-partial: oklch(0.36 0.16 75);
+  --verdict-weak:    oklch(0.28 0.06 240);
+  --verdict-false:   oklch(0.32 0.20 25);
+  --verdict-unknown: oklch(0.36 0.10 75);
+}
+
+/* ═══════════════════════════════════════════════════════
+   기본 레이어
+   ═══════════════════════════════════════════════════════ */
 @layer base {
   * { border-color: var(--color-border); }
-  html { background-color: oklch(0.10 0.04 235); }
+
+  html {
+    background-color: var(--background);
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
   body {
     background-color: transparent;
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
+
   h1, h2, h3, .display {
     font-family: var(--font-display);
     letter-spacing: -0.01em;
   }
+
+  /* 60대 테마: 제목 더 크게 */
+  :root[data-theme="senior"] h1 { font-size: 1.75rem; }
+  :root[data-theme="senior"] h2 { font-size: 1.4rem; }
+  :root[data-theme="senior"] h3 { font-size: 1.2rem; }
+
+  /* 10대 테마: 디스플레이 폰트 강조 */
+  :root[data-theme="teen"] h1,
+  :root[data-theme="teen"] h2,
+  :root[data-theme="teen"] h3 {
+    font-family: var(--font-sans);
+    letter-spacing: -0.02em;
+    font-weight: 800;
+  }
 }
 
-/* ── 딥 다크 네이비 테마 (야간 모드) ── */
-:root[data-theme="night"] {
-  --background: oklch(0.09 0.04 235);
-  --foreground: oklch(0.96 0.01 235);
-  --surface: oklch(0.14 0.05 235);
-  --surface-2: oklch(0.20 0.06 235);
-  --card: oklch(0.14 0.05 235);
-  --card-foreground: oklch(0.96 0.01 235);
-  --popover: oklch(0.12 0.045 235);
-  --popover-foreground: oklch(0.96 0.01 235);
-  --primary: oklch(0.96 0.01 235);
-  --primary-foreground: oklch(0.10 0.05 235);
-  --secondary: oklch(0.22 0.06 235);
-  --secondary-foreground: oklch(0.96 0.01 235);
-  --muted: oklch(0.20 0.05 235);
-  --muted-foreground: oklch(0.56 0.04 235);
-  --accent: oklch(0.65 0.12 228);
-  --accent-foreground: oklch(0.96 0.01 235);
-  --destructive: oklch(0.48 0.16 15);
-  --destructive-foreground: oklch(0.97 0 0);
-  --border: oklch(1 0 0 / 0.08);
-  --input: oklch(1 0 0 / 0.06);
-  --ring: oklch(0.65 0.12 228 / 0.5);
-
-  --verdict-true:    oklch(0.62 0.14 160);
-  --verdict-partial: oklch(0.68 0.14 75);
-  --verdict-weak:    oklch(0.50 0.04 235);
-  --verdict-false:   oklch(0.52 0.17 15);
-  --verdict-unknown: oklch(0.62 0.09 70);
-}
-
-@keyframes kenburns {
-  0%   { transform: scale(1)    translate(0%, 0%); }
-  50%  { transform: scale(1.04) translate(0.5%, -0.5%); }
-  100% { transform: scale(1)    translate(0%, 0%); }
-}
-
-@keyframes bg-shimmer {
-  0%   { opacity: 0.7; }
-  50%  { opacity: 0.9; }
-  100% { opacity: 0.7; }
-}
-
-@keyframes float-glow {
-  0%   { opacity: 0.3; }
-  50%  { opacity: 0.5; }
-  100% { opacity: 0.3; }
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
+/* ═══════════════════════════════════════════════════════
+   컴포넌트 레이어
+   ═══════════════════════════════════════════════════════ */
 @layer components {
-  /* 문서 스타일 패널 — 블러 없이 절제된 배경 */
+  /* 다크 계열 glass */
   .glass {
     background: oklch(1 0 0 / 0.05);
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(8px);
     border: 1px solid oklch(1 0 0 / 0.10);
   }
 
-  /* 문서 섹션 헤더 구분선 스타일 */
-  .doc-rule {
-    border-top: 1px solid oklch(1 0 0 / 0.12);
+  /* 라이트 계열 glass 오버라이드 */
+  :root[data-theme="light"] .glass,
+  :root[data-theme="thirties"] .glass,
+  :root[data-theme="senior"] .glass {
+    background: oklch(1 0 0 / 0.75);
+    backdrop-filter: blur(8px);
+    border: 1px solid oklch(0 0 0 / 0.10);
   }
 
-  /* 인증 스탬프형 배지 */
+  /* 10대 glass: 형광 테두리 */
+  :root[data-theme="teen"] .glass {
+    background: oklch(1 0 0 / 0.04);
+    backdrop-filter: blur(12px);
+    border: 1px solid oklch(0.78 0.22 330 / 0.20);
+  }
+
+  .doc-rule { border-top: 1px solid oklch(1 0 0 / 0.12); }
+
+  :root[data-theme="light"] .doc-rule,
+  :root[data-theme="thirties"] .doc-rule,
+  :root[data-theme="senior"] .doc-rule {
+    border-top: 1px solid oklch(0 0 0 / 0.12);
+  }
+
+  /* 인증 스탬프 배지 */
   .stamp {
     display: inline-flex;
     align-items: center;
@@ -177,14 +314,50 @@
     text-transform: uppercase;
     border-width: 1.5px;
     border-style: solid;
-    border-radius: 0.2rem;
+    border-radius: var(--radius);
     padding: 0.25rem 0.625rem;
   }
 
+  /* 60대: 스탬프 더 크게 */
+  :root[data-theme="senior"] .stamp {
+    font-size: 0.85rem;
+    padding: 0.35rem 0.75rem;
+    border-width: 2px;
+  }
+
+  /* gradient-text 다크 계열 */
   .gradient-text {
     background: linear-gradient(135deg, oklch(0.94 0.02 235) 0%, oklch(0.75 0.10 228) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
+
+  /* gradient-text 라이트 계열 */
+  :root[data-theme="light"] .gradient-text,
+  :root[data-theme="thirties"] .gradient-text,
+  :root[data-theme="senior"] .gradient-text {
+    background: linear-gradient(135deg, oklch(0.16 0.05 235) 0%, oklch(0.38 0.16 240) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* gradient-text 10대 */
+  :root[data-theme="teen"] .gradient-text {
+    background: linear-gradient(135deg, oklch(0.78 0.22 330) 0%, oklch(0.80 0.20 210) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+@keyframes kenburns {
+  0%   { transform: scale(1)    translate(0%, 0%); }
+  50%  { transform: scale(1.04) translate(0.5%, -0.5%); }
+  100% { transform: scale(1)    translate(0%, 0%); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }

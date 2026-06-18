@@ -115,11 +115,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
-const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('kfact-theme');if(t==='night')document.documentElement.setAttribute('data-theme','night');}catch(e){}})();`;
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('kfact-theme');var valid=['dark','light','teen','thirties','senior'];if(t==='navy'||t==='night')t='dark';document.documentElement.setAttribute('data-theme',valid.indexOf(t)!==-1?t:'dark');}catch(e){}})();`;
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="ko" data-theme="navy">
+    <html lang="ko" data-theme="dark">
       <head>
         <HeadContent />
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
