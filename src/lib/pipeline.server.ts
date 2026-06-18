@@ -227,3 +227,70 @@ export function extractEvidenceUrls(evidenceMap: Record<number, SearchEvidence[]
   );
   return [...urls].slice(0, 6);
 }
+
+// ══════════════════════════════════════════════════
+//  주장 유형 분류 및 권위 출처 우선 랭킹
+//  CLASSIFY_PROMPT + AUTHORITATIVE_SOURCES 구현
+// ══════════════════════════════════════════════════
+
+export type ClaimType = "EMPIRICAL" | "DISPUTED_TERRITORY" | "OPINION" | "DOMESTIC_LAW_FACT";
+
+export const AUTHORITATIVE_DOMAINS: Record<string, string[]> = {
+  territorial: [
+    "mofa.go.kr", "korea.kr", "un.org", "icj-cij.org",
+    "mois.go.kr", "assembly.go.kr", "president.go.kr",
+  ],
+  medical: [
+    "who.int", "nih.gov", "kdca.go.kr", "mohw.go.kr",
+    "pubmed.ncbi.nlm.nih.gov", "nejm.org", "thelancet.com",
+  ],
+  economic: [
+    "bok.or.kr", "kostat.go.kr", "imf.org", "worldbank.org",
+    "moef.go.kr", "kdi.re.kr", "oecd.org",
+  ],
+  legal: [
+    "law.go.kr", "court.go.kr", "moleg.go.kr",
+    "un.org", "treaties.un.org", "icj-cij.org",
+  ],
+  general: [
+    "reuters.com", "apnews.com", "yna.co.kr",
+    "yonhapnewsagency.com", "bbc.com", "kbs.co.kr",
+  ],
+};
+
+const CLAIM_TYPE_DOMAINS: Record<ClaimType, string[]> = {
+  DISPUTED_TERRITORY: AUTHORITATIVE_DOMAINS.territorial,
+  DOMESTIC_LAW_FACT:  AUTHORITATIVE_DOMAINS.legal,
+  EMPIRICAL:          AUTHORITATIVE_DOMAINS.general,
+  OPINION:            [],
+};
+
+/** 권위 출처 도메인을 상위로 정렬 — FACT_CHECK_PROMPT_V2 rankSearchResults 구현 */
+export function rankSearchResults(
+  results: SearchEvidence[],
+  claimType: ClaimType,
+): SearchEvidence[] {
+  const priority = CLAIM_TYPE_DOMAINS[claimType] ?? [];
+  if (priority.length === 0) return results;
+  return [...results].sort((a, b) => {
+    const aP = priority.some(d => a.url.includes(d)) ? 0 : 1;
+    const bP = priority.some(d => b.url.includes(d)) ? 0 : 1;
+    return aP - bP;
+  });
+}
+
+/** 주장 유형별 권위 출처 우선 검색 */
+export async function searchEvidenceForClaimsTyped(
+  claims: Array<{ query: string; claimType: ClaimType }>,
+): Promise<Record<number, SearchEvidence[]>> {
+  const results = await Promise.allSettled(
+    claims.slice(0, 3).map(({ query, claimType }) =>
+      searchEvidence(query).then(r => rankSearchResults(r, claimType)),
+    ),
+  );
+  const out: Record<number, SearchEvidence[]> = {};
+  results.forEach((r, i) => {
+    out[i] = r.status === "fulfilled" ? r.value : [];
+  });
+  return out;
+}

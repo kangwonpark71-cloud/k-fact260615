@@ -15,9 +15,14 @@ function createSupabaseAdminClient() {
       ...(!SUPABASE_URL ? ['SUPABASE_URL'] : []),
       ...(!SUPABASE_SERVICE_ROLE_KEY ? ['SUPABASE_SERVICE_ROLE_KEY'] : []),
     ];
-    const message = `Missing Supabase environment variable(s): ${missing.join(', ')}. Connect Supabase in Lovable Cloud.`;
-    console.error(`[Supabase] ${message}`);
-    throw new Error(message);
+    // throw 대신 경고만 남기고 더미 URL/키로 클라이언트 생성
+    // 실제 DB 요청 시 error 객체로 반환되므로 각 호출 지점에서 처리
+    console.warn(`[Supabase] Missing env: ${missing.join(', ')} — DB operations will fail gracefully`);
+    return createClient<Database>(
+      SUPABASE_URL ?? 'https://placeholder.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY ?? 'placeholder-key',
+      { auth: { storage: undefined, persistSession: false, autoRefreshToken: false } }
+    );
   }
 
   return createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {

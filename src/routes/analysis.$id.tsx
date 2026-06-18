@@ -34,11 +34,15 @@ export const Route = createFileRoute("/analysis/$id")({
   notFoundComponent: () => <div className="p-12 text-center">분석을 찾을 수 없습니다.</div>,
 });
 
+type ClaimType = "EMPIRICAL" | "DISPUTED_TERRITORY" | "OPINION" | "DOMESTIC_LAW_FACT";
+
 type Claim = {
   claim: string;
-  subject?: string;       // Stage 2: SPO
-  predicate?: string;     // Stage 2: SPO
-  object?: string;        // Stage 2: SPO
+  claim_type?: ClaimType;
+  judgment_basis?: string;  // "팩트체크" | "국가 공인 입장" | "의견/견해"
+  subject?: string;
+  predicate?: string;
+  object?: string;
   verdict: string;
   confidence: number;
   reasoning: string;
@@ -46,7 +50,7 @@ type Claim = {
   counter_points: string[];
   unknowns: string[];
   suggested_sources: { name: string; type: string }[];
-  evidence_urls?: string[];  // Stage 3: Tavily
+  evidence_urls?: string[];
 };
 
 type PipelineMeta = {
@@ -174,6 +178,9 @@ function AnalysisPage() {
     ? rawClaims
     : (pipelineMeta?.items ?? []);
 
+  // 영토·주권 분쟁 주장 여부 — 고지 배너 표시 여부 결정
+  const hasDisputedTerritory = claims.some(c => c.claim_type === "DISPUTED_TERRITORY");
+
   return (
     <div className="min-h-screen pb-16 sm:pb-0">
       <SiteHeader />
@@ -231,6 +238,20 @@ function AnalysisPage() {
         {/* ③ 원문 요약 (접기/펼치기) */}
         {(dataRow.input_text as string | null | undefined) && (
           <InputSummary text={dataRow.input_text as string} />
+        )}
+
+        {/* 영토·주권 분쟁 주장 포함 시 판정 기준 고지 */}
+        {hasDisputedTerritory && (
+          <div className="border border-verdict-partial/40 bg-verdict-partial/5 px-4 py-3 flex items-start gap-3">
+            <AlertTriangle className="w-4 h-4 text-verdict-partial shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-bold text-verdict-partial uppercase tracking-widest mb-1">판정 기준 고지</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                본 서비스는 <strong className="text-foreground/80">대한민국 정부 공식 입장 및 국제법상 실효 지배 현황</strong>을 기준으로 판정합니다.
+                영토·주권·역사 분쟁 주장은 "국가 공인 입장" 라벨로 별도 표시되며, 이는 완전히 중립적인 국제 팩트체크와 다를 수 있습니다.
+              </p>
+            </div>
+          </div>
         )}
 
         {/* Phase 2 심층 분析 진행 중 배너 */}
@@ -538,15 +559,20 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
       {/* 주장 목록 */}
       <div className="space-y-2">
         {mainClaims.map(({ c, i }) => {
-          const meta = VERDICT_META[c.verdict] ?? VERDICT_META["미확인"];
+          const { verdictLabel: vLabel, basisLabel: bLabel } = getVerdictDisplay(c);
+          const isOp = c.judgment_basis === "의견/견해";
+          const meta = isOp
+            ? { icon: HelpCircle, color: "text-muted-foreground", bg: "bg-surface-2", border: "border-border/40", label: "의견/견해" }
+            : (VERDICT_META[vLabel] ?? VERDICT_META["미확인"]);
           const Icon = meta.icon;
           const isExpanded = expandedIdx === i;
-          const highlight = isHighlight(c.verdict);
+          const highlight = !isOp && isHighlight(c.verdict);
           const accentClass = c.verdict === "사실"
             ? "border-l-[3px] border-l-verdict-true"
             : c.verdict === "반대 근거 우세"
               ? "border-l-[3px] border-l-verdict-false"
               : "";
+          const ctMeta = CLAIM_TYPE_META[c.claim_type ?? "EMPIRICAL"] ?? CLAIM_TYPE_META.EMPIRICAL;
 
           return (
             <div key={i} className={`overflow-hidden ${highlight ? accentClass : ""}`}>
@@ -560,7 +586,6 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
                 }`}
               >
                 {highlight ? (
-                  /* 강조 스탬프 아이콘 */
                   <div className={`shrink-0 w-8 h-8 flex items-center justify-center border-2 ${meta.border} ${meta.bg} mt-0.5`}>
                     <Icon className={`w-4 h-4 ${meta.color}`} />
                   </div>
@@ -571,11 +596,23 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
                 )}
 
                 <div className="flex-1 min-w-0">
-                  {highlight && (
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold mb-1.5 ${meta.bg} ${meta.border} ${meta.color}`}>
-                      <Icon className="w-2.5 h-2.5" />{meta.label}
+                  <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                    {/* 주장 유형 배지 */}
+                    <span className={`font-mono text-[9px] font-bold border px-1 py-px rounded-sm uppercase tracking-widest ${ctMeta.color}`}>
+                      {ctMeta.label}
                     </span>
-                  )}
+                    {/* 국가 공인 입장 접두어 */}
+                    {bLabel && (
+                      <span className="font-mono text-[9px] font-bold border border-verdict-partial/50 text-verdict-partial bg-verdict-partial/10 px-1 py-px rounded-sm uppercase tracking-widest">
+                        {bLabel}
+                      </span>
+                    )}
+                    {highlight && (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 border text-[10px] font-bold rounded-sm ${meta.bg} ${meta.border} ${meta.color}`}>
+                        <Icon className="w-2.5 h-2.5" />{meta.label}
+                      </span>
+                    )}
+                  </div>
                   <p className={`leading-snug ${highlight ? "text-sm font-semibold text-foreground" : "text-xs text-foreground/90 leading-relaxed"}`}>
                     {c.claim}
                   </p>
@@ -583,14 +620,16 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
 
                 <div className="flex items-center gap-1.5 shrink-0 ml-2 mt-0.5">
                   {!highlight && (
-                    <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${meta.bg} ${meta.border} ${meta.color} ring-1 ring-current/20`}>
+                    <div className={`inline-flex items-center gap-1 px-2 py-0.5 border text-[10px] font-semibold rounded-sm ${meta.bg} ${meta.border} ${meta.color} ring-1 ring-current/20`}>
                       <Icon className="w-3 h-3" />
                       <span className="hidden sm:inline">{meta.label}</span>
                     </div>
                   )}
-                  <span className={`tabular-nums font-bold ${highlight ? `text-sm ${meta.color}` : "text-[10px] text-muted-foreground"}`}>
-                    {c.confidence}%
-                  </span>
+                  {!isOp && (
+                    <span className={`tabular-nums font-bold ${highlight ? `text-sm ${meta.color}` : "text-[10px] text-muted-foreground"}`}>
+                      {c.confidence}%
+                    </span>
+                  )}
                   {isExpanded
                     ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
                     : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
@@ -663,10 +702,29 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
   );
 }
 
+const CLAIM_TYPE_META: Record<string, { label: string; color: string }> = {
+  EMPIRICAL:          { label: "실증",     color: "text-verdict-weak border-verdict-weak/40 bg-verdict-weak/10" },
+  DISPUTED_TERRITORY: { label: "분쟁주장", color: "text-verdict-partial border-verdict-partial/50 bg-verdict-partial/10" },
+  OPINION:            { label: "의견/견해", color: "text-muted-foreground border-border/50 bg-surface-2" },
+  DOMESTIC_LAW_FACT:  { label: "법령사실", color: "text-accent border-accent/40 bg-accent/10" },
+};
+
+/* 판정 기준에 따라 표시 레이블 결정 */
+function getVerdictDisplay(claim: Claim): { verdictLabel: string; basisLabel: string | null } {
+  const basis = claim.judgment_basis;
+  if (basis === "의견/견해") return { verdictLabel: "의견/견해", basisLabel: null };
+  if (basis === "국가 공인 입장") return { verdictLabel: claim.verdict, basisLabel: "국가 공인 입장" };
+  return { verdictLabel: claim.verdict, basisLabel: null };
+}
+
 /* ── 상세 클레임 카드 (접기/펼치기) ── */
 function ClaimCard({ index, claim, reviewing }: { index: number; claim: Claim; reviewing?: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const meta = VERDICT_META[claim.verdict] ?? VERDICT_META["미확인"];
+  const { verdictLabel, basisLabel } = getVerdictDisplay(claim);
+  const isOpinion = claim.judgment_basis === "의견/견해";
+  const meta = isOpinion
+    ? { icon: HelpCircle, color: "text-muted-foreground", bg: "bg-surface-2", border: "border-border/40", label: "의견/견해" }
+    : (VERDICT_META[verdictLabel] ?? VERDICT_META["미확인"]);
   const Icon = meta.icon;
 
   const hasDetails =
@@ -675,6 +733,8 @@ function ClaimCard({ index, claim, reviewing }: { index: number; claim: Claim; r
     claim.counter_points.length > 0 ||
     claim.unknowns.length > 0 ||
     claim.suggested_sources.length > 0;
+
+  const claimTypeMeta = CLAIM_TYPE_META[claim.claim_type ?? "EMPIRICAL"] ?? CLAIM_TYPE_META.EMPIRICAL;
 
   return (
     <article className={`border-l-[3px] ${meta.border} border border-border/50 bg-surface shadow-[var(--shadow-card)]`}>
@@ -686,7 +746,7 @@ function ClaimCard({ index, claim, reviewing }: { index: number; claim: Claim; r
         className="w-full text-left px-4 sm:px-5 py-3.5 hover:bg-surface-2/50 transition-colors disabled:cursor-default"
       >
         <div className="flex items-start gap-3">
-          <span className="shrink-0 w-6 h-6 rounded-md bg-surface-2 text-[10px] font-mono grid place-items-center text-muted-foreground mt-0.5">
+          <span className="shrink-0 w-6 h-6 bg-surface-2 text-[10px] font-mono grid place-items-center text-muted-foreground mt-0.5">
             {String(index).padStart(2, "0")}
           </span>
           <div className="flex-1 min-w-0">
@@ -700,8 +760,18 @@ function ClaimCard({ index, claim, reviewing }: { index: number; claim: Claim; r
               </div>
             )}
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-semibold ${meta.bg} ${meta.border} ${meta.color}`}>
-                <Icon className="w-3 h-3" /> {meta.label}
+              {/* 주장 유형 배지 */}
+              <span className={`font-mono text-[9px] font-bold border px-1.5 py-0.5 rounded-sm uppercase tracking-widest ${claimTypeMeta.color}`}>
+                {claimTypeMeta.label}
+              </span>
+              {/* 판정 기준 접두어 */}
+              {basisLabel && (
+                <span className="font-mono text-[9px] font-bold border border-verdict-partial/50 text-verdict-partial bg-verdict-partial/10 px-1.5 py-0.5 rounded-sm uppercase tracking-widest">
+                  {basisLabel}
+                </span>
+              )}
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 border text-xs font-semibold rounded-sm ${meta.bg} ${meta.border} ${meta.color}`}>
+                <Icon className="w-3 h-3" /> {isOpinion ? "의견/견해" : meta.label}
               </span>
               {reviewing
                 ? <span className="inline-flex items-center gap-1 text-[10px] text-primary/70 font-medium"><Loader2 className="w-3 h-3 animate-spin" />심층 검토 중…</span>
