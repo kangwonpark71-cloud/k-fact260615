@@ -51,8 +51,7 @@ type Utterance = {
 };
 
 /* ── 음성 인식 훅 ──
-   모바일: getUserMedia 스트림을 세션 내내 유지 → no-speech로 끊겨 재시작해도 권한 팝업 없음
-   데스크탑: enumerateDevices + Permissions API (USB 헤드셋 충돌 방지) */
+   getUserMedia 완전 제거 → SpeechRecognition 단독 사용으로 모바일/PC 마이크 충돌 방지 */
 type RecStatus = "idle" | "starting" | "listening";
 
 function useSpeechRecognition({
@@ -67,13 +66,11 @@ function useSpeechRecognition({
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
 
-  const recRef       = useRef<any>(null);
-  const micStreamRef = useRef<MediaStream | null>(null); // 모바일: 권한 고정용 스트림
+  const recRef = useRef<any>(null);
   const listeningRef = useRef(false);
-  const retryRef     = useRef(0);
-  const startRecRef  = useRef<() => void>(() => {});     // 재시작 함수 (클로저 갱신용)
+  const retryRef = useRef(0);
 
-  const onFinalRef   = useRef(onFinal);
+  const onFinalRef = useRef(onFinal);
   const onInterimRef = useRef(onInterim);
   useEffect(() => { onFinalRef.current = onFinal; }, [onFinal]);
   useEffect(() => { onInterimRef.current = onInterim; }, [onInterim]);
@@ -81,30 +78,19 @@ function useSpeechRecognition({
   useEffect(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     setIsSupported(!!SR);
-    return () => {
-      listeningRef.current = false;
-      // 페이지 이탈 시 스트림 완전 정리
-      micStreamRef.current?.getTracks().forEach(t => t.stop());
-      micStreamRef.current = null;
-    };
+    return () => { listeningRef.current = false; };
   }, []);
 
-  // releaseStream=true: 스트림까지 종료 (중지 버튼, 오류 시)
-  // releaseStream=false: 내부 인스턴스만 교체 (onend 재시작 시 — 스트림 유지)
-  const doStop = useCallback((releaseStream = true) => {
+  const doStop = useCallback(() => {
     listeningRef.current = false;
     retryRef.current = 0;
     try { recRef.current?.stop(); } catch {}
     recRef.current = null;
-    if (releaseStream) {
-      micStreamRef.current?.getTracks().forEach(t => t.stop());
-      micStreamRef.current = null;
-    }
     setRecStatus("idle");
     onInterimRef.current("");
   }, []);
 
-  const doStart = useCallback(async () => {
+  const doStart = useCallback(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR || listeningRef.current) return;
 
@@ -112,161 +98,88 @@ function useSpeechRecognition({
     setPermissionDenied(false);
     setRecStatus("starting");
 
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const rec = new SR();
+    rec.lang = "ko-KR";
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
 
-    if (isMobile) {
-      // ── 모바일 전용: getUserMedia로 스트림 획득 후 유지 ──
-      // 스트림이 살아 있는 동안 SpeechRecognition 재시작 시 권한 팝업 없음
-      if (!micStreamRef.current) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-          if (!stream.getAudioTracks().length) {
-            stream.getTracks().forEach(t => t.stop());
-            setMicError("no-device"); setRecStatus("idle"); return;
-          }
-          micStreamRef.current = stream;
-        } catch (e: any) {
-          const name = (e?.name ?? "") as string;
-          if (name === "NotFoundError" || name === "DevicesNotFoundError") {
-            setMicError("no-device"); setRecStatus("idle"); return;
-          }
-          if (name === "NotAllowedError" || name === "PermissionDeniedError") {
-            setPermissionDenied(true); setRecStatus("idle"); return;
-          }
-          // 그 외 오류(OverconstrainedError 등): SpeechRecognition이 직접 처리
-        }
+    rec.onstart = () => {
+      retryRef.current = 0;
+      setRecStatus("listening");
+    };
+
+    rec.onresult = (e: any) => {
+      let interim = "";
+      let final = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) final += t;
+        else interim += t;
       }
-    } else {
-      // ── 데스크탑: 장치 존재 + 권한 상태만 확인 (스트림 점유 없음) ──
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        if (!devices.some(d => d.kind === "audioinput")) {
-          setMicError("no-device"); setRecStatus("idle"); return;
-        }
-      } catch {}
-      try {
-        const perm = await navigator.permissions.query({ name: "microphone" as PermissionName });
-        if (perm.state === "denied") {
-          setPermissionDenied(true); setRecStatus("idle"); return;
-        }
-      } catch {}
-    }
-
-    // ── SpeechRecognition 생성 함수 (onend에서 반복 재호출) ──
-    const startRec = () => {
-      const rec = new SR();
-      rec.lang = "ko-KR";
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.maxAlternatives = 1;
-
-      rec.onresult = (e: any) => {
-        let interim = "";
-        let final = "";
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const t = e.results[i][0].transcript;
-          if (e.results[i].isFinal) final += t;
-          else interim += t;
-        }
-        if (final) {
-          onInterimRef.current("");
-          onFinalRef.current(final.trim());
-        } else {
-          onInterimRef.current(interim);
-        }
-      };
-
-      rec.onerror = (e: any) => {
-        const err = e.error as string;
-        if (err === "not-allowed") {
-          // Permissions API로 실제 권한 상태 이중 확인
-          // → denied: 진짜 차단 / granted·prompt: 드라이버·충돌 등 일시적 오류
-          (async () => {
-            try {
-              const devices = await navigator.mediaDevices.enumerateDevices();
-              if (!devices.some(d => d.kind === "audioinput")) {
-                setMicError("no-device"); doStop(true); return;
-              }
-            } catch {}
-            try {
-              const perm = await navigator.permissions.query({ name: "microphone" as PermissionName });
-              if (perm.state === "denied") {
-                setPermissionDenied(true);
-              } else {
-                // 권한은 있으나 일시 차단 → 재시작 버튼 안내
-                setMicError("마이크를 일시적으로 사용할 수 없습니다. 마이크 버튼을 다시 눌러 재시도하세요.");
-              }
-            } catch {
-              setPermissionDenied(true);
-            }
-            doStop(true);
-          })();
-        } else if (err === "audio-capture") {
-          // 스트림 충돌 → 스트림 해제 후 중지
-          micStreamRef.current?.getTracks().forEach(t => t.stop());
-          micStreamRef.current = null;
-          setMicError("no-device");
-          doStop(true);
-        } else if (err === "network") {
-          setMicError("네트워크 오류입니다. 인터넷 연결을 확인하세요.");
-          doStop(true);
-        }
-        // service-not-allowed: Chrome 재시작 횟수 제한 → onend에서 backoff 후 재시도
-        // no-speech / aborted → onend에서 재시도
-      };
-
-      rec.onend = () => {
-        if (!listeningRef.current) { setRecStatus("idle"); return; }
-        retryRef.current += 1;
-        if (retryRef.current > 20) {
-          setMicError("음성 인식이 반복 중단됩니다. 페이지를 새로고침 후 다시 시도해 주세요.");
-          doStop(true); return;
-        }
-        // service-not-allowed 등 Chrome 재시작 제한에 대한 exponential backoff
-        const delay = Math.min(400 * Math.pow(1.5, retryRef.current - 1), 5000);
-        setTimeout(() => {
-          if (!listeningRef.current) return;
-          // 1순위: 기존 인스턴스 재사용 — PC/모바일 모두 권한 재확인 없음
-          const cur = recRef.current;
-          if (cur) {
-            try { cur.start(); setRecStatus("listening"); return; } catch { /* 폴백 */ }
-          }
-          // 2순위: 모바일 전용 — getUserMedia 스트림이 살아있을 때만 새 인스턴스
-          // PC: 스트림 없으므로 새 인스턴스 생성 시 권한 재확인 위험 → 조용히 중지
-          if (micStreamRef.current) {
-            startRecRef.current();
-          } else {
-            listeningRef.current = false;
-            setRecStatus("idle");
-          }
-        }, delay);
-      };
-
-      recRef.current = rec;
-      try {
-        rec.start();
-        setRecStatus("listening");
-      } catch {
-        listeningRef.current = false;
-        recRef.current = null;
-        setRecStatus("idle");
-        setMicError("음성 인식을 시작할 수 없습니다. 페이지를 새로고침 후 다시 시도해 주세요.");
+      if (final) {
+        onInterimRef.current("");
+        onFinalRef.current(final.trim());
+      } else {
+        onInterimRef.current(interim);
       }
     };
 
-    startRecRef.current = startRec;
+    rec.onerror = (e: any) => {
+      const err = e.error as string;
+      if (err === "not-allowed" || err === "service-not-allowed") {
+        setPermissionDenied(true);
+        doStop();
+      } else if (err === "audio-capture") {
+        setMicError("마이크를 찾을 수 없습니다. 마이크가 연결되어 있는지 확인하세요.");
+        doStop();
+      } else if (err === "network") {
+        setMicError("네트워크 오류입니다. 인터넷 연결을 확인하세요.");
+        doStop();
+      }
+      // aborted / no-speech → onend에서 자동 재시작
+    };
+
+    rec.onend = () => {
+      if (!listeningRef.current) { setRecStatus("idle"); return; }
+      retryRef.current += 1;
+      if (retryRef.current > 15) {
+        setMicError("음성 인식이 반복 중단됩니다. 페이지를 새로고침 후 다시 시도해 주세요.");
+        doStop();
+        return;
+      }
+      // 즉시 재시작 시 Chrome에서 InvalidStateError → 200ms 딜레이
+      setTimeout(() => {
+        if (!listeningRef.current || !recRef.current) return;
+        try { recRef.current.start(); } catch {
+          listeningRef.current = false;
+          setRecStatus("idle");
+        }
+      }, 200);
+    };
+
+    recRef.current = rec;
     listeningRef.current = true;
-    startRec();
+
+    try {
+      rec.start();
+    } catch {
+      listeningRef.current = false;
+      recRef.current = null;
+      setRecStatus("idle");
+      setMicError("음성 인식을 시작할 수 없습니다. 페이지를 새로고침 후 다시 시도해 주세요.");
+    }
   }, [doStop]);
 
   return {
     isListening: recStatus === "listening",
+    isStarting: recStatus === "starting",
     isSupported,
     permissionDenied,
     micError,
     setPermissionDenied,
     start: doStart,
-    stop: () => doStop(true), // 이벤트 핸들러로 안전하게 사용 가능
+    stop: doStop,
   };
 }
 
