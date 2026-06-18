@@ -12,7 +12,7 @@ import { VerdictBadge } from "@/components/VerdictBadge";
 export const Route = createFileRoute("/history")({
   head: () => ({
     meta: [
-      { title: "분석 히스토리 — K-Fact" },
+      { title: "분석 히스토리 — 팩트체크" },
       { name: "description", content: "이 브라우저에서 진행한 사실검증 분석 기록." },
     ],
   }),

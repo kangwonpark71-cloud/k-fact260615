@@ -19,9 +19,9 @@ import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "K-Fact — 근거 중심 사실검증 보조" },
+      { title: "팩트체크 — 근거 중심 사실검증 보조" },
       { name: "description", content: "기사·게시물 본문에서 핵심 주장을 추출하고 신뢰도와 근거를 구조화해 보여주는 AI 검증 보조 도구." },
-      { property: "og:title", content: "K-Fact — 근거 중심 사실검증 보조" },
+      { property: "og:title", content: "팩트체크 — 근거 중심 사실검증 보조" },
       { property: "og:description", content: "주장 추출, 근거 정합성 평가, 반박 가능성까지 한 화면에서." },
     ],
   }),
@@ -290,7 +290,7 @@ function Home() {
       const res = await analyze({ data: { url: mode === "url" ? url : undefined, text, sessionId } }) as any;
       // 분석 결과를 sessionStorage에 저장 → analysis 페이지에서 즉시 사용 (KV/DB 조회 불필요)
       if (res.analysisResult) {
-        try { sessionStorage.setItem(`kfact:${res.id}`, JSON.stringify(res.analysisResult)); } catch {}
+        try { sessionStorage.setItem(`factcheck:${res.id}`, JSON.stringify(res.analysisResult)); } catch {}
       }
       navigate({ to: "/analysis/$id", params: { id: res.id } });
     } catch (e) {
@@ -341,7 +341,7 @@ function Home() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const res = await analyze({ data: { url: trendUrl, text: "", sessionId } }) as any;
       if (res.analysisResult) {
-        try { sessionStorage.setItem(`kfact:${res.id}`, JSON.stringify(res.analysisResult)); } catch {}
+        try { sessionStorage.setItem(`factcheck:${res.id}`, JSON.stringify(res.analysisResult)); } catch {}
       }
       navigate({ to: "/analysis/$id", params: { id: res.id } });
     } catch (e) {
@@ -836,7 +836,7 @@ function Home() {
         </section>
 
         <p className="text-center text-sm text-muted-foreground mt-10 sm:mt-12 max-w-xl mx-auto leading-relaxed px-2">
-          ※ K-Fact는 사실검증을 <strong className="text-foreground/80">보조</strong>하는 도구이며 최종 판정 도구가 아닙니다.
+          ※ 팩트체크는 사실검증을 <strong className="text-foreground/80">보조</strong>하는 도구이며 최종 판정 도구가 아닙니다.
           중요한 의사결정 전에는 반드시 신뢰할 수 있는 1차 출처를 직접 확인하세요.
         </p>
 

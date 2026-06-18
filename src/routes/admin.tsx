@@ -20,7 +20,7 @@ import { VerdictBadge } from "@/components/VerdictBadge";
 import { SiteHeader } from "@/components/SiteHeader";
 
 export const Route = createFileRoute("/admin")({
-  head: () => ({ meta: [{ title: "관리자 대시보드 — K-Fact" }] }),
+  head: () => ({ meta: [{ title: "관리자 대시보드 — 팩트체크" }] }),
   component: AdminPage,
 });
 
@@ -156,7 +156,7 @@ function AdminPage() {
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `kfact-analyses-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `factcheck-분석-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
   }
 

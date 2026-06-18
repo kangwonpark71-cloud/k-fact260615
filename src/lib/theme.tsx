@@ -38,19 +38,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("dark");
 
   useEffect(() => {
-    const saved = localStorage.getItem("kfact-theme");
+    const saved = localStorage.getItem("factcheck-theme");
     setThemeState(migrateTheme(saved));
   }, []);
 
   const setTheme = (t: Theme) => {
     setThemeState(t);
     document.documentElement.setAttribute("data-theme", t);
-    localStorage.setItem("kfact-theme", t);
+    localStorage.setItem("factcheck-theme", t);
   };
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("kfact-theme", theme);
+    localStorage.setItem("factcheck-theme", theme);
   }, [theme]);
 
   return <ThemeContext.Provider value={{ theme, setTheme }}>{children}</ThemeContext.Provider>;

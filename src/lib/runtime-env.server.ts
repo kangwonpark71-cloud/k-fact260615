@@ -20,7 +20,7 @@ export function setCfEnv(env: unknown): void {
   if (env && typeof env === "object") {
     _cfEnv = env as Record<string, unknown>;
     console.log(
-      "[k-fact] setCfEnv — keys:",
+      "[factcheck] setCfEnv — keys:",
       Object.keys(_cfEnv).join(",") || "(none)",
       "| GEMINI_API_KEY in env:",
       "GEMINI_API_KEY" in _cfEnv,

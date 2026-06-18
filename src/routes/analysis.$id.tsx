@@ -132,9 +132,9 @@ function AnalysisPage() {
   const [preloadedResult] = useState<Record<string, unknown> | null>(() => {
     if (typeof window === "undefined") return null;
     try {
-      const stored = sessionStorage.getItem(`kfact:${id}`);
+      const stored = sessionStorage.getItem(`factcheck:${id}`);
       if (stored) {
-        sessionStorage.removeItem(`kfact:${id}`);
+        sessionStorage.removeItem(`factcheck:${id}`);
         return JSON.parse(stored) as Record<string, unknown>;
       }
     } catch {}
@@ -269,7 +269,7 @@ function AnalysisPage() {
         <div className="border border-border/60 bg-surface shadow-[var(--shadow-card)]">
           {/* 문서 상단 레이블 바 */}
           <div className="px-5 sm:px-7 py-2 border-b border-border/40 flex items-center justify-between gap-3 bg-surface-2/50">
-            <span className="text-[9px] font-bold tracking-widest uppercase text-muted-foreground/60 font-mono">K-Fact 팩트체크 판정서</span>
+            <span className="text-[9px] font-bold tracking-widest uppercase text-muted-foreground/60 font-mono">팩트체크 팩트체크 판정서</span>
             <span className="text-[9px] text-muted-foreground/40 font-mono">
               {new Date(dataRow.created_at as string).toLocaleString("ko-KR")}
             </span>
@@ -1062,7 +1062,7 @@ function ShareButton() {
   const handleShare = async () => {
     const url = window.location.href;
     if (navigator.share) {
-      await navigator.share({ title: "K-Fact 분석 결과", url });
+      await navigator.share({ title: "팩트체크 분석 결과", url });
     } else {
       await navigator.clipboard.writeText(url);
       setCopied(true);

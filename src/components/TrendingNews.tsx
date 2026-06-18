@@ -197,13 +197,13 @@ export function TrendingNews({ onAnalyze }: Props) {
                     </span>
 
                     <div className="flex-1 min-w-0">
-                      {/* 제목: 클릭 시 K-Fact 분석 시작 */}
+                      {/* 제목: 클릭 시 팩트체크 분석 시작 */}
                       <button
                         type="button"
                         disabled={isDisabled}
                         onClick={() => handleAnalyze(item)}
                         className="text-left w-full group/title disabled:cursor-not-allowed"
-                        title="클릭하면 K-Fact로 주장 분석을 시작합니다"
+                        title="클릭하면 팩트체크로 주장 분석을 시작합니다"
                       >
                         <span className="text-sm sm:text-xs leading-relaxed text-foreground/90 line-clamp-2 group-hover/title:text-primary transition-colors">
                           {isAnalyzing ? (
@@ -218,7 +218,7 @@ export function TrendingNews({ onAnalyze }: Props) {
                         {/* 호버시 분석 힌트 */}
                         <span className="hidden group-hover/title:inline-flex sm:hidden items-center gap-1 mt-1 text-[10px] font-medium text-primary">
                           <Search className="w-2.5 h-2.5" />
-                          K-Fact 분석하기
+                          팩트체크 분석하기
                         </span>
                       </button>
 

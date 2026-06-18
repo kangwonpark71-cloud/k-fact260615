@@ -80,13 +80,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "K-Fact AI" },
+      { title: "팩트체크 AI" },
       { name: "description", content: "근거 중심 사실검증 보조 AI 웹서비스" },
-      { property: "og:title", content: "K-Fact AI" },
+      { property: "og:title", content: "팩트체크 AI" },
       { property: "og:description", content: "근거 중심 사실검증 보조 AI 웹서비스" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "K-Fact AI" },
+      { name: "twitter:title", content: "팩트체크 AI" },
       { name: "twitter:description", content: "근거 중심 사실검증 보조 AI 웹서비스" },
       { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b7ca7851-633d-4253-b7a5-328512759eee/id-preview-e03c8eff--d465ca01-abd5-4629-80e0-824f19b7741d.lovable.app-1781227535334.png" },
       { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b7ca7851-633d-4253-b7a5-328512759eee/id-preview-e03c8eff--d465ca01-abd5-4629-80e0-824f19b7741d.lovable.app-1781227535334.png" },
@@ -115,7 +115,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
-const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('kfact-theme');var valid=['dark','light','teen','thirties','senior'];if(t==='navy'||t==='night')t='dark';document.documentElement.setAttribute('data-theme',valid.indexOf(t)!==-1?t:'dark');}catch(e){}})();`;
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('factcheck-theme')||localStorage.getItem('kfact-theme');var valid=['dark','light','teen','thirties','senior'];if(t==='navy'||t==='night')t='dark';document.documentElement.setAttribute('data-theme',valid.indexOf(t)!==-1?t:'dark');}catch(e){}})();`;
 
 function RootShell({ children }: { children: ReactNode }) {
   return (

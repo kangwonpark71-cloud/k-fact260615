@@ -156,9 +156,9 @@ export function SiteHeader() {
               <ShieldCheck className="w-5 h-5 text-primary" />
             </div>
             <div className="flex flex-col leading-tight">
-              <span className="font-display font-bold text-base tracking-tight">K-Fact</span>
+              <span className="font-display font-bold text-base tracking-tight">팩트체크</span>
               <span className="hidden sm:block text-[10px] text-muted-foreground tracking-widest uppercase">
-                사실검증 보조
+                AI 사실검증
               </span>
             </div>
           </Link>

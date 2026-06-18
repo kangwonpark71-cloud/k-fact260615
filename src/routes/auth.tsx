@@ -8,8 +8,8 @@ import { useAuth } from "@/lib/auth";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "로그인 — K-Fact" },
-      { name: "description", content: "K-Fact 로그인 및 회원가입." },
+      { title: "로그인 — 팩트체크" },
+      { name: "description", content: "팩트체크 로그인 및 회원가입." },
     ],
   }),
   component: AuthPage,
@@ -88,7 +88,7 @@ function AuthPage() {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent grid place-items-center shadow-[var(--shadow-glow)]">
               <ShieldCheck className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="font-display font-bold text-lg">K-Fact</span>
+            <span className="font-display font-bold text-lg">팩트체크</span>
           </Link>
           <div className="glass rounded-2xl p-6">
             {mode === "forgot-sent" ? (
@@ -155,7 +155,7 @@ function AuthPage() {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent grid place-items-center shadow-[var(--shadow-glow)]">
               <ShieldCheck className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="font-display font-bold text-lg">K-Fact</span>
+            <span className="font-display font-bold text-lg">팩트체크</span>
           </Link>
           <div className="glass rounded-2xl p-8">
             <div className="text-5xl mb-4">📬</div>
@@ -191,7 +191,7 @@ function AuthPage() {
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent grid place-items-center shadow-[var(--shadow-glow)]">
             <ShieldCheck className="w-5 h-5 text-primary-foreground" />
           </div>
-          <span className="font-display font-bold text-lg">K-Fact</span>
+          <span className="font-display font-bold text-lg">팩트체크</span>
         </Link>
 
         <div className="glass rounded-2xl p-6">
