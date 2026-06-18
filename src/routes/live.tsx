@@ -542,7 +542,7 @@ function LivePage() {
               className={`shrink-0 mt-0.5 text-xs font-bold px-2.5 py-1 rounded-full border transition-all hover:scale-105 active:scale-95 ${SPEAKER_STYLE[speaker].badge}`}>
               {speaker}
             </button>
-            <textarea ref={textareaRef} rows={2}
+            <textarea ref={textareaRef} rows={2} lang="ko"
               placeholder="발언 직접 입력 (Enter로 추가)"
               value={interim || input}
               onChange={e => setInput(e.target.value)}

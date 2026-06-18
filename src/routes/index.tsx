@@ -370,6 +370,7 @@ function Home() {
             {/* 텍스트 / URL 입력 영역 */}
             {mode !== "voice" && (
               <textarea
+                lang="ko"
                 rows={ytInfo ? 3 : 4}
                 placeholder={
                   mode === "url"
