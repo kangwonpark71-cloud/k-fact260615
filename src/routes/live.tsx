@@ -92,13 +92,31 @@ function useSpeechRecognition({
     onInterimRef.current("");
   }, []);
 
-  const doStart = useCallback(() => {
+  const doStart = useCallback(async () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR || listeningRef.current) return;
 
     setMicError(null);
     setPermissionDenied(false);
     setRecStatus("starting");
+
+    // getUserMedia로 권한 선확인 후 즉시 해제 (스트림 점유 없이 권한만 확인)
+    try {
+      const testStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      testStream.getTracks().forEach(t => t.stop());
+    } catch (e: any) {
+      const name = (e?.name ?? "") as string;
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        setPermissionDenied(true);
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        setMicError("no-device");
+      } else {
+        setMicError("마이크를 사용할 수 없습니다. 다른 앱이 마이크를 사용 중인지 확인하세요.");
+      }
+      setRecStatus("idle");
+      return;
+    }
+
     listeningRef.current = true;
 
     const startRec = () => {
