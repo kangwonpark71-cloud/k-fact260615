@@ -9,10 +9,14 @@ import {
   Loader2,
 } from "lucide-react";
 
-import { getAnalysis, continueAnalysis, simplifyAnalysis, type SimplifiedClaim, type SimplifiedResult } from "@/lib/analyses.functions";
+import {
+  getAnalysis, continueAnalysis, simplifyAnalysis, getAuditLog, verifyIntegrity, crossCheckClaims,
+  type SimplifiedClaim, type SimplifiedResult,
+} from "@/lib/analyses.functions";
 import { getSessionId } from "@/lib/session";
 import { SiteHeader, BottomNav } from "@/components/SiteHeader";
 import { VerdictBadge } from "@/components/VerdictBadge";
+import { AuditTrailPanel, type AuditLog, type ExternalFactCheck } from "@/components/AuditTrailPanel";
 
 export const Route = createFileRoute("/analysis/$id")({
   component: AnalysisPage,
@@ -118,6 +122,9 @@ function AnalysisPage() {
   const fetchAnalysis = useServerFn(getAnalysis);
   const runPhase2 = useServerFn(continueAnalysis);
   const runSimplify = useServerFn(simplifyAnalysis);
+  const runGetAuditLog = useServerFn(getAuditLog);
+  const runVerifyIntegrity = useServerFn(verifyIntegrity);
+  const runCrossCheck = useServerFn(crossCheckClaims);
   const [sessionId, setSessionId] = useState<string>("");
   useEffect(() => { setSessionId(getSessionId()); }, []);
   const [phase2Result, setPhase2Result] = useState<Record<string, unknown> | null>(null);
@@ -127,6 +134,12 @@ function AnalysisPage() {
   const [readingMode, setReadingMode] = useState<"detailed" | "simple">("detailed");
   const [simplifiedData, setSimplifiedData] = useState<SimplifiedResult | null>(null);
   const [simplifyLoading, setSimplifyLoading] = useState(false);
+
+  /* 감사 로그 + 무결성 상태 */
+  const [auditLog, setAuditLog] = useState<AuditLog | null>(null);
+  const [integrityStatus, setIntegrityStatus] = useState<"valid" | "invalid" | "unsigned" | "checking">("unsigned");
+  const [externalChecks, setExternalChecks] = useState<ExternalFactCheck[] | undefined>(undefined);
+  const [externalLoading, setExternalLoading] = useState(false);
 
   // sessionStorage에서 분析 결果를 직접 읽음 (네비게이션 시 저장된 서버 결과)
   const [preloadedResult] = useState<Record<string, unknown> | null>(() => {
@@ -179,6 +192,23 @@ function AnalysisPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, status]);
 
+  // Phase 2 완료 후 감사 로그 + 무결성 자동 로드
+  useEffect(() => {
+    if (!sessionId || !id || status !== "completed" || auditLog) return;
+    setIntegrityStatus("checking");
+    Promise.all([
+      runGetAuditLog({ data: { id, sessionId } }).catch(() => null),
+      runVerifyIntegrity({ data: { id, sessionId } }).catch(() => ({ status: "unsigned" as const })),
+    ]).then(([al, iv]) => {
+      if (al && typeof al === "object" && "audit_log" in al) {
+        setAuditLog((al as { audit_log: AuditLog | null }).audit_log);
+      }
+      const ivStatus = (iv as { status: "valid" | "invalid" | "unsigned" }).status;
+      setIntegrityStatus(ivStatus ?? "unsigned");
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, id, status]);
+
   // pending/failed/timeout → 메시지창(배너) 표시
   if (isPendingStatus || isFailed || isTimedOut) {
     const isErr = isFailed || isTimedOut;
@@ -230,6 +260,22 @@ function AnalysisPage() {
 
   // 영토·주권 분쟁 주장 여부 — 고지 배너 표시 여부 결정
   const hasDisputedTerritory = claims.some(c => c.claim_type === "DISPUTED_TERRITORY");
+
+  /* 외부 팩트체크 기관 교차 확인 */
+  const handleLoadExternal = async () => {
+    if (externalLoading || externalChecks !== undefined) return;
+    setExternalLoading(true);
+    try {
+      const query = (dataRow.title as string | undefined) ?? (dataRow.summary as string | undefined) ?? "";
+      if (!query) { setExternalChecks([]); return; }
+      const results = await runCrossCheck({ data: { query: query.slice(0, 200) } });
+      setExternalChecks(results as ExternalFactCheck[]);
+    } catch {
+      setExternalChecks([]);
+    } finally {
+      setExternalLoading(false);
+    }
+  };
 
   /* 읽기 모드 전환 핸들러 */
   const handleReadingMode = async (m: "detailed" | "simple") => {
@@ -391,6 +437,17 @@ function AnalysisPage() {
             />
           ))}
         </section>
+
+        {/* ⑥ 판단 과정 + 무결성 감사 */}
+        {status === "completed" && (
+          <AuditTrailPanel
+            auditLog={auditLog}
+            integrity={integrityStatus}
+            externalChecks={externalChecks}
+            onLoadExternal={handleLoadExternal}
+            externalLoading={externalLoading}
+          />
+        )}
 
         <p className="text-xs text-muted-foreground leading-relaxed p-4 rounded-xl border border-border/50 bg-surface/30">
           이 결과는 AI 보조 판단이며 단정적 사실확인이 아닙니다. 신뢰도와 미확인 항목을 함께 참고하고,
