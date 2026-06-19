@@ -33,7 +33,6 @@ const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; b
   "부분 사실":      { icon: MinusCircle,  color: "text-verdict-partial", bg: "bg-verdict-partial/10 border-verdict-partial/30", label: "부분 사실" },
   "근거 부족":      { icon: HelpCircle,   color: "text-verdict-weak",    bg: "bg-verdict-weak/10 border-verdict-weak/30",       label: "근거 부족" },
   "반대 근거 우세": { icon: XCircle,      color: "text-verdict-false",   bg: "bg-verdict-false/10 border-verdict-false/30",     label: "반대 근거 우세" },
-  "미확인":         { icon: AlertCircle,  color: "text-verdict-unknown", bg: "bg-verdict-unknown/10 border-verdict-unknown/30", label: "미확인" },
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -146,12 +145,12 @@ function HeroSection() {
       {/* 설명 텍스트 */}
       <p
         className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed"
-        style={{ opacity: 0, animation: `fade-slide-up 0.75s ease-out ${DESC_START}ms both` }}
+        style={{ opacity: 0, animation: `fade-slide-up-down 9s ease-out ${DESC_START}ms both` }}
       >
         기사나 게시물 본문을 넣으면&nbsp;
         <strong className="text-foreground/80 font-semibold">핵심 주장 단위로 분리</strong>하고,
         <br className="hidden sm:block" />
-        <strong className="text-foreground/80 font-semibold">지지·반박·미확인 근거</strong>와 신뢰도를 한 화면에 보여드립니다.
+        <strong className="text-foreground/80 font-semibold">지지·반박·근거 부족</strong>와 신뢰도를 한 화면에 보여드립니다.
       </p>
     </section>
   );
@@ -361,7 +360,7 @@ function Home() {
         <HeroSection />
 
         {/* 메인 2열 레이아웃: 좌=입력폼, 우=실시간 뉴스 */}
-        <div className="grid xl:grid-cols-[1fr_420px] gap-6 items-start">
+        <div className="grid md:grid-cols-[1fr_320px] xl:grid-cols-[1fr_420px] gap-6 items-start">
         {/* 좌측: 입력 폼 영역 */}
         <div className="order-1">
 
@@ -530,7 +529,7 @@ function Home() {
                     </div>
                     <div className="space-y-2 max-h-96 overflow-y-auto pr-0.5">
                       {voiceSentences.map((s, idx) => {
-                        const meta = s.result ? (VERDICT_META[s.result.overall_verdict] ?? VERDICT_META["미확인"]) : null;
+                        const meta = s.result ? (VERDICT_META[s.result.overall_verdict] ?? VERDICT_META["근거 부족"]) : null;
                         const Icon = meta?.icon;
                         const brief = s.result?.highlights[0]?.brief ?? s.result?.summary ?? "";
                         const badgeClass = SPEAKER_BADGE[s.speaker] ?? "";
@@ -648,18 +647,32 @@ function Home() {
 
                 {/* 로딩 스켈레톤 */}
                 {quickLoading && !quickResult && (
-                  <div className="space-y-2 animate-pulse">
-                    <div className="h-3 bg-border/50 rounded-full w-3/4" />
-                    <div className="h-8 bg-border/30 rounded-lg" />
-                    <div className="h-8 bg-border/30 rounded-lg w-5/6" />
+                  <div className="space-y-3 animate-pulse">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 bg-border/50 rounded-full w-16" />
+                      <div className="h-3 bg-border/30 rounded-full flex-1" />
+                    </div>
+                    <div className="h-24 bg-border/15 rounded-xl border border-border/30" />
+                    <div className="h-16 bg-border/15 rounded-xl border border-border/30 w-5/6" />
+                    <div className="h-16 bg-border/15 rounded-xl border border-border/30 w-4/6" />
                   </div>
                 )}
 
                 {/* 오류 */}
                 {quickErr && !quickLoading && (
-                  <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    <span>{quickErr}</span>
+                  <div className="flex items-start gap-2.5 text-xs text-destructive bg-destructive/8 border border-destructive/25 rounded-xl px-4 py-3">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-destructive" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold mb-0.5">분석 중 오류 발생</p>
+                      <p className="text-destructive/80">{quickErr}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setQuickErr(null)}
+                      className="shrink-0 px-2.5 py-1 rounded-lg bg-destructive/15 text-destructive hover:bg-destructive/25 font-medium transition-colors"
+                    >
+                      닫기
+                    </button>
                   </div>
                 )}
 
@@ -704,7 +717,7 @@ function Home() {
                     {quickResult.highlights.length > 0 && (
                       <div className="space-y-2">
                         {quickResult.highlights.map((h, i) => {
-                          const meta = VERDICT_META[h.verdict] ?? VERDICT_META["미확인"];
+                          const meta = VERDICT_META[h.verdict] ?? VERDICT_META["근거 부족"];
                           const Icon = meta.icon;
                           return (
                             <div key={i} className={`rounded-xl border px-3 py-2.5 ${meta.bg}`}>
@@ -854,7 +867,7 @@ function Home() {
 }
 
 function OverallBadge({ verdict, confidence }: { verdict: string; confidence: number }) {
-  const meta = VERDICT_META[verdict] ?? VERDICT_META["미확인"];
+  const meta = VERDICT_META[verdict] ?? VERDICT_META["근거 부족"];
   const Icon = meta.icon;
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-semibold ${meta.bg} ${meta.color}`}>

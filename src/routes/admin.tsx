@@ -24,20 +24,18 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-const VERDICTS = ["사실", "부분 사실", "근거 부족", "반대 근거 우세", "미확인"] as const;
+const VERDICTS = ["사실", "부분 사실", "근거 부족", "반대 근거 우세"] as const;
 const VERDICT_COLORS: Record<string, string> = {
   "사실": "bg-verdict-true",
   "부분 사실": "bg-verdict-partial",
   "근거 부족": "bg-verdict-weak",
   "반대 근거 우세": "bg-verdict-false",
-  "미확인": "bg-verdict-unknown",
 };
 const VERDICT_TEXT: Record<string, string> = {
   "사실": "text-emerald-400",
   "부분 사실": "text-yellow-400",
   "근거 부족": "text-orange-400",
   "반대 근거 우세": "text-red-400",
-  "미확인": "text-muted-foreground",
 };
 
 type Tab = "overview" | "analyses" | "users" | "apikeys";
@@ -350,7 +348,7 @@ function AdminPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 hidden md:table-cell">
-                          <VerdictBadge verdict={row.overall_verdict ?? "미확인"} size="sm" />
+                          <VerdictBadge verdict={row.overall_verdict ?? "근거 부족"} size="sm" />
                         </td>
                         <td className="px-4 py-3 hidden lg:table-cell">
                           <div className="flex items-center gap-2">

@@ -19,15 +19,14 @@ export const Route = createFileRoute("/history")({
   component: HistoryPage,
 });
 
-type Verdict = "사실" | "부분 사실" | "근거 부족" | "반대 근거 우세" | "미확인";
-const VERDICTS: Verdict[] = ["사실", "부분 사실", "근거 부족", "반대 근거 우세", "미확인"];
+type Verdict = "사실" | "부분 사실" | "근거 부족" | "반대 근거 우세";
+const VERDICTS: Verdict[] = ["사실", "부분 사실", "근거 부족", "반대 근거 우세"];
 
 const VERDICT_COLOR: Record<Verdict, string> = {
   "사실": "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 data-[active=true]:bg-emerald-500 data-[active=true]:text-white",
   "부분 사실": "bg-blue-500/15 text-blue-400 border-blue-500/30 data-[active=true]:bg-blue-500 data-[active=true]:text-white",
   "근거 부족": "bg-yellow-500/15 text-yellow-400 border-yellow-500/30 data-[active=true]:bg-yellow-500 data-[active=true]:text-white",
   "반대 근거 우세": "bg-red-500/15 text-red-400 border-red-500/30 data-[active=true]:bg-red-500 data-[active=true]:text-white",
-  "미확인": "bg-slate-500/15 text-slate-400 border-slate-500/30 data-[active=true]:bg-slate-500 data-[active=true]:text-white",
 };
 
 function HistoryPage() {
@@ -74,9 +73,9 @@ function HistoryPage() {
   };
 
   return (
-    <div className="min-h-screen pb-16 sm:pb-0">
+    <div className="min-h-screen pb-[calc(4rem+env(safe-area-inset-bottom,0px))] sm:pb-0">
       <SiteHeader />
-      <main className="max-w-4xl mx-auto px-6 py-12">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-12">
         <h1 className="text-3xl font-bold mb-2">분석 히스토리</h1>
         <p className="text-sm text-muted-foreground mb-6">이 브라우저에서 수행한 최근 분석 기록입니다.</p>
 
@@ -110,7 +109,7 @@ function HistoryPage() {
                   key={v}
                   data-active={activeVerdict === v}
                   onClick={() => setActiveVerdict(activeVerdict === v ? null : v)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${VERDICT_COLOR[v]}`}
+                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-all duration-200 ${VERDICT_COLOR[v]}`}
                 >
                   {v}
                 </button>
@@ -173,7 +172,7 @@ function HistoryPage() {
                     </span>
                   ) : (
                     <>
-                      <VerdictBadge verdict={row.overall_verdict ?? "미확인"} size="sm" />
+                      <VerdictBadge verdict={row.overall_verdict ?? "근거 부족"} size="sm" />
                       <div className="text-xs text-muted-foreground mt-1 tabular-nums">
                         신뢰도 {row.overall_confidence ?? 0}%
                       </div>
@@ -185,7 +184,7 @@ function HistoryPage() {
                 type="button"
                 onClick={(e) => handleDelete(e, row.id)}
                 disabled={deletingId === row.id}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-40"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors sm:opacity-0 sm:group-hover:opacity-100 disabled:opacity-40"
                 aria-label="삭제"
               >
                 <Trash2 className="w-4 h-4" />

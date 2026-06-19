@@ -335,7 +335,7 @@ export function BottomNav() {
     pathname === path ? "text-primary" : "text-muted-foreground";
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 sm:hidden glass border-t border-border/50 flex items-stretch">
+    <nav className="fixed bottom-0 inset-x-0 z-40 sm:hidden glass border-t border-border/50 flex items-stretch pb-[calc(0.25rem+env(safe-area-inset-bottom,0px))]">
       <Link to="/" className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/")}`}>
         <Home className="w-5 h-5" />
         홈

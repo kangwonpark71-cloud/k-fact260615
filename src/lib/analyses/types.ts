@@ -7,7 +7,6 @@ export const VerdictEnum = z.enum([
   "부분 사실",
   "근거 부족",
   "반대 근거 우세",
-  "미확인",
 ]);
 
 export type Verdict = z.infer<typeof VerdictEnum>;

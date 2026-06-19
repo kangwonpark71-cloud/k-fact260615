@@ -37,7 +37,6 @@ const VERDICT_META = {
   "부분 사실":      { icon: MinusCircle,  color: "text-yellow-400",  bg: "bg-yellow-400/10 border-yellow-400/30",  label: "부분 사실" },
   "근거 부족":      { icon: HelpCircle,   color: "text-orange-400",  bg: "bg-orange-400/10 border-orange-400/30",  label: "근거 부족" },
   "반대 근거 우세": { icon: XCircle,      color: "text-red-400",     bg: "bg-red-400/10 border-red-400/30",        label: "반대 근거 우세" },
-  "미확인":         { icon: AlertCircle,  color: "text-muted-foreground", bg: "bg-border/20 border-border/40",      label: "미확인" },
 } as const;
 
 type Utterance = {
@@ -419,7 +418,7 @@ function LivePage() {
       <SiteHeader />
       <BottomNav />
 
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 pt-6 pb-36 sm:pb-24 flex flex-col gap-4">
+      <main className="flex-1 max-w-3xl mx-auto w-full px-4 sm:px-6 pt-6 pb-[calc(9rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(6rem+env(safe-area-inset-bottom,0px))] flex flex-col gap-4">
 
         {/* 헤더 */}
         <div className="flex items-center justify-between">
@@ -527,9 +526,14 @@ function LivePage() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-2 py-12 text-center">
-            <Mic className="w-8 h-8 text-muted-foreground/20" />
-            <p className="text-sm text-muted-foreground/40">녹음이 시작되면 발언이 여기에 기록됩니다</p>
+          <div className="flex flex-col items-center gap-4 py-16 text-center glass rounded-2xl border border-border/30">
+            <div className="w-16 h-16 rounded-full bg-muted/10 flex items-center justify-center">
+              <Mic className="w-8 h-8 text-muted-foreground/25 animate-pulse" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground/60">대화를 시작해보세요</p>
+              <p className="text-xs text-muted-foreground/40 mt-1">마이크로 말하거나 직접 입력하면 실시간 팩트체크를 제공합니다</p>
+            </div>
           </div>
         )}
 

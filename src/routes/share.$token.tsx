@@ -48,7 +48,6 @@ const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; b
   "부분 사실":      { icon: MinusCircle,  color: "text-verdict-partial", bg: "bg-verdict-partial/10", label: "부분 사실" },
   "근거 부족":      { icon: HelpCircle,   color: "text-verdict-weak",    bg: "bg-verdict-weak/10",    label: "근거 부족" },
   "반대 근거 우세": { icon: XCircle,      color: "text-verdict-false",   bg: "bg-verdict-false/10",   label: "반대 근거 우세" },
-  "미확인":         { icon: AlertCircle,  color: "text-verdict-unknown", bg: "bg-verdict-unknown/10", label: "미확인" },
 };
 
 function SharedAnalysisPage() {
@@ -88,7 +87,7 @@ function SharedAnalysisPage() {
   }
 
   const title = (analysis.title as string) ?? "분석 결과";
-  const overallVerdict = (analysis.overall_verdict as string) ?? "미확인";
+  const overallVerdict = (analysis.overall_verdict as string) ?? "근거 부족";
   const overallConfidence = (analysis.overall_confidence as number) ?? 0;
   const summary = (analysis.summary as string) ?? "";
   const createdAt = (analysis.created_at as string) ?? "";
@@ -98,7 +97,7 @@ function SharedAnalysisPage() {
     ? (claimsData.items as Claim[])
     : [];
 
-  const vm = VERDICT_META[overallVerdict] ?? VERDICT_META["미확인"];
+  const vm = VERDICT_META[overallVerdict] ?? VERDICT_META["근거 부족"];
   const VerdictIcon = vm.icon;
 
   const shareUrl = typeof window !== "undefined" ? window.location.href : "";
@@ -168,7 +167,7 @@ function SharedAnalysisPage() {
           <div className="space-y-3">
             <h2 className="text-base font-semibold">주장별 분석 ({items.length}개)</h2>
             {items.map((claim, i) => {
-              const cm = VERDICT_META[claim.verdict] ?? VERDICT_META["미확인"];
+              const cm = VERDICT_META[claim.verdict] ?? VERDICT_META["근거 부족"];
               const CIcon = cm.icon;
               return (
                 <div key={i} className="p-4 rounded-xl border border-border/40 bg-surface space-y-3">

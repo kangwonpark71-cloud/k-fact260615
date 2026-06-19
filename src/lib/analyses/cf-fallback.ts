@@ -2,22 +2,22 @@ import type { Verdict } from "./types";
 
 /* ── CF Workers AI 응답 파싱 유틸리티 ── */
 
-const CF_VALID: Verdict[] = ["사실", "부분 사실", "근거 부족", "반대 근거 우세", "미확인"];
+const CF_VALID: Verdict[] = ["사실", "부분 사실", "근거 부족", "반대 근거 우세"];
 
 const CF_VMAP: Record<string, Verdict> = {
   "사실이다": "사실", "사실임": "사실", "참": "사실",
   "부분사실": "부분 사실", "부분적 사실": "부분 사실", "일부사실": "부분 사실",
   "근거부족": "근거 부족", "증거부족": "근거 부족", "불충분": "근거 부족",
   "반대근거우세": "반대 근거 우세", "거짓": "반대 근거 우세", "허위": "반대 근거 우세",
-  "불확실": "미확인", "확인불가": "미확인",
+  "불확실": "근거 부족", "확인불가": "근거 부족",
 };
 
 function cfV(v: unknown): Verdict {
-  if (typeof v !== "string") return "미확인";
+  if (typeof v !== "string") return "근거 부족";
   const t = v.trim();
   return (CF_VALID as readonly string[]).includes(t)
     ? (t as Verdict)
-    : (CF_VMAP[t] ?? "미확인");
+    : (CF_VMAP[t] ?? "근거 부족");
 }
 
 function cfS(v: unknown, max: number): string {
@@ -69,7 +69,7 @@ function cfJB(v: unknown, claimType: string): string {
 function cfClaim(c: unknown) {
   const DEF = {
     claim: "본문 내 주요 주장", claim_type: "EMPIRICAL" as typeof CF_CLAIM_TYPES[number],
-    judgment_basis: "팩트체크", verdict: "미확인" as Verdict, confidence: 50,
+    judgment_basis: "팩트체크", verdict: "근거 부족" as Verdict, confidence: 50,
     reasoning: "", supporting_points: [] as string[], counter_points: [] as string[],
     unknowns: [] as string[], suggested_sources: [] as { name: string; type: string }[],
   };
@@ -81,12 +81,12 @@ function cfClaim(c: unknown) {
     claim: cfS(o.claim ?? o.주장 ?? o.content ?? o.text ?? "본문 내 주요 주장", 200),
     claim_type: claimType,
     judgment_basis: cfJB(o.judgment_basis ?? o.judgmentBasis ?? o.basis, claimType),
-    verdict: claimType === "OPINION" ? "미확인" as Verdict : cfV(o.verdict ?? o.판정 ?? o.result ?? o.rating),
+    verdict: claimType === "OPINION" ? "근거 부족" as Verdict : cfV(o.verdict ?? o.판정 ?? o.result ?? o.rating),
     confidence: cfN(o.confidence ?? o.신뢰도 ?? o.score ?? o.certainty),
     reasoning: cfS(o.reasoning ?? o.reason ?? o.이유 ?? o.explanation ?? o.analysis ?? "", 500),
     supporting_points: cfA(o.supporting_points ?? o.supportingPoints ?? o.support ?? o.지지 ?? o.evidence),
     counter_points: cfA(o.counter_points ?? o.counterPoints ?? o.counter ?? o.반박 ?? o.opposition),
-    unknowns: cfA(o.unknowns ?? o.unknown ?? o.미확인 ?? o.uncertain),
+    unknowns: cfA(o.unknowns ?? o.unknown ?? o.uncertain),
     suggested_sources: cfSrc(o.suggested_sources ?? o.suggestedSources ?? o.sources ?? o.출처 ?? o.references),
   };
 }
@@ -115,10 +115,10 @@ export function buildQuickFromCF(obj: Record<string, unknown>) {
   if (!Array.isArray(rawH)) rawH = [];
   const highlights = (rawH as unknown[]).slice(0, 3).map(h => {
     if (typeof h === "string") {
-      return { claim: h.slice(0, 150), verdict: "미확인" as Verdict, confidence: 50, brief: "", supporting: "", counter: "" };
+      return { claim: h.slice(0, 150), verdict: "근거 부족" as Verdict, confidence: 50, brief: "", supporting: "", counter: "" };
     }
     if (!h || typeof h !== "object") {
-      return { claim: "주요 주장", verdict: "미확인" as Verdict, confidence: 50, brief: "", supporting: "", counter: "" };
+      return { claim: "주요 주장", verdict: "근거 부족" as Verdict, confidence: 50, brief: "", supporting: "", counter: "" };
     }
     const o = h as Record<string, unknown>;
     return {
@@ -154,4 +154,4 @@ export function parseCFResponse(raw: string, hint: "analysis" | "quick"): unknow
   }
 }
 
-export const CF_JSON_HINT = `\n\n[출력] 마크다운 없이 순수 JSON 객체만. 판정은 "사실"|"부분 사실"|"근거 부족"|"반대 근거 우세"|"미확인" 중 하나.`;
+export const CF_JSON_HINT = `\n\n[출력] 마크다운 없이 순수 JSON 객체만. 판정은 "사실"|"부분 사실"|"근거 부족"|"반대 근거 우세" 중 하나.`;

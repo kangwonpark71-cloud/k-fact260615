@@ -426,6 +426,14 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* 설명 텍스트 — 나타났다가 사라짐 */
+@keyframes fade-slide-up-down {
+  0%   { opacity: 0; transform: translateY(22px) scale(0.98); }
+  9%   { opacity: 1; transform: translateY(0) scale(1); }
+  72%  { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-24px) scale(0.95); filter: blur(4px); }
+}
+
 @keyframes particle-drift {
   0%, 100% { opacity: 0;    transform: translateY(0)     scale(0.7); }
   15%       { opacity: 0.75; }
