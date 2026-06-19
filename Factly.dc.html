@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FACTLY — 팩트체크</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ========== RESET & BASE ========== */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root {
+  --font: 'Noto Sans KR', sans-serif;
+  --font-heading: 'IBM Plex Sans KR', sans-serif;
+  --radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-xl:24px;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.06);--shadow-md:0 4px 12px rgba(0,0,0,.08);--shadow-lg:0 8px 30px rgba(0,0,0,.12);
+  --transition:.35s cubic-bezier(.4,0,.2,1);
+  /* Theme: Private (default) */
+  --bg:#f8f9fa;--surface:#fff;--surface2:#f0f2f5;
+  --primary:#1a237e;--primary-light:#3f51b5;--accent:#d32f2f;--accent-light:#ef5350;
+  --text:#1a1a2e;--text2:#5a5a7a;--text3:#9a9ab0;
+  --border:#e8eaed;--badge-true:#2e7d32;--badge-mostly-true:#558b2f;--badge-mostly-false:#e65100;--badge-false:#c62828;
+  --nav-bg:#fff;--nav-icon:#9a9ab0;--nav-active:#1a237e;
+  --gradient-hero:linear-gradient(135deg,#1a237e,#283593);
+  --tag-bg:#e8eaf6;--tag-text:#1a237e;
+  --onboarding-overlay:rgba(26,35,126,.92);
+}
+[data-theme="dark"] {
+  --bg:#0a0a0f;--surface:#12121a;--surface2:#1a1a28;
+  --primary:#00f0ff;--primary-light:#66f5ff;--accent:#00f0ff;--accent-light:#66f5ff;
+  --text:#e8e8f0;--text2:#8888a0;--text3:#555570;
+  --border:#2a2a3a;--badge-true:#00e676;--badge-mostly-true:#69f0ae;--badge-mostly-false:#ff9100;--badge-false:#ff1744;
+  --nav-bg:#12121a;--nav-icon:#555570;--nav-active:#00f0ff;
+  --gradient-hero:linear-gradient(135deg,#0a0a0f,#1a1a3a);
+  --tag-bg:#1a1a3a;--tag-text:#00f0ff;
+  --onboarding-overlay:rgba(10,10,15,.95);
+  --shadow-sm:0 1px 3px rgba(0,240,255,.05);--shadow-md:0 4px 12px rgba(0,240,255,.08);--shadow-lg:0 8px 30px rgba(0,240,255,.1);
+}
+[data-theme="vivid"] {
+  --bg:#faf5ff;--surface:#fff;--surface2:#f3e8ff;
+  --primary:#7c3aed;--primary-light:#a78bfa;--accent:#ec4899;--accent-light:#f472b6;
+  --text:#1a0a2e;--text2:#6b4a8a;--text3:#a88ac0;
+  --border:#e9d5ff;--badge-true:#059669;--badge-mostly-true:#10b981;--badge-mostly-false:#d97706;--badge-false:#dc2626;
+  --nav-bg:#fff;--nav-icon:#a88ac0;--nav-active:#7c3aed;
+  --gradient-hero:linear-gradient(135deg,#7c3aed,#ec4899);
+  --tag-bg:#f3e8ff;--tag-text:#7c3aed;
+  --onboarding-overlay:rgba(124,58,237,.92);
+}
+html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--text);transition:background var(--transition),color var(--transition);-webkit-font-smoothing:antialiased;overflow:hidden}
+body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:relative;overflow:hidden;height:100dvh}
+
+/* ========== SCROLLBAR ========== */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--text3);border-radius:4px}
+
+/* ========== ONBOARDING ========== */
+#onboarding{
+  position:fixed;inset:0;z-index:1000;
+  background:var(--onboarding-overlay);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:32px 24px;transition:opacity .5s,transform .5s;
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+}
+#onboarding.hidden{opacity:0;transform:scale(1.05);pointer-events:none}
+.onb-container{width:100%;max-width:400px;position:relative}
+.onb-slide{display:none;flex-direction:column;align-items:center;text-align:center;gap:20px;animation:slideUp .5s ease}
+.onb-slide.active{display:flex}
+@keyframes slideUp{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}
+.onb-logo{width:80px;height:80px;border-radius:24px;display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:900;color:#fff;margin-bottom:4px}
+.onb-logo.private{background:linear-gradient(135deg,#1a237e,#d32f2f)}
+.onb-logo.dark{background:linear-gradient(135deg,#0a0a0f,#00f0ff)}
+.onb-logo.vivid{background:linear-gradient(135deg,#7c3aed,#ec4899)}
+.onb-title{font-family:var(--font-heading);font-size:26px;font-weight:700;color:#fff;line-height:1.3}
+.onb-sub{font-size:15px;color:rgba(255,255,255,.7);line-height:1.6;max-width:320px}
+.onb-chips{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:8px 0}
+.onb-chip{padding:10px 20px;border-radius:100px;border:1.5px solid rgba(255,255,255,.25);background:transparent;color:#fff;font-size:14px;font-weight:500;cursor:pointer;transition:all .2s;font-family:var(--font)}
+.onb-chip.selected{background:rgba(255,255,255,.15);border-color:#fff}
+.onb-chip:hover{background:rgba(255,255,255,.1)}
+.onb-btn{display:inline-flex;align-items:center;gap:8px;padding:14px 40px;border-radius:100px;border:none;font-size:16px;font-weight:600;cursor:pointer;transition:transform .2s;font-family:var(--font);margin-top:8px}
+.onb-btn:hover{transform:scale(1.03)}
+.onb-btn:active{transform:scale(.97)}
+.onb-btn.private{background:#d32f2f;color:#fff}
+.onb-btn.dark{background:#00f0ff;color:#0a0a0f}
+.onb-btn.vivid{background:#ec4899;color:#fff}
+.onb-dots{display:flex;gap:8px;margin-top:20px}
+.onb-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.3);transition:all .3s}
+.onb-dot.active{width:24px;border-radius:4px;background:#fff}
+/* Jelly loading */
+.onb-jelly{width:60px;height:60px;position:relative;margin:20px auto}
+.onb-jelly span{display:block;width:12px;height:12px;border-radius:50%;background:rgba(255,255,255,.6);position:absolute;animation:jellyBounce 1.2s ease-in-out infinite}
+.onb-jelly span:nth-child(1){left:0;animation-delay:0s}
+.onb-jelly span:nth-child(2){left:24px;animation-delay:.15s}
+.onb-jelly span:nth-child(3){left:48px;animation-delay:.3s}
+@keyframes jellyBounce{
+  0%,80%,100%{transform:translateY(0) scaleY(1)}
+  40%{transform:translateY(-24px) scaleY(.7)}
+}
+
+/* ========== APP SHELL ========== */
+#app{display:none;flex-direction:column;height:100dvh;overflow:hidden}
+#app.visible{display:flex}
+.app-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 16px;padding-top:calc(env(safe-area-inset-top,0) + 12px);
+  background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;
+  transition:background var(--transition),border-color var(--transition);
+  position:relative;
+}
+.app-logo{font-family:var(--font-heading);font-size:20px;font-weight:700;display:flex;align-items:center;gap:8px}
+.app-logo svg{width:28px;height:28px}
+.app-logo span{background:linear-gradient(135deg,var(--primary),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.theme-switcher{display:flex;gap:4px;background:var(--surface2);padding:3px;border-radius:100px}
+.theme-btn{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:all .2s;flex-shrink:0}
+.theme-btn.active{border-color:var(--primary);transform:scale(1.15)}
+.theme-btn.private{background:linear-gradient(135deg,#1a237e,#d32f2f)}
+.theme-btn.dark{background:linear-gradient(135deg,#0a0a0f,#00f0ff)}
+.theme-btn.vivid{background:linear-gradient(135deg,#7c3aed,#ec4899)}
+
+/* ========== MAIN CONTENT ========== */
+.main-content{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
+.page{display:none;padding:16px 16px 80px;animation:pageIn .35s ease}
+.page.active{display:block}
+@keyframes pageIn{from{transform:translateX(30px);opacity:0}to{transform:translateX(0);opacity:1}}
+.page-title{font-family:var(--font-heading);font-size:20px;font-weight:700;margin-bottom:16px}
+
+/* ========== HOME ========== */
+.trending-banner{
+  display:flex;gap:12px;overflow-x:auto;padding:4px 0 16px;scroll-snap-type:x mandatory;
+  -webkit-overflow-scrolling:touch;margin:0 -16px;padding-left:16px;padding-right:16px;
+}
+.trending-banner::-webkit-scrollbar{display:none}
+.trend-item{
+  min-width:260px;padding:16px 20px;border-radius:var(--radius-md);
+  background:var(--gradient-hero);color:#fff;scroll-snap-align:start;
+  cursor:pointer;transition:transform .2s;flex-shrink:0;
+}
+.trend-item:hover{transform:translateY(-2px)}
+.trend-item:active{transform:translateY(0)}
+.trend-label{font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.5px;opacity:.8;margin-bottom:6px}
+.trend-headline{font-size:15px;font-weight:600;line-height:1.4;margin-bottom:4px}
+.trend-meta{font-size:12px;opacity:.7}
+.tag-row{display:flex;gap:8px;overflow-x:auto;padding:4px 0 16px;-webkit-overflow-scrolling:touch;margin:0 -16px;padding-left:16px;padding-right:16px}
+.tag-row::-webkit-scrollbar{display:none}
+.tag-chip{
+  padding:8px 16px;border-radius:100px;border:none;
+  background:var(--tag-bg);color:var(--tag-text);font-size:13px;font-weight:500;
+  cursor:pointer;white-space:nowrap;transition:all .2s;font-family:var(--font);flex-shrink:0;
+}
+.tag-chip.active{background:var(--primary);color:var(--surface);box-shadow:var(--shadow-sm)}
+
+/* Fact Cards */
+.card{
+  background:var(--surface);border-radius:var(--radius-lg);padding:16px;
+  margin-bottom:12px;box-shadow:var(--shadow-sm);border:1px solid var(--border);
+  transition:all .2s;cursor:pointer;position:relative;
+}
+.card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.card:active{transform:translateY(0)}
+.card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+.card-source{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)}
+.card-source img{width:16px;height:16px;border-radius:50%;background:var(--surface2)}
+.verdict-badge{
+  display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;
+  font-size:11px;font-weight:700;letter-spacing:.3px;flex-shrink:0
+}
+.verdict-badge.true{background:#e8f5e9;color:var(--badge-true)}
+.verdict-badge.mostly-true{background:#f1f8e9;color:var(--badge-mostly-true)}
+.verdict-badge.mostly-false{background:#fff3e0;color:var(--badge-mostly-false)}
+.verdict-badge.false{background:#ffebee;color:var(--badge-false)}
+[data-theme="dark"] .verdict-badge{background:var(--surface2)}
+.card-title{font-size:15px;font-weight:600;line-height:1.4;margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card-meta{display:flex;gap:12px;font-size:12px;color:var(--text3)}
+.confidence-bar{height:4px;border-radius:2px;background:var(--surface2);margin-top:10px;overflow:hidden}
+.confidence-fill{height:100%;border-radius:2px;transition:width .8s ease}
+.confidence-fill.high{background:var(--badge-true)}
+.confidence-fill.med{background:#f9a825}
+.confidence-fill.low{background:var(--badge-false)}
+.bookmark-btn{
+  position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;
+  border:none;background:var(--surface2);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all .2s;z-index:2;
+}
+.bookmark-btn svg{width:16px;height:16px;fill:none;stroke:var(--text2);transition:all .2s}
+.bookmark-btn.saved svg{fill:var(--accent);stroke:var(--accent)}
+.bookmark-btn:hover{transform:scale(1.1)}
+
+/* ========== SEARCH ========== */
+.search-bar{
+  display:flex;align-items:center;gap:10px;
+  background:var(--surface2);border-radius:100px;padding:12px 18px;
+  margin-bottom:16px;transition:all .2s;border:1.5px solid transparent;
+}
+.search-bar:focus-within{border-color:var(--primary);background:var(--surface);box-shadow:0 0 0 3px rgba(26,35,126,.08)}
+.search-bar svg{width:18px;height:18px;stroke:var(--text3);flex-shrink:0}
+.search-bar input{flex:1;border:none;background:transparent;font-size:15px;color:var(--text);outline:none;font-family:var(--font)}
+.search-bar input::placeholder{color:var(--text3)}
+.search-trending{padding:8px 0}
+.search-trending-title{font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px}
+.search-trend-item{display:flex;align-items:center;gap:10px;padding:10px 0;font-size:14px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text2)}
+.search-trend-item:hover{color:var(--text)}
+.search-trend-item svg{width:16px;height:16px;stroke:var(--text3);flex-shrink:0}
+.filter-row{display:flex;gap:8px;overflow-x:auto;padding:4px 0 16px;-webkit-overflow-scrolling:touch}
+.filter-row::-webkit-scrollbar{display:none}
+.filter-chip{
+  padding:6px 16px;border-radius:100px;border:1px solid var(--border);
+  background:transparent;font-size:13px;color:var(--text2);cursor:pointer;
+  white-space:nowrap;transition:all .2s;font-family:var(--font);
+}
+.filter-chip.active{background:var(--primary);color:var(--surface);border-color:var(--primary)}
+
+/* ========== DETAIL ========== */
+.detail-header{text-align:center;padding:16px 0 20px}
+.detail-verdict{display:inline-flex;align-items:center;gap:6px;padding:6px 16px;border-radius:100px;font-size:14px;font-weight:700;margin-bottom:12px}
+.detail-title{font-family:var(--font-heading);font-size:22px;font-weight:700;line-height:1.3;margin-bottom:8px}
+.detail-meta{font-size:13px;color:var(--text2)}
+.gauge-wrap{display:flex;justify-content:center;margin:16px 0 24px}
+.gauge-container{position:relative;width:160px;height:90px;overflow:hidden}
+.gauge-bg{fill:none;stroke:var(--surface2);stroke-width:12}
+.gauge-fill{fill:none;stroke:var(--primary);stroke-width:12;stroke-linecap:round;transition:stroke-dashoffset 1.5s ease;transform:rotate(180deg);transform-origin:center}
+.gauge-label{position:absolute;bottom:0;left:50%;transform:translateX(-50%);text-align:center}
+.gauge-score{font-family:var(--font-heading);font-size:32px;font-weight:700;color:var(--primary)}
+.gauge-text{font-size:12px;color:var(--text2)}
+.detail-section{margin:20px 0}
+.detail-section-title{font-size:15px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.claim-card{
+  background:var(--surface);border-radius:var(--radius-md);padding:14px;
+  margin-bottom:10px;border:1px solid var(--border);
+}
+.claim-text{font-size:14px;font-weight:500;margin-bottom:6px;line-height:1.4}
+.claim-verdict{font-size:12px;font-weight:600;color:var(--badge-true)}
+.claim-verdict.false{color:var(--badge-false)}
+.claim-source{font-size:12px;color:var(--text3);margin-top:4px;display:flex;align-items:center;gap:4px}
+.source-link{color:var(--primary);text-decoration:none;font-weight:500}
+.source-link:hover{text-decoration:underline}
+
+/* ========== RANKINGS ========== */
+.rank-tabs{display:flex;gap:8px;margin-bottom:16px}
+.rank-tab{padding:8px 16px;border-radius:100px;border:none;font-size:13px;font-weight:500;cursor:pointer;background:var(--surface2);color:var(--text2);transition:all .2s;font-family:var(--font)}
+.rank-tab.active{background:var(--primary);color:var(--surface)}
+.rank-card{
+  display:flex;align-items:center;gap:14px;padding:14px;
+  background:var(--surface);border-radius:var(--radius-md);margin-bottom:10px;
+  border:1px solid var(--border);transition:all .2s;cursor:pointer;
+}
+.rank-card:hover{transform:translateX(4px)}
+.rank-num{
+  width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-heading);font-size:15px;font-weight:700;
+  background:var(--surface2);color:var(--text2);
+}
+.rank-card:nth-child(1) .rank-num{background:linear-gradient(135deg,#ffd700,#ffb300);color:#5d4037}
+.rank-card:nth-child(2) .rank-num{background:linear-gradient(135deg,#e0e0e0,#bdbdbd);color:#37474f}
+.rank-card:nth-child(3) .rank-num{background:linear-gradient(135deg,#cd7f32,#a0522d);color:#fff}
+.rank-info{flex:1}
+.rank-title{font-size:14px;font-weight:600;margin-bottom:2px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.rank-stats{font-size:12px;color:var(--text3)}
+.rank-score{font-family:var(--font-heading);font-size:18px;font-weight:700;color:var(--primary)}
+
+/* ========== SAVED ========== */
+.saved-empty{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:60px 20px;text-align:center;
+}
+.saved-empty-icon{width:80px;height:80px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+.saved-empty-icon svg{width:36px;height:36px;stroke:var(--text3)}
+.saved-empty-title{font-size:17px;font-weight:600;margin-bottom:4px;color:var(--text)}
+.saved-empty-sub{font-size:13px;color:var(--text3);line-height:1.5}
+
+/* ========== PROFILE ========== */
+.profile-header{text-align:center;padding:24px 0}
+.profile-avatar{width:72px;height:72px;border-radius:50%;background:var(--gradient-hero);margin:0 auto 12px;display:flex;align-items:center;justify-content:center;font-size:28px;color:#fff;font-weight:700}
+.profile-name{font-size:20px;font-weight:700;font-family:var(--font-heading)}
+.profile-email{font-size:13px;color:var(--text2);margin-top:2px}
+.profile-stats{display:flex;gap:0;margin:20px 0;background:var(--surface);border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden}
+.profile-stat{flex:1;text-align:center;padding:14px 8px;border-right:1px solid var(--border)}
+.profile-stat:last-child{border-right:none}
+.profile-stat-num{font-family:var(--font-heading);font-size:20px;font-weight:700;color:var(--primary)}
+.profile-stat-label{font-size:11px;color:var(--text2);margin-top:2px}
+.profile-menu{background:var(--surface);border-radius:var(--radius-md);border:1px solid var(--border);overflow:hidden}
+.profile-menu-item{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;font-size:14px}
+.profile-menu-item:last-child{border-bottom:none}
+.profile-menu-item:hover{background:var(--surface2)}
+.profile-menu-item svg{width:18px;height:18px;stroke:var(--text2);flex-shrink:0}
+
+/* ========== BOTTOM NAV ========== */
+.bottom-nav{
+  display:flex;background:var(--nav-bg);border-top:1px solid var(--border);
+  padding:6px 0 calc(env(safe-area-inset-bottom,0) + 6px);flex-shrink:0;
+  transition:background var(--transition),border-color var(--transition);
+}
+.nav-item{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:6px 0;cursor:pointer;border:none;background:none;
+  font-size:10px;color:var(--nav-icon);transition:color .2s;font-family:var(--font);
+}
+.nav-item svg{width:22px;height:22px;stroke:var(--nav-icon);fill:none;transition:all .2s}
+.nav-item.active{color:var(--nav-active)}
+.nav-item.active svg{stroke:var(--nav-active)}
+
+/* ========== SKELETON ========== */
+.skeleton{background:linear-gradient(90deg,var(--surface2) 25%,var(--border) 50%,var(--surface2) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:var(--radius-sm)}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.skel-card{height:120px;margin-bottom:12px;border-radius:var(--radius-lg)}
+.skel-line{height:14px;margin-bottom:8px;width:80%}
+.skel-line.short{width:50%}
+
+/* ========== TOAST ========== */
+.toast{
+  position:fixed;bottom:100px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--text);color:var(--bg);padding:12px 24px;border-radius:100px;
+  font-size:13px;font-weight:500;z-index:999;opacity:0;transition:all .35s;
+  pointer-events:none;white-space:nowrap;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+[data-theme="dark"] .toast{background:var(--surface);color:var(--text)}
+
+/* ========== RESPONSIVE ========== */
+@media(min-width:768px){body{max-width:480px;border-left:1px solid var(--border);border-right:1px solid var(--border);box-shadow:0 0 40px rgba(0,0,0,.05)}}
+</style>
+</head>
+<body>
+
+<!-- ========== ONBOARDING ========== -->
+<div id="onboarding">
+  <div class="onb-container">
+    <!-- Step 1 -->
+    <div class="onb-slide active" data-step="0">
+      <div class="onb-logo private" id="onbLogo">F</div>
+      <div class="onb-title">FACTLY</div>
+      <div class="onb-sub">당신의 첫 번째 진실.<br>AI가 검증한 팩트체크로 가짜뉴스에 휘둘리지 마세요.</div>
+      <button class="onb-btn private" id="onbNext1">다음</button>
+    </div>
+    <!-- Step 2 -->
+    <div class="onb-slide" data-step="1">
+      <div class="onb-title" style="font-size:22px">관심 주제를 선택하세요</div>
+      <div class="onb-sub">선택한 주제의 팩트체크 뉴스를 모아볼게요</div>
+      <div class="onb-chips" id="onbChips">
+        <button class="onb-chip selected" data-topic="정치">정치</button>
+        <button class="onb-chip" data-topic="경제">경제</button>
+        <button class="onb-chip" data-topic="과학">과학·IT</button>
+        <button class="onb-chip" data-topic="사회">사회</button>
+        <button class="onb-chip" data-topic="연예">연예</button>
+      </div>
+      <button class="onb-btn private" id="onbNext2">다음</button>
+    </div>
+    <!-- Step 3 -->
+    <div class="onb-slide" data-step="2">
+      <div class="onb-jelly"><span></span><span></span><span></span></div>
+      <div class="onb-title" style="font-size:20px">팩트체크 준비 중...</div>
+      <div class="onb-sub">AI가 최신 뉴스를 분석하고 있어요</div>
+      <button class="onb-btn private" id="onbStart" style="display:none">시작하기</button>
+    </div>
+    <div class="onb-dots" id="onbDots">
+      <div class="onb-dot active"></div>
+      <div class="onb-dot"></div>
+      <div class="onb-dot"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== APP ========== -->
+<div id="app">
+  <!-- Header -->
+  <header class="app-header">
+    <div class="app-logo">
+      <svg viewBox="0 0 28 28"><rect x="2" y="2" width="24" height="24" rx="6" fill="url(#lg)"/><path d="M9 14l3 3 7-7" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><defs><linearGradient id="lg"><stop offset="0%" stop-color="var(--primary)"/><stop offset="100%" stop-color="var(--accent)"/></linearGradient></defs></svg>
+      <span>FACTLY</span>
+    </div>
+    <div class="theme-switcher">
+      <button class="theme-btn private active" data-theme="private" title="사설" onclick="switchTheme('private')"></button>
+      <button class="theme-btn dark" data-theme="dark" title="Dark Energy" onclick="switchTheme('dark')"></button>
+      <button class="theme-btn vivid" data-theme="vivid" title="Vivid Pop" onclick="switchTheme('vivid')"></button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <div class="main-content" id="mainContent">
+
+    <!-- HOME -->
+    <div class="page active" id="page-home">
+      <div class="trending-banner" id="trendingBanner"></div>
+      <div class="tag-row" id="tagRow"></div>
+      <div id="homeCards"></div>
+    </div>
+
+    <!-- SEARCH -->
+    <div class="page" id="page-search">
+      <div class="search-bar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" placeholder="검색어를 입력하세요" id="searchInput" autocomplete="off">
+      </div>
+      <div id="searchResults">
+        <div class="search-trending">
+          <div class="search-trending-title">인기 검색어</div>
+          <div id="trendingList"></div>
+        </div>
+      </div>
+      <div class="filter-row" id="searchFilters" style="display:none">
+        <button class="filter-chip active" data-filter="latest">최신순</button>
+        <button class="filter-chip" data-filter="accuracy">정확순</button>
+        <button class="filter-chip" data-filter="views">조회순</button>
+      </div>
+      <div id="searchCardResults" style="display:none"></div>
+    </div>
+
+    <!-- RANKINGS -->
+    <div class="page" id="page-rankings">
+      <div class="rank-tabs" id="rankTabs">
+        <button class="rank-tab active" data-period="today">오늘</button>
+        <button class="rank-tab" data-period="week">이번주</button>
+        <button class="rank-tab" data-period="month">이번달</button>
+        <button class="rank-tab" data-period="all">전체</button>
+      </div>
+      <div id="rankList"></div>
+    </div>
+
+    <!-- SAVED -->
+    <div class="page" id="page-saved">
+      <div class="page-title">저장한 팩트체크</div>
+      <div id="savedList"></div>
+    </div>
+
+    <!-- PROFILE -->
+    <div class="page" id="page-profile">
+      <div class="profile-header">
+        <div class="profile-avatar">K</div>
+        <div class="profile-name">팩트체커</div>
+        <div class="profile-email">factchecker@factly.app</div>
+      </div>
+      <div class="profile-stats">
+        <div class="profile-stat"><div class="profile-stat-num">47</div><div class="profile-stat-label">확인</div></div>
+        <div class="profile-stat"><div class="profile-stat-num">12</div><div class="profile-stat-label">저장</div></div>
+        <div class="profile-stat"><div class="profile-stat-num">89%</div><div class="profile-stat-label">정확도</div></div>
+      </div>
+      <div class="profile-menu">
+        <div class="profile-menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>알림 설정</div>
+        <div class="profile-menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>테마 설정</div>
+        <div class="profile-menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>피드백 보내기</div>
+        <div class="profile-menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>공지사항</div>
+      </div>
+    </div>
+
+    <!-- DETAIL (hidden page, shown on card click) -->
+    <div class="page" id="page-detail"></div>
+  </div>
+
+  <!-- Bottom Nav -->
+  <nav class="bottom-nav" id="bottomNav">
+    <button class="nav-item active" data-page="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>홈</button>
+    <button class="nav-item" data-page="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>검색</button>
+    <button class="nav-item" data-page="rankings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>순위</button>
+    <button class="nav-item" data-page="saved"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>저장</button>
+    <button class="nav-item" data-page="profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>프로필</button>
+  </nav>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ========== DATA ==========
+const FACTCHECKS = [
+  {id:1,title:"코로나19 백신, 3개월 내 사망률 95% 감소 확인",source:"질병관리청",date:"2026-06-18",verdict:"TRUE",score:94,confidence:"high",topic:"과학",claims:[{text:"백신 접종군 사망률 95% 감소",verdict:"TRUE",source:"질병관리청 공식 보고서"},{text:"접종 후 중증화율 98% 감소",verdict:"TRUE",source:"CDC Morbidity Report"}]},
+  {id:2,title:"서울 아파트 평균값 15억 돌파… 통계 조작 논란",source:"부동산R114",date:"2026-06-17",verdict:"MOSTLY_TRUE",score:78,confidence:"med",topic:"경제",claims:[{text:"서울 아파트 평균 15억 돌파",verdict:"TRUE",source:"한국부동산원"},{text:"정부가 통계 기준을 바꿔故意로 올렸다",verdict:"FALSE",source:"감사원 감사 결과"}]},
+  {id:3,title:"AI가 의사 진단을 대체할 수 있다?",source:"의학신문",date:"2026-06-16",verdict:"MOSTLY_FALSE",score:35,confidence:"low",topic:"과학",claims:[{text:"AI 진단 정확도가 의사보다 높다",verdict:"MOSTLY_FALSE",source:"Lancet Review"},{text:"AI는 2028년까지 의사 면허 취득 가능",verdict:"FALSE",source:"의료법 개정안 없음"}]},
+  {id:4,title:"정부, 내년부터 대학등록금 전면 무상화 추진",source:"정책브리핑",date:"2026-06-15",verdict:"FALSE",score:12,confidence:"low",topic:"사회",claims:[{text:"2027학년도부터 전 대학 등록금 무상",verdict:"FALSE",source:"교육부 공식 입장 반박"},{text:"재원은 초부유세로 충당",verdict:"FALSE",source:"기재부 예산안 불포함"}]},
+  {id:5,title:"전기차 배터리, 10분 충전으로 1000km 주행 시대",source:"테크투데이",date:"2026-06-14",verdict:"MOSTLY_TRUE",score:71,confidence:"med",topic:"과학",claims:[{text:"국내 연구진, 10분 충전 1000km 배터리 개발",verdict:"TRUE",source:"UNIST 연구팀 논문"},{text:"내년 양산 확정",verdict:"MOSTLY_FALSE",source:"업계 양산 계획 2028년"}]},
+  {id:6,title:"연예인 A씨, 해외 원정도박 혐의로 입건",source:"스포츠서울",date:"2026-06-13",verdict:"FALSE",score:8,confidence:"low",topic:"연예",claims:[{text:"A씨, 필리핀 카지노에서 50억 도박",verdict:"FALSE",source:"A씨 법률대리인 부인"},{text:"CCTV 영상 확보",verdict:"FALSE",source:"해당 영상 AI 합성 확인"}]},
+  {id:7,title:"올해 여름, 역대급 폭염 온다… 기상청 예측",source:"기상청",date:"2026-06-12",verdict:"TRUE",score:88,confidence:"high",topic:"사회",claims:[{text:"올 7-8월 평균기온 평년比 2~3도↑",verdict:"TRUE",source:"기상청 장기예보"},{text:"서울 40도 돌파 가능성",verdict:"MOSTLY_TRUE",source:"기후모델 시뮬레이션"}]},
+  {id:8,title:"중국, 위안화 결제 시스템에 한국 포함 추진",source:"한국경제",date:"2026-06-11",verdict:"MOSTLY_TRUE",score:65,confidence:"med",topic:"경제",claims:[{text:"한중 위안화 직거래 협상 진행 중",verdict:"TRUE",source:"한국은행"},{text:"위안화 결제 의무화 추진",verdict:"FALSE",source:"기재부 협상안 없음"}]},
+];
+const TRENDING = [
+  {label:"속보",headline:"서울 지하철 파업 철회… 내일부터 정상 운행",source:"연합뉴스"},
+  {label:"이슈",headline:"AI 기본법 국회 통과… 내년 시행 예정",source:"KBS"},
+  {label:"팩트",headline:"온열질환자 전년比 40% 증가… 폭염 영향",source:"질병관리청"},
+];
+const TRENDING_SEARCHES = ["코로나19","서울 아파트","AI 진단","대학등록금","전기차 배터리","연예인 도박","폭염","위안화"];
+const TOPICS = ["전체","정치","경제","과학·IT","사회","연예"];
+
+// ========== STATE ==========
+let currentTheme = 'private';
+let currentPage = 'home';
+let savedIds = new Set(JSON.parse(localStorage.getItem('factly_saved')||'[]'));
+let onbDone = localStorage.getItem('factly_onb_done');
+
+// ========== DOM REFS ==========
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+// ========== THEME ==========
+function switchTheme(t) {
+  currentTheme = t;
+  document.documentElement.setAttribute('data-theme', t === 'private' ? '' : t === 'dark' ? 'dark' : 'vivid');
+  $$('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === t));
+  const logo = $('#onbLogo');
+  if(logo) {logo.className = 'onb-logo ' + t;}
+  $$('.onb-btn').forEach(b => {
+    b.className = 'onb-btn ' + t;
+  });
+  localStorage.setItem('factly_theme', t);
+}
+
+// ========== ONBOARDING ==========
+let onbStep = 0;
+const topicsSelected = new Set(['정치']);
+
+function showOnbStep(i) {
+  $$('.onb-slide').forEach((s,idx) => s.classList.toggle('active', idx === i));
+  $$('.onb-dot').forEach((d,idx) => d.classList.toggle('active', idx === i));
+  onbStep = i;
+}
+
+$('#onbNext1').onclick = () => showOnbStep(1);
+$('#onbNext2').onclick = () => showOnbStep(2);
+$$('.onb-chip').forEach(c => c.onclick = () => {
+  c.classList.toggle('selected');
+  const t = c.dataset.topic;
+  if(c.classList.contains('selected')) topicsSelected.add(t);
+  else topicsSelected.delete(t);
+});
+
+$('#onbStart').onclick = () => {
+  $('#onboarding').classList.add('hidden');
+  $('#app').classList.add('visible');
+  localStorage.setItem('factly_onb_done','1');
+};
+
+// Auto-transition after jelly
+setTimeout(() => {
+  $('#onbStart').style.display = 'inline-flex';
+}, 2000);
+
+if(onbDone) {
+  $('#onboarding').classList.add('hidden');
+  $('#app').classList.add('visible');
+  // Restore theme
+  const savedTheme = localStorage.getItem('factly_theme');
+  if(savedTheme) switchTheme(savedTheme);
+}
+
+// ========== RENDER CARDS ==========
+function renderCards(container, items) {
+  container.innerHTML = items.map(f => `
+    <div class="card" data-id="${f.id}" onclick="openDetail(${f.id})">
+      <button class="bookmark-btn ${savedIds.has(f.id)?'saved':''}" onclick="event.stopPropagation();toggleSave(${f.id},this)">
+        <svg viewBox="0 0 24 24" fill="${savedIds.has(f.id)?'currentColor':'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+      </button>
+      <div class="card-top">
+        <div class="card-source"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>${f.source}</div>
+        <span class="verdict-badge ${f.verdict.toLowerCase().replace('_','-')}">${f.verdict.replace('_',' ')}</span>
+      </div>
+      <div class="card-title">${f.title}</div>
+      <div class="card-meta"><span>${f.date}</span><span>·</span><span>신뢰도 ${f.score}%</span></div>
+      <div class="confidence-bar"><div class="confidence-fill ${f.confidence}" style="width:${f.score}%"></div></div>
+    </div>
+  `).join('');
+}
+
+// ========== RENDER HOME ==========
+function renderHome() {
+  const tb = $('#trendingBanner');
+  tb.innerHTML = TRENDING.map(t => `
+    <div class="trend-item" onclick="openDetail(1)">
+      <div class="trend-label">${t.label}</div>
+      <div class="trend-headline">${t.headline}</div>
+      <div class="trend-meta">${t.source}</div>
+    </div>
+  `).join('');
+
+  const tr = $('#tagRow');
+  tr.innerHTML = TOPICS.map(t => `<button class="tag-chip ${t==='전체'?'active':''}" onclick="filterTopic('${t}',this)">${t}</button>`).join('');
+
+  renderCards($('#homeCards'), FACTCHECKS);
+}
+
+// ========== FILTER ==========
+function filterTopic(t, btn) {
+  $$('.tag-chip').forEach(c => c.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const items = t === '전체' ? FACTCHECKS : FACTCHECKS.filter(f => f.topic === t.replace('·IT',''));
+  renderCards($('#homeCards'), items);
+}
+
+// ========== SEARCH ==========
+function renderTrendingSearches() {
+  $('#trendingList').innerHTML = TRENDING_SEARCHES.map(s => `
+    <div class="search-trend-item" onclick="doSearch('${s}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>${s}
+    </div>
+  `).join('');
+}
+
+$('#searchInput').oninput = function() {
+  const q = this.value.trim();
+  if(q.length === 0) {
+    $('#searchResults').style.display = 'block';
+    $('#searchFilters').style.display = 'none';
+    $('#searchCardResults').style.display = 'none';
+    return;
+  }
+  $('#searchResults').style.display = 'none';
+  $('#searchFilters').style.display = 'flex';
+  const results = FACTCHECKS.filter(f => f.title.includes(q) || f.topic.includes(q));
+  if(results.length === 0) {
+    $('#searchCardResults').style.display = 'block';
+    $('#searchCardResults').innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--text3)">검색 결과가 없습니다</div>';
+    return;
+  }
+  $('#searchCardResults').style.display = 'block';
+  renderCards($('#searchCardResults'), results);
+};
+
+function doSearch(q) {
+  $('#searchInput').value = q;
+  $('#searchInput').dispatchEvent(new Event('input'));
+}
+
+// ========== SAVE/BOOKMARK ==========
+function toggleSave(id, btn) {
+  if(savedIds.has(id)) savedIds.delete(id);
+  else savedIds.add(id);
+  localStorage.setItem('factly_saved', JSON.stringify([...savedIds]));
+  if(btn) btn.classList.toggle('saved');
+  renderSaved();
+  showToast(savedIds.has(id) ? '저장했습니다' : '저장을 취소했습니다');
+}
+
+function renderSaved() {
+  const container = $('#savedList');
+  const saved = FACTCHECKS.filter(f => savedIds.has(f.id));
+  if(saved.length === 0) {
+    container.innerHTML = `
+      <div class="saved-empty">
+        <div class="saved-empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
+        <div class="saved-empty-title">아직 저장한 팩트체크가 없습니다</div>
+        <div class="saved-empty-sub">홈에서 관심 있는 팩트체크의 북마크 아이콘을 눌러 저장해보세요</div>
+      </div>
+    `;
+    return;
+  }
+  renderCards(container, saved);
+}
+
+// ========== RANKINGS ==========
+function renderRankings(period) {
+  let sorted = [...FACTCHECKS].sort((a,b) => b.score - a.score);
+  if(period === 'today') sorted = sorted.slice(0,3);
+  else if(period === 'week') sorted = sorted.slice(0,5);
+  else if(period === 'month') sorted = sorted.slice(0,7);
+
+  $('#rankList').innerHTML = sorted.map((f,i) => `
+    <div class="rank-card" onclick="openDetail(${f.id})">
+      <div class="rank-num">${i+1}</div>
+      <div class="rank-info">
+        <div class="rank-title">${f.title}</div>
+        <div class="rank-stats">${f.source} · ${f.date} · 확인 ${Math.floor(Math.random()*2000)+300}회</div>
+      </div>
+      <div class="rank-score">${f.score}%</div>
+    </div>
+  `).join('');
+}
+
+$$('.rank-tab').forEach(t => t.onclick = function() {
+  $$('.rank-tab').forEach(rt => rt.classList.remove('active'));
+  this.classList.add('active');
+  renderRankings(this.dataset.period);
+});
+
+// ========== DETAIL ==========
+function openDetail(id) {
+  const f = FACTCHECKS.find(x => x.id === id);
+  if(!f) return;
+  currentPage = 'detail';
+  $$('.page').forEach(p => p.classList.remove('active'));
+  const detailPage = $('#page-detail');
+  detailPage.classList.add('active');
+  // Nav
+  $$('.nav-item').forEach(n => n.classList.remove('active'));
+
+  const gaugeVal = f.score;
+  const circumference = Math.PI * 80;
+  const offset = circumference - (gaugeVal / 100) * circumference;
+
+  detailPage.innerHTML = `
+    <div style="padding:0 0 24px">
+      <button onclick="backFromDetail()" style="display:inline-flex;align-items:center;gap:6px;padding:8px 0;border:none;background:none;font-size:14px;color:var(--text2);cursor:pointer;font-family:var(--font);margin-bottom:4px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+        돌아가기
+      </button>
+    </div>
+    <div class="detail-header">
+      <div class="detail-verdict verdict-badge ${f.verdict.toLowerCase().replace('_','-')}">${f.verdict.replace('_',' ')}</div>
+      <div class="detail-title">${f.title}</div>
+      <div class="detail-meta">${f.source} · ${f.date}</div>
+    </div>
+    <div class="gauge-wrap">
+      <div class="gauge-container">
+        <svg width="160" height="90" viewBox="0 0 160 90">
+          <path class="gauge-bg" d="M 15 85 A 65 65 0 0 1 145 85"/>
+          <path class="gauge-fill" id="gaugeArc" d="M 15 85 A 65 65 0 0 1 145 85"
+            stroke-dasharray="${circumference}" stroke-dashoffset="${circumference}"/>
+        </svg>
+        <div class="gauge-label">
+          <div class="gauge-score" id="gaugeScore">0%</div>
+          <div class="gauge-text">신뢰도 점수</div>
+        </div>
+      </div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+        검증 요약
+      </div>
+      ${f.claims.map(c => `
+        <div class="claim-card">
+          <div class="claim-text">${c.text}</div>
+          <div class="claim-verdict ${c.verdict === 'FALSE' ? 'false' : ''}">${c.verdict}</div>
+          <div class="claim-source">출처: <a class="source-link" href="#" onclick="event.preventDefault();showToast('외부 출처로 이동')">${c.source}</a></div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        관련 팩트체크
+      </div>
+      ${FACTCHECKS.filter(x => x.id !== id).slice(0,2).map(f2 => `
+        <div class="card" onclick="openDetail(${f2.id})">
+          <div class="card-top">
+            <div class="card-source">${f2.source}</div>
+            <span class="verdict-badge ${f2.verdict.toLowerCase().replace('_','-')}">${f2.verdict.replace('_',' ')}</span>
+          </div>
+          <div class="card-title">${f2.title}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  // Animate gauge after render
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const arc = document.getElementById('gaugeArc');
+      if(arc) arc.style.strokeDashoffset = offset;
+      setTimeout(() => {
+        const gs = document.getElementById('gaugeScore');
+        if(gs) gs.textContent = gaugeVal + '%';
+      }, 200);
+    });
+  });
+}
+
+function backFromDetail() {
+  showPage(currentPage = 'home');
+}
+
+// ========== NAVIGATION ==========
+function showPage(name) {
+  if(name === 'detail') return;
+  currentPage = name;
+  $$('.page').forEach(p => p.classList.remove('active'));
+  const target = document.getElementById('page-' + name);
+  if(target) target.classList.add('active');
+  $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === name));
+  document.getElementById('mainContent').scrollTop = 0;
+}
+
+$$('.nav-item').forEach(n => n.onclick = () => showPage(n.dataset.page));
+
+// ========== TOAST ==========
+let toastTimer;
+function showToast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ========== SKELETON LOADING ==========
+function showSkeleton() {
+  const container = $('#homeCards');
+  container.innerHTML = Array(3).fill(0).map(() => `
+    <div class="skel-card skeleton"></div>
+  `).join('');
+}
+
+// ========== INIT ==========
+function init() {
+  const savedTheme = localStorage.getItem('factly_theme');
+  if(savedTheme) switchTheme(savedTheme);
+  renderHome();
+  renderTrendingSearches();
+  renderSaved();
+  renderRankings('today');
+  // Simulate skeleton then real content
+  showSkeleton();
+  setTimeout(() => renderHome(), 600);
+}
+
+init();
+</script>
+</body>
+</html>
