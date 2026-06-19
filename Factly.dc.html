@@ -15,36 +15,77 @@
   --radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-xl:24px;
   --shadow-sm:0 1px 3px rgba(0,0,0,.06);--shadow-md:0 4px 12px rgba(0,0,0,.08);--shadow-lg:0 8px 30px rgba(0,0,0,.12);
   --transition:.35s cubic-bezier(.4,0,.2,1);
-  /* Theme: Private (default) */
-  --bg:#f8f9fa;--surface:#fff;--surface2:#f0f2f5;
-  --primary:#1a237e;--primary-light:#3f51b5;--accent:#d32f2f;--accent-light:#ef5350;
-  --text:#1a1a2e;--text2:#5a5a7a;--text3:#9a9ab0;
-  --border:#e8eaed;--badge-true:#2e7d32;--badge-mostly-true:#558b2f;--badge-mostly-false:#e65100;--badge-false:#c62828;
-  --nav-bg:#fff;--nav-icon:#9a9ab0;--nav-active:#1a237e;
-  --gradient-hero:linear-gradient(135deg,#1a237e,#283593);
-  --tag-bg:#e8eaf6;--tag-text:#1a237e;
-  --onboarding-overlay:rgba(26,35,126,.92);
+  /* Default fallback (same as dark) */
+  --bg:#0d1421;--surface:#161e30;--surface2:#1f2a40;
+  --primary:#e8edf5;--primary-light:#ffffff;--accent:#5b8def;--accent-light:#8ab4f8;
+  --text:#e8edf5;--text2:#8899b4;--text3:#5a6a85;
+  --border:#2a3650;--badge-true:#4caf7d;--badge-mostly-true:#8bc34a;--badge-mostly-false:#ff9800;--badge-false:#ef5350;
+  --nav-bg:#161e30;--nav-icon:#5a6a85;--nav-active:#e8edf5;
+  --gradient-hero:linear-gradient(135deg,#0d1421,#1b2a4a);
+  --tag-bg:#1f2a40;--tag-text:#8ab4f8;
+  --onboarding-overlay:rgba(13,20,33,.95);
+  --gauge-stroke:#5b8def;
 }
-[data-theme="dark"] {
-  --bg:#0a0a0f;--surface:#12121a;--surface2:#1a1a28;
-  --primary:#00f0ff;--primary-light:#66f5ff;--accent:#00f0ff;--accent-light:#66f5ff;
-  --text:#e8e8f0;--text2:#8888a0;--text3:#555570;
-  --border:#2a2a3a;--badge-true:#00e676;--badge-mostly-true:#69f0ae;--badge-mostly-false:#ff9100;--badge-false:#ff1744;
-  --nav-bg:#12121a;--nav-icon:#555570;--nav-active:#00f0ff;
-  --gradient-hero:linear-gradient(135deg,#0a0a0f,#1a1a3a);
-  --tag-bg:#1a1a3a;--tag-text:#00f0ff;
-  --onboarding-overlay:rgba(10,10,15,.95);
-  --shadow-sm:0 1px 3px rgba(0,240,255,.05);--shadow-md:0 4px 12px rgba(0,240,255,.08);--shadow-lg:0 8px 30px rgba(0,240,255,.1);
+/* 1. 다크 (dark) — 딥 네이비 다크모드 */
+:root,[data-theme="dark"] {
+  --bg:#0d1421;--surface:#161e30;--surface2:#1f2a40;
+  --primary:#e8edf5;--primary-light:#ffffff;--accent:#5b8def;--accent-light:#8ab4f8;
+  --text:#e8edf5;--text2:#8899b4;--text3:#5a6a85;
+  --border:#2a3650;--badge-true:#4caf7d;--badge-mostly-true:#8bc34a;--badge-mostly-false:#ff9800;--badge-false:#ef5350;
+  --nav-bg:#161e30;--nav-icon:#5a6a85;--nav-active:#e8edf5;
+  --gradient-hero:linear-gradient(135deg,#0d1421,#1b2a4a);
+  --tag-bg:#1f2a40;--tag-text:#8ab4f8;
+  --onboarding-overlay:rgba(13,20,33,.95);
+  --gauge-stroke:#5b8def;
 }
-[data-theme="vivid"] {
-  --bg:#faf5ff;--surface:#fff;--surface2:#f3e8ff;
-  --primary:#7c3aed;--primary-light:#a78bfa;--accent:#ec4899;--accent-light:#f472b6;
-  --text:#1a0a2e;--text2:#6b4a8a;--text3:#a88ac0;
-  --border:#e9d5ff;--badge-true:#059669;--badge-mostly-true:#10b981;--badge-mostly-false:#d97706;--badge-false:#dc2626;
-  --nav-bg:#fff;--nav-icon:#a88ac0;--nav-active:#7c3aed;
-  --gradient-hero:linear-gradient(135deg,#7c3aed,#ec4899);
-  --tag-bg:#f3e8ff;--tag-text:#7c3aed;
-  --onboarding-overlay:rgba(124,58,237,.92);
+/* 2. 라이트 (light) — 밝은 문서 스타일 */
+[data-theme="light"] {
+  --bg:#f7f4ef;--surface:#ffffff;--surface2:#f0ebe3;
+  --primary:#1a2030;--primary-light:#2a3a5a;--accent:#2a4499;--accent-light:#4a6ac0;
+  --text:#1a2030;--text2:#5a6a7a;--text3:#9aaaba;
+  --border:#e0d8cc;--badge-true:#2e7d32;--badge-mostly-true:#689f38;--badge-mostly-false:#e65100;--badge-false:#c62828;
+  --nav-bg:#ffffff;--nav-icon:#9aaaba;--nav-active:#1a2030;
+  --gradient-hero:linear-gradient(135deg,#2a4499,#4a6ac0);
+  --tag-bg:#eef0f6;--tag-text:#2a4499;
+  --onboarding-overlay:rgba(42,68,153,.92);
+  --gauge-stroke:#2a4499;
+}
+/* 3. 10대 (teen) — Z세대 네온 바이브 */
+[data-theme="teen"] {
+  --bg:#0d0820;--surface:#16102e;--surface2:#201842;
+  --primary:#ff5ecb;--primary-light:#ff8ad9;--accent:#00d4ff;--accent-light:#66e5ff;
+  --text:#f0e8ff;--text2:#a088c8;--text3:#6a5090;
+  --border:#2a1a4a;--badge-true:#00e676;--badge-mostly-true:#69f0ae;--badge-mostly-false:#ff9100;--badge-false:#ff1744;
+  --nav-bg:#16102e;--nav-icon:#6a5090;--nav-active:#ff5ecb;
+  --gradient-hero:linear-gradient(135deg,#1a0e2e,#ff5ecb);
+  --tag-bg:#201842;--tag-text:#ff5ecb;
+  --onboarding-overlay:rgba(13,8,32,.95);
+  --gauge-stroke:#ff5ecb;
+}
+/* 4. 30대 (thirties) — 프로페셔널 모던 */
+[data-theme="thirties"] {
+  --bg:#f0f2f8;--surface:#ffffff;--surface2:#e4e8f0;
+  --primary:#2a4499;--primary-light:#4a6ac0;--accent:#3a5ab0;--accent-light:#6a8ad0;
+  --text:#141a2a;--text2:#4a5a7a;--text3:#8a9ab0;
+  --border:#d8dce8;--badge-true:#256d4a;--badge-mostly-true:#5a8a3a;--badge-mostly-false:#c06600;--badge-false:#b02020;
+  --nav-bg:#ffffff;--nav-icon:#8a9ab0;--nav-active:#2a4499;
+  --gradient-hero:linear-gradient(135deg,#2a4499,#6a8ad0);
+  --tag-bg:#e4e8f0;--tag-text:#2a4499;
+  --onboarding-overlay:rgba(42,68,153,.90);
+  --gauge-stroke:#2a4499;
+}
+/* 5. 60대 (senior) — 큰 글씨 고대비 모드 */
+[data-theme="senior"] {
+  font-size: 112.5%;
+  --bg:#ffffff;--surface:#f8f8f8;--surface2:#eeeeee;
+  --primary:#0d1520;--primary-light:#1a2a3a;--accent:#0d1520;--accent-light:#2a3a4a;
+  --text:#0d1520;--text2:#2a3a4a;--text3:#5a6a7a;
+  --border:#cccccc;--badge-true:#1a5a3a;--badge-mostly-true:#3a7a2a;--badge-mostly-false:#a05000;--badge-false:#8a1010;
+  --nav-bg:#ffffff;--nav-icon:#5a6a7a;--nav-active:#0d1520;
+  --gradient-hero:linear-gradient(135deg,#0d1520,#4a5a6a);
+  --tag-bg:#e0e0e0;--tag-text:#0d1520;
+  --onboarding-overlay:rgba(13,21,32,.92);
+  --gauge-stroke:#0d1520;
 }
 html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--text);transition:background var(--transition),color var(--transition);-webkit-font-smoothing:antialiased;overflow:hidden}
 body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:relative;overflow:hidden;height:100dvh}
@@ -68,9 +109,11 @@ body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:r
 .onb-slide.active{display:flex}
 @keyframes slideUp{from{transform:translateY(30px);opacity:0}to{transform:translateY(0);opacity:1}}
 .onb-logo{width:80px;height:80px;border-radius:24px;display:flex;align-items:center;justify-content:center;font-size:36px;font-weight:900;color:#fff;margin-bottom:4px}
-.onb-logo.private{background:linear-gradient(135deg,#1a237e,#d32f2f)}
-.onb-logo.dark{background:linear-gradient(135deg,#0a0a0f,#00f0ff)}
-.onb-logo.vivid{background:linear-gradient(135deg,#7c3aed,#ec4899)}
+.onb-logo.dark{background:linear-gradient(135deg,#0d1421,#5b8def)}
+.onb-logo.light{background:linear-gradient(135deg,#2a4499,#f7f4ef)}
+.onb-logo.teen{background:linear-gradient(135deg,#1a0e2e,#ff5ecb)}
+.onb-logo.thirties{background:linear-gradient(135deg,#2a4499,#6a8ad0)}
+.onb-logo.senior{background:linear-gradient(135deg,#0d1520,#ffffff);border:2px solid #0d1520}
 .onb-title{font-family:var(--font-heading);font-size:26px;font-weight:700;color:#fff;line-height:1.3}
 .onb-sub{font-size:15px;color:rgba(255,255,255,.7);line-height:1.6;max-width:320px}
 .onb-chips{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:8px 0}
@@ -80,9 +123,11 @@ body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:r
 .onb-btn{display:inline-flex;align-items:center;gap:8px;padding:14px 40px;border-radius:100px;border:none;font-size:16px;font-weight:600;cursor:pointer;transition:transform .2s;font-family:var(--font);margin-top:8px}
 .onb-btn:hover{transform:scale(1.03)}
 .onb-btn:active{transform:scale(.97)}
-.onb-btn.private{background:#d32f2f;color:#fff}
-.onb-btn.dark{background:#00f0ff;color:#0a0a0f}
-.onb-btn.vivid{background:#ec4899;color:#fff}
+.onb-btn.dark{background:#5b8def;color:#fff}
+.onb-btn.light{background:#2a4499;color:#fff}
+.onb-btn.teen{background:#ff5ecb;color:#0d0820}
+.onb-btn.thirties{background:#2a4499;color:#fff}
+.onb-btn.senior{background:#0d1520;color:#fff}
 .onb-dots{display:flex;gap:8px;margin-top:20px}
 .onb-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.3);transition:all .3s}
 .onb-dot.active{width:24px;border-radius:4px;background:#fff}
@@ -110,12 +155,10 @@ body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:r
 .app-logo{font-family:var(--font-heading);font-size:20px;font-weight:700;display:flex;align-items:center;gap:8px}
 .app-logo svg{width:28px;height:28px}
 .app-logo span{background:linear-gradient(135deg,var(--primary),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.theme-switcher{display:flex;gap:4px;background:var(--surface2);padding:3px;border-radius:100px}
-.theme-btn{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:all .2s;flex-shrink:0}
-.theme-btn.active{border-color:var(--primary);transform:scale(1.15)}
-.theme-btn.private{background:linear-gradient(135deg,#1a237e,#d32f2f)}
-.theme-btn.dark{background:linear-gradient(135deg,#0a0a0f,#00f0ff)}
-.theme-btn.vivid{background:linear-gradient(135deg,#7c3aed,#ec4899)}
+.theme-switcher{display:flex;gap:3px;background:var(--surface2);padding:3px;border-radius:100px}
+.theme-btn{display:flex;align-items:center;gap:3px;padding:4px 8px;border-radius:100px;border:none;cursor:pointer;transition:all .2s;flex-shrink:0;font-family:var(--font);font-size:10px;font-weight:600;background:transparent;color:var(--text3)}
+.theme-btn.active{background:var(--primary);color:var(--bg);transform:scale(1.02);box-shadow:var(--shadow-sm)}
+.tb-label{white-space:nowrap}
 
 /* ========== MAIN CONTENT ========== */
 .main-content{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
@@ -326,10 +369,10 @@ body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:r
   <div class="onb-container">
     <!-- Step 1 -->
     <div class="onb-slide active" data-step="0">
-      <div class="onb-logo private" id="onbLogo">F</div>
+      <div class="onb-logo dark" id="onbLogo">F</div>
       <div class="onb-title">FACTLY</div>
       <div class="onb-sub">당신의 첫 번째 진실.<br>AI가 검증한 팩트체크로 가짜뉴스에 휘둘리지 마세요.</div>
-      <button class="onb-btn private" id="onbNext1">다음</button>
+      <button class="onb-btn dark" id="onbNext1">다음</button>
     </div>
     <!-- Step 2 -->
     <div class="onb-slide" data-step="1">
@@ -342,14 +385,14 @@ body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:r
         <button class="onb-chip" data-topic="사회">사회</button>
         <button class="onb-chip" data-topic="연예">연예</button>
       </div>
-      <button class="onb-btn private" id="onbNext2">다음</button>
+      <button class="onb-btn dark" id="onbNext2">다음</button>
     </div>
     <!-- Step 3 -->
     <div class="onb-slide" data-step="2">
       <div class="onb-jelly"><span></span><span></span><span></span></div>
       <div class="onb-title" style="font-size:20px">팩트체크 준비 중...</div>
       <div class="onb-sub">AI가 최신 뉴스를 분석하고 있어요</div>
-      <button class="onb-btn private" id="onbStart" style="display:none">시작하기</button>
+      <button class="onb-btn dark" id="onbStart" style="display:none">시작하기</button>
     </div>
     <div class="onb-dots" id="onbDots">
       <div class="onb-dot active"></div>
@@ -368,9 +411,11 @@ body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;position:r
       <span>FACTLY</span>
     </div>
     <div class="theme-switcher">
-      <button class="theme-btn private active" data-theme="private" title="사설" onclick="switchTheme('private')"></button>
-      <button class="theme-btn dark" data-theme="dark" title="Dark Energy" onclick="switchTheme('dark')"></button>
-      <button class="theme-btn vivid" data-theme="vivid" title="Vivid Pop" onclick="switchTheme('vivid')"></button>
+      <button class="theme-btn dark active" data-theme="dark" title="다크" onclick="switchTheme('dark')"><span class="tb-label">다크</span></button>
+      <button class="theme-btn light" data-theme="light" title="라이트" onclick="switchTheme('light')"><span class="tb-label">라이트</span></button>
+      <button class="theme-btn teen" data-theme="teen" title="10대" onclick="switchTheme('teen')"><span class="tb-label">10대</span></button>
+      <button class="theme-btn thirties" data-theme="thirties" title="30대" onclick="switchTheme('thirties')"><span class="tb-label">30대</span></button>
+      <button class="theme-btn senior" data-theme="senior" title="60대" onclick="switchTheme('senior')"><span class="tb-label">60대</span></button>
     </div>
   </header>
 
@@ -479,7 +524,7 @@ const TRENDING_SEARCHES = ["코로나19","서울 아파트","AI 진단","대학�
 const TOPICS = ["전체","정치","경제","과학·IT","사회","연예"];
 
 // ========== STATE ==========
-let currentTheme = 'private';
+let currentTheme = 'dark';
 let currentPage = 'home';
 let savedIds = new Set(JSON.parse(localStorage.getItem('factly_saved')||'[]'));
 let onbDone = localStorage.getItem('factly_onb_done');
@@ -491,7 +536,8 @@ const $$ = s => document.querySelectorAll(s);
 // ========== THEME ==========
 function switchTheme(t) {
   currentTheme = t;
-  document.documentElement.setAttribute('data-theme', t === 'private' ? '' : t === 'dark' ? 'dark' : 'vivid');
+  const attr = t === 'dark' ? null : t;
+  document.documentElement.setAttribute('data-theme', attr || '');
   $$('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === t));
   const logo = $('#onbLogo');
   if(logo) {logo.className = 'onb-logo ' + t;}
