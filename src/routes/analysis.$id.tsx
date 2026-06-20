@@ -376,8 +376,12 @@ function AnalysisPage() {
               <div className="flex-1 min-w-0">
                 <h1 className="font-display text-xl sm:text-2xl font-bold leading-snug text-foreground">{dataRow.title as string}</h1>
               </div>
-              <div className="shrink-0 flex flex-col items-end gap-2">
-                <VerdictBadge verdict={(dataRow.overall_verdict as string) ?? "근거 부족"} size="lg" />
+              <div className="shrink-0 flex flex-col items-center gap-2">
+                <VerdictGauge
+                  verdict={(dataRow.overall_verdict as string) ?? "근거 부족"}
+                  confidence={(dataRow.overall_confidence as number) ?? 0}
+                  size="lg"
+                />
                 <ConfidenceBar value={(dataRow.overall_confidence as number) ?? 0} />
               </div>
             </div>
@@ -1071,7 +1075,7 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
             {String(index).padStart(2, "0")}
           </span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium leading-snug mb-1.5 pr-4">{claim.claim}</p>
+            <p className="text-sm font-medium leading-snug mb-1.5 pr-2">{claim.claim}</p>
 
             {/* 근거 요약 미리보기 (접힌 상태에서도 표시) */}
             {!isSimple && !expanded && claim.reasoning && (
@@ -1139,6 +1143,10 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
                   ? <ConfidenceEmoji value={claim.confidence} />
                   : <ConfidenceBar value={claim.confidence} compact />}
             </div>
+          </div>
+          {/* 클레임별 게이지 */}
+          <div className="shrink-0 flex flex-col items-center gap-0.5 ml-auto">
+            <VerdictGauge verdict={verdictLabel} confidence={claim.confidence} size="sm" />
           </div>
           {hasDetails && (
             <span className="shrink-0 text-muted-foreground mt-0.5">
@@ -1230,6 +1238,77 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
         </div>
       )}
     </article>
+  );
+}
+
+/* ── 반원형 속도계 게이지 ── */
+function VerdictGauge({ verdict, confidence, size = "md" }: {
+  verdict: string;
+  confidence: number;
+  size?: "sm" | "md" | "lg";
+}) {
+  const cx = 60, cy = 62, r = 50;
+  const needleAngle = (confidence / 100) * 180 - 90;
+
+  const verdictColors: Record<string, string> = {
+    "사실":           "#22c55e",
+    "부분 사실":      "#f59e0b",
+    "근거 부족":      "#f97316",
+    "반대 근거 우세": "#ef4444",
+  };
+  const vColor = verdictColors[verdict] ?? "#8b95a1";
+
+  const ticks = Array.from({ length: 9 }, (_, i) => {
+    const a = (i / 8) * Math.PI;
+    const cosA = Math.cos(Math.PI - a);
+    const sinA = Math.sin(Math.PI - a);
+    return {
+      x1: cx + (r - 7) * cosA,  y1: cy - (r - 7) * sinA,
+      x2: cx + (r + 2) * cosA,  y2: cy - (r + 2) * sinA,
+      major: i % 4 === 0,
+    };
+  });
+
+  const wClass = { sm: "w-[72px]", md: "w-[116px]", lg: "w-[152px]" }[size];
+
+  return (
+    <div className={`flex flex-col items-center gap-1 ${wClass}`}>
+      <svg viewBox="0 0 120 72" className="w-full drop-shadow-sm">
+        <defs>
+          <linearGradient id={`vgGrad-${size}`} x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%"   stopColor="#ef4444" />
+            <stop offset="28%"  stopColor="#f97316" />
+            <stop offset="52%"  stopColor="#eab308" />
+            <stop offset="76%"  stopColor="#84cc16" />
+            <stop offset="100%" stopColor="#22c55e" />
+          </linearGradient>
+          <filter id="needleShadow"><feDropShadow dx="0" dy="1" stdDeviation="1" floodOpacity="0.25"/></filter>
+        </defs>
+
+        {/* 배경 트랙 */}
+        <path d={`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`}
+          fill="none" stroke="#e5e8eb" strokeWidth="12" strokeLinecap="round" />
+        {/* 그라데이션 트랙 */}
+        <path d={`M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}`}
+          fill="none" stroke={`url(#vgGrad-${size})`} strokeWidth="12" strokeLinecap="round" />
+        {/* 눈금 */}
+        {ticks.map((t, i) => (
+          <line key={i} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2}
+            stroke="white" strokeWidth={t.major ? 2 : 1} strokeLinecap="round" />
+        ))}
+        {/* 바늘 */}
+        <g transform={`translate(${cx},${cy}) rotate(${needleAngle})`} filter="url(#needleShadow)">
+          <line x1="0" y1="6" x2="0" y2={-(r-14)} stroke="#1f2937" strokeWidth="2.5" strokeLinecap="round" />
+          <circle cx="0" cy="0" r="5.5" fill="#1f2937" />
+          <circle cx="0" cy="0" r="2.2" fill="white" />
+        </g>
+      </svg>
+      {/* 판정 배지 */}
+      <span className="text-[11px] font-bold rounded-full px-2.5 py-0.5 border whitespace-nowrap"
+        style={{ color: vColor, borderColor: `${vColor}55`, backgroundColor: `${vColor}18` }}>
+        {verdict}
+      </span>
+    </div>
   );
 }
 
