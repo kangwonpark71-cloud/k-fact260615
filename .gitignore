@@ -29,6 +29,9 @@ dist-ssr
 
 # Debug / temporary files
 _debug_*.txt
+_server_log.txt
+_final_test.mjs
+_test_*.mjs
 
 # Editor directories and files
 .vscode/*
