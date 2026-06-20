@@ -58,6 +58,9 @@ export type Database = {
           summary: string | null
           title: string | null
           user_id: string | null
+          audit_log: Json | null
+          integrity_hash: string | null
+          _phase1_model: string | null
         }
         Insert: {
           claims?: Json
@@ -72,6 +75,9 @@ export type Database = {
           summary?: string | null
           title?: string | null
           user_id?: string | null
+          audit_log?: Json | null
+          integrity_hash?: string | null
+          _phase1_model?: string | null
         }
         Update: {
           claims?: Json
@@ -86,6 +92,9 @@ export type Database = {
           summary?: string | null
           title?: string | null
           user_id?: string | null
+          audit_log?: Json | null
+          integrity_hash?: string | null
+          _phase1_model?: string | null
         }
         Relationships: []
       }

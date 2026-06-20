@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FACTLY — 팩트체크</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=IBM+Plex+Sans+KR:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════
+   Toss Design System — FACTLY
+   375px base · Semantic Color · Border-based
+   ═══════════════════════════════════════════════ */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+
+:root {
+  --font: 'Noto Sans KR', -apple-system, sans-serif;
+  --font-display: 'IBM Plex Sans KR', sans-serif;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --transition: .25s cubic-bezier(.4,0,.2,1);
+
+  /* TDS Semantic Colors — Dark (default) */
+  --bg:#0d1421;--surface:#161e30;--surface2:#1f2a40;
+  --fg:#e8edf5;--fg2:#8899b4;--fg3:#5a6a85;
+  --primary:#5b8def;--primary-bg:rgba(91,141,239,.12);
+  --accent:#ef5350;--accent-bg:rgba(239,83,80,.12);
+  --border:rgba(255,255,255,.08);
+  --badge-true:#4caf7d;--badge-partial:#ff9800;--badge-false:#ef5350;--badge-unknown:#8899b4;
+  --nav-active:#5b8def;
+  --hero-from:#0d1421;--hero-to:#1b2a4a;
+  --tag-bg:rgba(91,141,239,.12);--tag-fg:#8ab4f8;
+  --overlay:rgba(13,20,33,.94);
+  --gauge-stroke:#5b8def;
+  --dim:rgba(0,0,0,.4);
+}
+[data-theme="light"] {
+  --bg:#f7f4ef;--surface:#ffffff;--surface2:#f0ebe3;
+  --fg:#1a2030;--fg2:#5a6a7a;--fg3:#9aaaba;
+  --primary:#2a4499;--primary-bg:rgba(42,68,153,.08);
+  --accent:#c62828;--accent-bg:rgba(198,40,40,.08);
+  --border:rgba(0,0,0,.08);
+  --badge-true:#2e7d32;--badge-partial:#e65100;--badge-false:#c62828;--badge-unknown:#9aaaba;
+  --nav-active:#2a4499;
+  --hero-from:#2a4499;--hero-to:#4a6ac0;
+  --tag-bg:rgba(42,68,153,.08);--tag-fg:#2a4499;
+  --overlay:rgba(42,68,153,.92);
+  --gauge-stroke:#2a4499;
+  --dim:rgba(0,0,0,.2);
+}
+[data-theme="teen"] {
+  --bg:#0d0820;--surface:#16102e;--surface2:#201842;
+  --fg:#f0e8ff;--fg2:#a088c8;--fg3:#6a5090;
+  --primary:#ff5ecb;--primary-bg:rgba(255,94,203,.15);
+  --accent:#00d4ff;--accent-bg:rgba(0,212,255,.12);
+  --border:rgba(255,255,255,.08);
+  --badge-true:#00e676;--badge-partial:#ff9100;--badge-false:#ff1744;--badge-unknown:#6a5090;
+  --nav-active:#ff5ecb;
+  --hero-from:#1a0e2e;--hero-to:#ff5ecb;
+  --tag-bg:rgba(255,94,203,.15);--tag-fg:#ff8ad9;
+  --overlay:rgba(13,8,32,.95);
+  --gauge-stroke:#ff5ecb;
+  --dim:rgba(0,0,0,.5);
+}
+[data-theme="thirties"] {
+  --bg:#f0f2f8;--surface:#ffffff;--surface2:#e4e8f0;
+  --fg:#141a2a;--fg2:#4a5a7a;--fg3:#8a9ab0;
+  --primary:#2a4499;--primary-bg:rgba(42,68,153,.08);
+  --accent:#c62828;--accent-bg:rgba(198,40,40,.08);
+  --border:rgba(0,0,0,.07);
+  --badge-true:#256d4a;--badge-partial:#c06600;--badge-false:#b02020;--badge-unknown:#8a9ab0;
+  --nav-active:#2a4499;
+  --hero-from:#2a4499;--hero-to:#6a8ad0;
+  --tag-bg:rgba(42,68,153,.08);--tag-fg:#2a4499;
+  --overlay:rgba(42,68,153,.90);
+  --gauge-stroke:#2a4499;
+  --dim:rgba(0,0,0,.15);
+}
+[data-theme="senior"] {
+  font-size: 112.5%;
+  --bg:#ffffff;--surface:#f8f8f8;--surface2:#eeeeee;
+  --fg:#0d1520;--fg2:#2a3a4a;--fg3:#5a6a7a;
+  --primary:#0d1520;--primary-bg:rgba(13,21,32,.08);
+  --accent:#0d1520;--accent-bg:rgba(13,21,32,.08);
+  --border:rgba(0,0,0,.15);
+  --badge-true:#1a5a3a;--badge-partial:#a05000;--badge-false:#8a1010;--badge-unknown:#5a6a7a;
+  --nav-active:#0d1520;
+  --hero-from:#0d1520;--hero-to:#4a5a6a;
+  --tag-bg:rgba(13,21,32,.08);--tag-fg:#0d1520;
+  --overlay:rgba(13,21,32,.92);
+  --gauge-stroke:#0d1520;
+  --dim:rgba(0,0,0,.1);
+}
+html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--fg);transition:background var(--transition),color var(--transition);-webkit-font-smoothing:antialiased}
+body{display:flex;flex-direction:column;max-width:375px;margin:0 auto;position:relative;overflow:hidden;height:100dvh;box-shadow:0 0 0 1px var(--border)}
+
+/* ═══════════ SCROLLBAR ═══════════ */
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--fg3);border-radius:2px}
+
+/* ═══════════ ONBOARDING ═══════════ */
+#onboarding{
+  position:fixed;inset:0;z-index:1000;
+  background:var(--overlay);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:32px 24px;transition:opacity .4s,transform .4s;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+}
+#onboarding.hidden{opacity:0;transform:scale(1.04);pointer-events:none}
+.onb-container{width:100%;max-width:327px;position:relative}
+.onb-slide{display:none;flex-direction:column;align-items:center;text-align:center;gap:16px;animation:slideUp .4s ease}
+.onb-slide.active{display:flex}
+@keyframes slideUp{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}
+.onb-logo{width:72px;height:72px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:800;color:#fff;margin-bottom:4px}
+.onb-logo.dark{background:linear-gradient(135deg,#0d1421,#5b8def)}
+.onb-logo.light{background:linear-gradient(135deg,#2a4499,#f7f4ef)}
+.onb-logo.teen{background:linear-gradient(135deg,#1a0e2e,#ff5ecb)}
+.onb-logo.thirties{background:linear-gradient(135deg,#2a4499,#6a8ad0)}
+.onb-logo.senior{background:#0d1520;border:2px solid #fff}
+.onb-title{font-family:var(--font-display);font-size:24px;font-weight:700;color:#fff;line-height:1.3}
+.onb-sub{font-size:14px;color:rgba(255,255,255,.65);line-height:1.6;max-width:280px}
+.onb-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:4px 0}
+.onb-chip{padding:9px 18px;border-radius:100px;border:1.5px solid rgba(255,255,255,.2);background:transparent;color:#fff;font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;font-family:var(--font)}
+.onb-chip.selected{background:rgba(255,255,255,.12);border-color:#fff}
+.onb-btn{display:inline-flex;align-items:center;gap:6px;padding:13px 36px;border-radius:100px;border:none;font-size:15px;font-weight:600;cursor:pointer;transition:transform .2s;font-family:var(--font);margin-top:4px}
+.onb-btn:active{transform:scale(.96)}
+.onb-btn.dark{background:#5b8def;color:#fff}
+.onb-btn.light{background:#2a4499;color:#fff}
+.onb-btn.teen{background:#ff5ecb;color:#0d0820}
+.onb-btn.thirties{background:#2a4499;color:#fff}
+.onb-btn.senior{background:#0d1520;color:#fff}
+.onb-dots{display:flex;gap:6px;margin-top:16px}
+.onb-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.25);transition:all .3s}
+.onb-dot.active{width:20px;border-radius:3px;background:#fff}
+.onb-jelly{width:48px;height:48px;position:relative;margin:16px auto}
+.onb-jelly span{display:block;width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.5);position:absolute;animation:jellyBounce 1.2s ease-in-out infinite}
+.onb-jelly span:nth-child(1){left:0;animation-delay:0s}
+.onb-jelly span:nth-child(2){left:19px;animation-delay:.15s}
+.onb-jelly span:nth-child(3){left:38px;animation-delay:.3s}
+@keyframes jellyBounce{0%,80%,100%{transform:translateY(0) scaleY(1)}40%{transform:translateY(-20px) scaleY(.7)}}
+
+/* ═══════════ APP SHELL ═══════════ */
+#app{display:none;flex-direction:column;height:100dvh;overflow:hidden}
+#app.visible{display:flex}
+
+/* TDS Top Navigation */
+.app-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px;height:52px;flex-shrink:0;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  transition:background var(--transition),border-color var(--transition);
+}
+.app-logo{display:flex;align-items:center;gap:8px;font-family:var(--font-display);font-size:18px;font-weight:700;text-decoration:none;color:var(--fg)}
+.app-logo-icon{width:26px;height:26px;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;background:var(--primary);color:var(--fg);font-size:14px;font-weight:800;flex-shrink:0}
+.theme-switcher{display:flex;gap:2px;background:var(--surface2);padding:2px;border-radius:100px}
+.theme-btn{padding:3px 8px;border-radius:100px;border:none;cursor:pointer;font-family:var(--font);font-size:9px;font-weight:600;background:transparent;color:var(--fg3);transition:all .2s;white-space:nowrap}
+.theme-btn.active{background:var(--primary);color:var(--bg);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+
+/* ═══════════ MAIN CONTENT ═══════════ */
+.main-content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.page{display:none;padding:0 0 64px;animation:pageIn .3s ease}
+.page.active{display:block}
+@keyframes pageIn{from{transform:translateX(20px);opacity:0}to{transform:translateX(0);opacity:1}}
+.page-title{padding:16px 16px 0;font-family:var(--font-display);font-size:18px;font-weight:700;line-height:1.3}
+
+/* ═══════════ HOME ═══════════ */
+/* Trending Banner — TDS Card style */
+.trending-wrap{padding:12px 0 4px 16px}
+.trending-scroll{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding-right:16px;-webkit-overflow-scrolling:touch}
+.trending-scroll::-webkit-scrollbar{display:none}
+.trend-item{
+  min-width:240px;padding:14px 16px;border-radius:var(--radius);
+  background:linear-gradient(135deg,var(--hero-from),var(--hero-to));
+  color:#fff;scroll-snap-align:start;cursor:pointer;flex-shrink:0;
+  transition:transform .2s;
+}
+.trend-item:active{transform:scale(.98)}
+.trend-label{font-size:10px;font-weight:600;letter-spacing:.4px;opacity:.7;margin-bottom:4px;text-transform:uppercase}
+.trend-headline{font-size:14px;font-weight:600;line-height:1.35;margin-bottom:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.trend-meta{font-size:11px;opacity:.65}
+
+/* Tag row — TDS Chip */
+.tag-wrap{padding:12px 16px 8px}
+.tag-scroll{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tag-scroll::-webkit-scrollbar{display:none}
+.tag-chip{
+  padding:6px 14px;border-radius:100px;border:none;
+  background:var(--tag-bg);color:var(--tag-fg);font-size:12px;font-weight:500;
+  cursor:pointer;white-space:nowrap;font-family:var(--font);flex-shrink:0;transition:all .2s;
+}
+.tag-chip.active{background:var(--primary);color:var(--bg)}
+
+/* Fact Card — TDS ListRow style */
+.card-list{padding:0 16px 12px;display:flex;flex-direction:column;gap:0}
+.card{
+  display:flex;flex-direction:column;padding:14px 0;gap:6px;
+  border-bottom:1px solid var(--border);cursor:pointer;position:relative;
+  transition:background .15s;margin:0 -16px;padding-left:16px;padding-right:16px;
+}
+.card:active{background:var(--surface2)}
+.card:last-child{border-bottom:none}
+.card-row1{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.card-source{font-size:11px;color:var(--fg3);display:flex;align-items:center;gap:4px}
+.verdict-badge{
+  display:inline-flex;align-items:center;padding:2px 8px;border-radius:100px;
+  font-size:10px;font-weight:700;letter-spacing:.2px;flex-shrink:0;line-height:1.4;
+}
+.verdict-badge.true{background:var(--badge-true);color:#fff}
+.verdict-badge.partial{background:var(--badge-partial);color:#fff}
+.verdict-badge.false{background:var(--badge-false);color:#fff}
+.card-title{font-size:14px;font-weight:500;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--fg)}
+.card-meta{font-size:11px;color:var(--fg3);display:flex;gap:8px}
+.confidence-bar{height:3px;border-radius:2px;background:var(--surface2);margin-top:4px;overflow:hidden}
+.confidence-fill{height:100%;border-radius:2px;transition:width .8s ease}
+.confidence-fill.true{background:var(--badge-true)}
+.confidence-fill.partial{background:var(--badge-partial)}
+.confidence-fill.false{background:var(--badge-false)}
+.bookmark-btn{
+  width:28px;height:28px;border-radius:50%;border:none;
+  background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all .2s;flex-shrink:0;color:var(--fg3);
+}
+.bookmark-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;transition:all .2s}
+.bookmark-btn.saved{color:var(--primary)}
+.bookmark-btn.saved svg{fill:currentColor}
+
+/* ═══════════ SEARCH ═══════════ */
+.search-section{padding:12px 16px}
+.search-bar{
+  display:flex;align-items:center;gap:8px;
+  background:var(--surface2);border-radius:100px;padding:10px 14px;
+  transition:all .2s;border:1.5px solid transparent;
+}
+.search-bar:focus-within{border-color:var(--primary);background:var(--surface)}
+.search-bar svg{width:16px;height:16px;color:var(--fg3);flex-shrink:0}
+.search-bar input{flex:1;border:none;background:transparent;font-size:14px;color:var(--fg);outline:none;font-family:var(--font)}
+.search-bar input::placeholder{color:var(--fg3)}
+.search-trends{padding:0 16px}
+.section-label{font-size:12px;font-weight:600;color:var(--fg2);padding:12px 16px 8px}
+.trend-item-list{display:flex;flex-direction:column;gap:0}
+.trend-item-row{display:flex;align-items:center;gap:10px;padding:12px 16px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--fg2);transition:background .15s}
+.trend-item-row:active{background:var(--surface2)}
+.trend-item-row svg{width:14px;height:14px;color:var(--fg3);flex-shrink:0}
+.filter-row{display:flex;gap:6px;padding:8px 16px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.filter-row::-webkit-scrollbar{display:none}
+.filter-chip{padding:5px 12px;border-radius:100px;border:1px solid var(--border);background:transparent;font-size:11px;color:var(--fg2);cursor:pointer;white-space:nowrap;font-family:var(--font);transition:all .2s;flex-shrink:0}
+.filter-chip.active{background:var(--primary);color:var(--bg);border-color:var(--primary)}
+.search-results-card{padding:0 16px}
+
+/* ═══════════ DETAIL ═══════════ */
+.detail-wrap{padding:0 16px}
+.detail-back{display:inline-flex;align-items:center;gap:4px;padding:12px 0 4px;border:none;background:none;font-size:13px;color:var(--fg3);cursor:pointer;font-family:var(--font)}
+.detail-back svg{width:16px;height:16px}
+.detail-header{padding:8px 0 16px;text-align:center}
+.detail-verdict{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:100px;font-size:12px;font-weight:700;margin-bottom:10px;color:#fff}
+.detail-verdict.true{background:var(--badge-true)}
+.detail-verdict.partial{background:var(--badge-partial)}
+.detail-verdict.false{background:var(--badge-false)}
+.detail-title{font-family:var(--font-display);font-size:20px;font-weight:700;line-height:1.3;margin-bottom:6px}
+.detail-meta{font-size:12px;color:var(--fg3)}
+.gauge-wrap{display:flex;justify-content:center;margin:8px 0 20px}
+.gauge-container{position:relative;width:140px;height:80px;overflow:hidden}
+.gauge-bg{fill:none;stroke:var(--surface2);stroke-width:10}
+.gauge-fill{fill:none;stroke:var(--gauge-stroke);stroke-width:10;stroke-linecap:round;transition:stroke-dashoffset 1.4s ease;transform:rotate(180deg);transform-origin:center}
+.gauge-label{position:absolute;bottom:2px;left:50%;transform:translateX(-50%);text-align:center}
+.gauge-score{font-family:var(--font-display);font-size:28px;font-weight:700;color:var(--gauge-stroke)}
+.gauge-text{font-size:10px;color:var(--fg3)}
+.detail-section{padding:12px 0}
+.detail-sec-title{font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:5px;color:var(--fg2)}
+.claim-card{background:var(--surface);border-radius:var(--radius);padding:12px;margin-bottom:8px;border:1px solid var(--border)}
+.claim-text{font-size:13px;font-weight:500;margin-bottom:4px;line-height:1.4}
+.claim-verdict{font-size:11px;font-weight:600}
+.claim-source{font-size:11px;color:var(--fg3);margin-top:4px}
+.source-link{color:var(--primary);text-decoration:none;font-weight:500}
+
+/* ═══════════ RANKINGS ═══════════ */
+.rank-tabs{display:flex;gap:6px;padding:12px 16px 8px;overflow-x:auto}
+.rank-tabs::-webkit-scrollbar{display:none}
+.rank-tab{padding:6px 14px;border-radius:100px;border:none;font-size:12px;font-weight:500;cursor:pointer;background:var(--surface2);color:var(--fg2);transition:all .2s;font-family:var(--font);flex-shrink:0}
+.rank-tab.active{background:var(--primary);color:var(--bg)}
+.rank-list{padding:0 16px}
+.rank-card{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;margin:0 -16px;padding-left:16px;padding-right:16px}
+.rank-card:active{background:var(--surface2)}
+.rank-num{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:13px;font-weight:700;background:var(--surface2);color:var(--fg3);flex-shrink:0}
+.rank-card:nth-child(1) .rank-num{background:linear-gradient(135deg,#ffd700,#ffb300);color:#5d4037}
+.rank-card:nth-child(2) .rank-num{background:linear-gradient(135deg,#e0e0e0,#bdbdbd);color:#37474f}
+.rank-card:nth-child(3) .rank-num{background:linear-gradient(135deg,#cd7f32,#a0522d);color:#fff}
+.rank-info{flex:1;min-width:0}
+.rank-title{font-size:13px;font-weight:500;margin-bottom:2px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.rank-stats{font-size:10px;color:var(--fg3)}
+.rank-score{font-family:var(--font-display);font-size:16px;font-weight:700;color:var(--primary)}
+
+/* ═══════════ SAVED ═══════════ */
+.saved-empty{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:60px 20px;text-align:center;
+}
+.saved-empty-icon{width:64px;height:64px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;margin-bottom:12px;color:var(--fg3)}
+.saved-empty-icon svg{width:28px;height:28px}
+.saved-empty-title{font-size:15px;font-weight:600;margin-bottom:4px}
+.saved-empty-sub{font-size:12px;color:var(--fg3);line-height:1.5;max-width:240px}
+
+/* ═══════════ PROFILE ═══════════ */
+.profile-wrap{padding:0 16px}
+.profile-header{text-align:center;padding:20px 0}
+.profile-avatar{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,var(--hero-from),var(--hero-to));margin:0 auto 10px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff;font-weight:700}
+.profile-name{font-size:18px;font-weight:700;font-family:var(--font-display)}
+.profile-email{font-size:12px;color:var(--fg3);margin-top:2px}
+.profile-stats{display:flex;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);margin:0 0 16px;overflow:hidden}
+.profile-stat{flex:1;text-align:center;padding:12px 4px;border-right:1px solid var(--border)}
+.profile-stat:last-child{border-right:none}
+.profile-stat-num{font-family:var(--font-display);font-size:18px;font-weight:700;color:var(--primary)}
+.profile-stat-label{font-size:10px;color:var(--fg3);margin-top:1px}
+.profile-menu{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);overflow:hidden}
+.profile-menu-item{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;font-size:13px;color:var(--fg)}
+.profile-menu-item:last-child{border-bottom:none}
+.profile-menu-item:active{background:var(--surface2)}
+.profile-menu-item svg{width:16px;height:16px;color:var(--fg3);flex-shrink:0}
+
+/* ═══════════ BOTTOM NAV (TDS Tab Bar) ═══════════ */
+.bottom-nav{
+  display:flex;background:var(--surface);border-top:1px solid var(--border);
+  padding:4px 0 calc(env(safe-area-inset-bottom,0) + 4px);flex-shrink:0;
+  transition:background var(--transition);
+}
+.nav-item{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;
+  padding:4px 0;cursor:pointer;border:none;background:none;
+  font-size:9px;font-weight:500;color:var(--fg3);transition:color .2s;font-family:var(--font);letter-spacing:-.2px;
+}
+.nav-item svg{width:20px;height:20px;color:var(--fg3);transition:color .2s}
+.nav-item.active{color:var(--nav-active)}
+.nav-item.active svg{color:var(--nav-active)}
+
+/* ═══════════ SKELETON ═══════════ */
+.skel{background:linear-gradient(90deg,var(--surface2) 25%,var(--border) 50%,var(--surface2) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:var(--radius-sm)}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.skel-card{height:60px;margin:0 16px 0;border-bottom:1px solid var(--border);border-radius:0}
+
+/* ═══════════ TOAST ═══════════ */
+.toast{
+  position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(16px);
+  background:var(--fg);color:var(--bg);padding:10px 20px;border-radius:100px;
+  font-size:12px;font-weight:500;z-index:999;opacity:0;transition:all .3s;
+  pointer-events:none;white-space:nowrap;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ═══════════ RESPONSIVE ═══════════ */
+@media(min-width:376px){body{border-left:1px solid var(--border);border-right:1px solid var(--border)}}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ ONBOARDING ═══════════ -->
+<div id="onboarding">
+  <div class="onb-container">
+    <div class="onb-slide active" data-step="0">
+      <div class="onb-logo dark" id="onbLogo">F</div>
+      <div class="onb-title">FACTLY</div>
+      <div class="onb-sub">AI가 검증한 팩트체크로<br>가짜뉴스에 휘둘리지 마세요</div>
+      <button class="onb-btn dark" id="onbNext1">다음</button>
+    </div>
+    <div class="onb-slide" data-step="1">
+      <div class="onb-title" style="font-size:20px">관심 주제를 선택하세요</div>
+      <div class="onb-sub">선택한 주제의 팩트체크를 모아볼게요</div>
+      <div class="onb-chips" id="onbChips">
+        <button class="onb-chip selected" data-topic="정치">정치</button>
+        <button class="onb-chip" data-topic="경제">경제</button>
+        <button class="onb-chip" data-topic="과학">과학·IT</button>
+        <button class="onb-chip" data-topic="사회">사회</button>
+        <button class="onb-chip" data-topic="연예">연예</button>
+      </div>
+      <button class="onb-btn dark" id="onbNext2">다음</button>
+    </div>
+    <div class="onb-slide" data-step="2">
+      <div class="onb-jelly"><span></span><span></span><span></span></div>
+      <div class="onb-title" style="font-size:18px">팩트체크 준비 중...</div>
+      <div class="onb-sub">AI가 최신 뉴스를 분석하고 있어요</div>
+      <button class="onb-btn dark" id="onbStart" style="display:none">시작하기</button>
+    </div>
+    <div class="onb-dots" id="onbDots">
+      <div class="onb-dot active"></div><div class="onb-dot"></div><div class="onb-dot"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ APP ═══════════ -->
+<div id="app">
+  <header class="app-header">
+    <div class="app-logo"><span class="app-logo-icon">F</span>FACTLY</div>
+    <div class="theme-switcher">
+      <button class="theme-btn dark active" data-theme="dark" onclick="switchTheme('dark')">다크</button>
+      <button class="theme-btn light" data-theme="light" onclick="switchTheme('light')">라이트</button>
+      <button class="theme-btn teen" data-theme="teen" onclick="switchTheme('teen')">10대</button>
+      <button class="theme-btn thirties" data-theme="thirties" onclick="switchTheme('thirties')">30대</button>
+      <button class="theme-btn senior" data-theme="senior" onclick="switchTheme('senior')">60대</button>
+    </div>
+  </header>
+
+  <div class="main-content" id="mainContent">
+    <!-- HOME -->
+    <div class="page active" id="page-home">
+      <div class="trending-wrap"><div class="trending-scroll" id="trendingBanner"></div></div>
+      <div class="tag-wrap"><div class="tag-scroll" id="tagRow"></div></div>
+      <div class="card-list" id="homeCards"></div>
+    </div>
+
+    <!-- SEARCH -->
+    <div class="page" id="page-search">
+      <div class="search-section">
+        <div class="search-bar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="text" placeholder="검색어를 입력하세요" id="searchInput" autocomplete="off">
+        </div>
+      </div>
+      <div id="searchResults">
+        <div class="section-label">인기 검색어</div>
+        <div class="trend-item-list" id="trendingList"></div>
+      </div>
+      <div class="filter-row" id="searchFilters" style="display:none">
+        <button class="filter-chip active" data-filter="latest">최신순</button>
+        <button class="filter-chip" data-filter="accuracy">정확순</button>
+        <button class="filter-chip" data-filter="views">조회순</button>
+      </div>
+      <div id="searchCardResults" style="display:none"></div>
+    </div>
+
+    <!-- RANKINGS -->
+    <div class="page" id="page-rankings">
+      <div class="page-title">랭킹</div>
+      <div class="rank-tabs" id="rankTabs">
+        <button class="rank-tab active" data-period="today">오늘</button>
+        <button class="rank-tab" data-period="week">이번주</button>
+        <button class="rank-tab" data-period="month">이번달</button>
+        <button class="rank-tab" data-period="all">전체</button>
+      </div>
+      <div class="rank-list" id="rankList"></div>
+    </div>
+
+    <!-- SAVED -->
+    <div class="page" id="page-saved">
+      <div class="page-title">저장한 팩트체크</div>
+      <div id="savedList"></div>
+    </div>
+
+    <!-- PROFILE -->
+    <div class="page" id="page-profile">
+      <div class="profile-wrap">
+        <div class="profile-header">
+          <div class="profile-avatar">K</div>
+          <div class="profile-name">팩트체커</div>
+          <div class="profile-email">factchecker@factly.app</div>
+        </div>
+        <div class="profile-stats">
+          <div class="profile-stat"><div class="profile-stat-num">47</div><div class="profile-stat-label">확인</div></div>
+          <div class="profile-stat"><div class="profile-stat-num">12</div><div class="profile-stat-label">저장</div></div>
+          <div class="profile-stat"><div class="profile-stat-num">89%</div><div class="profile-stat-label">정확도</div></div>
+        </div>
+        <div class="profile-menu">
+          <div class="profile-menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>알림 설정</div>
+          <div class="profile-menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>테마 설정</div>
+          <div class="profile-menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>피드백 보내기</div>
+          <div class="profile-menu-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>공지사항</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DETAIL -->
+    <div class="page" id="page-detail"></div>
+  </div>
+
+  <nav class="bottom-nav" id="bottomNav">
+    <button class="nav-item active" data-page="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>홈</button>
+    <button class="nav-item" data-page="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>검색</button>
+    <button class="nav-item" data-page="rankings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>순위</button>
+    <button class="nav-item" data-page="saved"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>저장</button>
+    <button class="nav-item" data-page="profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>프로필</button>
+  </nav>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const FACTCHECKS = [
+  {id:1,title:"코로나19 백신, 3개월 내 사망률 95% 감소 확인",source:"질병관리청",date:"2026-06-18",verdict:"TRUE",score:94,topic:"과학",claims:[{text:"백신 접종군 사망률 95% 감소",verdict:"TRUE",source:"질병관리청 공식 보고서"},{text:"접종 후 중증화율 98% 감소",verdict:"TRUE",source:"CDC Morbidity Report"}]},
+  {id:2,title:"서울 아파트 평균값 15억 돌파… 통계 조작 논란",source:"부동산R114",date:"2026-06-17",verdict:"MOSTLY_TRUE",score:78,topic:"경제",claims:[{text:"서울 아파트 평균 15억 돌파",verdict:"TRUE",source:"한국부동산원"},{text:"정부가 통계 기준을 변경",verdict:"FALSE",source:"감사원 감사 결과"}]},
+  {id:3,title:"AI가 의사 진단을 대체할 수 있다?",source:"의학신문",date:"2026-06-16",verdict:"MOSTLY_FALSE",score:35,topic:"과학",claims:[{text:"AI 진단 정확도가 의사보다 높다",verdict:"MOSTLY_FALSE",source:"Lancet Review"}]},
+  {id:4,title:"정부, 내년부터 대학등록금 전면 무상화 추진",source:"정책브리핑",date:"2026-06-15",verdict:"FALSE",score:12,topic:"사회",claims:[{text:"2027학년도부터 전 대학 등록금 무상",verdict:"FALSE",source:"교육부 공식 입장 반박"}]},
+  {id:5,title:"전기차 배터리, 10분 충전 1000km 주행 시대",source:"테크투데이",date:"2026-06-14",verdict:"MOSTLY_TRUE",score:71,topic:"과학",claims:[{text:"국내 연구진 10분 충전 1000km 배터리 개발",verdict:"TRUE",source:"UNIST 연구팀 논문"}]},
+  {id:6,title:"연예인 A씨, 해외 원정도박 혐의로 입건",source:"스포츠서울",date:"2026-06-13",verdict:"FALSE",score:8,topic:"연예",claims:[{text:"A씨 필리핀 카지노 50억 도박",verdict:"FALSE",source:"법률대리인 부인"}]},
+  {id:7,title:"올해 여름, 역대급 폭염 온다",source:"기상청",date:"2026-06-12",verdict:"TRUE",score:88,topic:"사회",claims:[{text:"7-8월 평균기온 평년比 2~3도↑",verdict:"TRUE",source:"기상청 장기예보"}]},
+  {id:8,title:"중국, 위안화 결제 시스템에 한국 포함 추진",source:"한국경제",date:"2026-06-11",verdict:"MOSTLY_TRUE",score:65,topic:"경제",claims:[{text:"한중 위안화 직거래 협상 진행 중",verdict:"TRUE",source:"한국은행"}]},
+];
+const TRENDING = [
+  {label:"속보",headline:"서울 지하철 파업 철회… 내일부터 정상 운행",source:"연합뉴스"},
+  {label:"이슈",headline:"AI 기본법 국회 통과… 내년 시행 예정",source:"KBS"},
+  {label:"팩트",headline:"온열질환자 전년比 40% 증가… 폭염 영향",source:"질병관리청"},
+];
+const TRENDING_SEARCHES = ["코로나19","서울 아파트","AI 진단","대학등록금","전기차 배터리","연예인 도박","폭염","위안화"];
+const TOPICS = ["전체","정치","경제","과학·IT","사회","연예"];
+
+let currentTheme = 'dark';
+let savedIds = new Set(JSON.parse(localStorage.getItem('factly_saved')||'[]'));
+let onbDone = localStorage.getItem('factly_onb_done');
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+function switchTheme(t) {
+  currentTheme = t;
+  document.documentElement.setAttribute('data-theme', t);
+  $$('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === t));
+  const logo = $('#onbLogo');
+  if(logo) logo.className = 'onb-logo ' + t;
+  $$('.onb-btn').forEach(b => { b.className = 'onb-btn ' + t; });
+  localStorage.setItem('factly_theme', t);
+}
+
+// Onboarding
+let onbStep = 0;
+const topicsSelected = new Set(['정치']);
+function showOnbStep(i) {
+  $$('.onb-slide').forEach((s,idx) => s.classList.toggle('active', idx === i));
+  $$('.onb-dot').forEach((d,idx) => d.classList.toggle('active', idx === i));
+  onbStep = i;
+}
+$('#onbNext1').onclick = () => showOnbStep(1);
+$('#onbNext2').onclick = () => showOnbStep(2);
+$$('.onb-chip').forEach(c => c.onclick = () => {
+  c.classList.toggle('selected');
+  if(c.classList.contains('selected')) topicsSelected.add(c.dataset.topic);
+  else topicsSelected.delete(c.dataset.topic);
+});
+$('#onbStart').onclick = () => {
+  $('#onboarding').classList.add('hidden');
+  $('#app').classList.add('visible');
+  localStorage.setItem('factly_onb_done','1');
+};
+setTimeout(() => { $('#onbStart').style.display = 'inline-flex'; }, 2000);
+if(onbDone) {
+  $('#onboarding').classList.add('hidden');
+  $('#app').classList.add('visible');
+  const savedTheme = localStorage.getItem('factly_theme');
+  if(savedTheme) switchTheme(savedTheme);
+}
+
+function verdictClass(v) {
+  if(v === 'TRUE' || v === 'MOSTLY_TRUE') return 'true';
+  if(v === 'MOSTLY_FALSE' || v === 'FALSE') return v === 'MOSTLY_FALSE' ? 'partial' : 'false';
+  return 'partial';
+}
+function verdictLabel(v) {
+  if(v === 'TRUE') return '사실';
+  if(v === 'MOSTLY_TRUE') return '대체로 사실';
+  if(v === 'MOSTLY_FALSE') return '대체로 거짓';
+  if(v === 'FALSE') return '거짓';
+  return v;
+}
+
+function renderCards(container, items) {
+  container.innerHTML = items.map(f => `
+    <div class="card" data-id="${f.id}" onclick="openDetail(${f.id})">
+      <div class="card-row1">
+        <div class="card-source">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          ${f.source}
+        </div>
+        <span class="verdict-badge ${verdictClass(f.verdict)}">${verdictLabel(f.verdict)}</span>
+      </div>
+      <div class="card-title">${f.title}</div>
+      <div class="card-meta"><span>${f.date}</span><span>·</span><span>신뢰도 ${f.score}%</span></div>
+      <div class="card-row1" style="align-items:center;gap:8px">
+        <div class="confidence-bar" style="flex:1"><div class="confidence-fill ${verdictClass(f.verdict)}" style="width:${f.score}%"></div></div>
+        <button class="bookmark-btn ${savedIds.has(f.id)?'saved':''}" onclick="event.stopPropagation();toggleSave(${f.id},this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderHome() {
+  $('#trendingBanner').innerHTML = TRENDING.map(t => `
+    <div class="trend-item" onclick="openDetail(1)">
+      <div class="trend-label">${t.label}</div>
+      <div class="trend-headline">${t.headline}</div>
+      <div class="trend-meta">${t.source}</div>
+    </div>`).join('');
+  $('#tagRow').innerHTML = TOPICS.map(t => `<button class="tag-chip ${t==='전체'?'active':''}" onclick="filterTopic('${t}',this)">${t}</button>`).join('');
+  renderCards($('#homeCards'), FACTCHECKS);
+}
+
+function filterTopic(t, btn) {
+  $$('.tag-chip').forEach(c => c.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderCards($('#homeCards'), t === '전체' ? FACTCHECKS : FACTCHECKS.filter(f => f.topic === t.replace('·IT','')));
+}
+
+$('#searchInput').oninput = function() {
+  const q = this.value.trim();
+  if(q.length === 0) {
+    $('#searchResults').style.display = 'block';
+    $('#searchFilters').style.display = 'none';
+    $('#searchCardResults').style.display = 'none';
+    return;
+  }
+  $('#searchResults').style.display = 'none';
+  $('#searchFilters').style.display = 'flex';
+  const results = FACTCHECKS.filter(f => f.title.includes(q) || f.topic.includes(q));
+  if(results.length === 0) {
+    $('#searchCardResults').style.display = 'block';
+    $('#searchCardResults').innerHTML = '<div style="text-align:center;padding:40px 0;color:var(--fg3)">검색 결과가 없습니다</div>';
+    return;
+  }
+  $('#searchCardResults').style.display = 'block';
+  $('#searchCardResults').innerHTML = '<div class="card-list">';
+  renderCards($('#searchCardResults'), results);
+};
+
+$('#trendingList').innerHTML = TRENDING_SEARCHES.map(s => `
+  <div class="trend-item-row" onclick="doSearch('${s}')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    ${s}
+  </div>`).join('');
+
+function doSearch(q) { $('#searchInput').value = q; $('#searchInput').dispatchEvent(new Event('input')); }
+
+function toggleSave(id, btn) {
+  if(savedIds.has(id)) savedIds.delete(id); else savedIds.add(id);
+  localStorage.setItem('factly_saved', JSON.stringify([...savedIds]));
+  if(btn) btn.classList.toggle('saved');
+  renderSaved();
+  showToast(savedIds.has(id) ? '저장했습니다' : '저장을 취소했습니다');
+}
+
+function renderSaved() {
+  const container = $('#savedList');
+  const saved = FACTCHECKS.filter(f => savedIds.has(f.id));
+  if(saved.length === 0) {
+    container.innerHTML = `
+      <div class="saved-empty">
+        <div class="saved-empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></div>
+        <div class="saved-empty-title">아직 저장한 팩트체크가 없습니다</div>
+        <div class="saved-empty-sub">홈에서 북마크 아이콘을 눌러 저장해보세요</div>
+      </div>`;
+    return;
+  }
+  container.innerHTML = '<div class="card-list">';
+  renderCards(container, saved);
+}
+
+function renderRankings(period) {
+  let sorted = [...FACTCHECKS].sort((a,b) => b.score - a.score);
+  if(period === 'today') sorted = sorted.slice(0,3);
+  else if(period === 'week') sorted = sorted.slice(0,5);
+  else if(period === 'month') sorted = sorted.slice(0,7);
+  $('#rankList').innerHTML = sorted.map((f,i) => `
+    <div class="rank-card" onclick="openDetail(${f.id})">
+      <div class="rank-num">${i+1}</div>
+      <div class="rank-info">
+        <div class="rank-title">${f.title}</div>
+        <div class="rank-stats">${f.source} · ${f.date}</div>
+      </div>
+      <div class="rank-score">${f.score}%</div>
+    </div>`).join('');
+}
+
+$$('.rank-tab').forEach(t => t.onclick = function() {
+  $$('.rank-tab').forEach(rt => rt.classList.remove('active'));
+  this.classList.add('active');
+  renderRankings(this.dataset.period);
+});
+
+function openDetail(id) {
+  const f = FACTCHECKS.find(x => x.id === id);
+  if(!f) return;
+  $$('.page').forEach(p => p.classList.remove('active'));
+  const detailPage = $('#page-detail');
+  detailPage.classList.add('active');
+  $$('.nav-item').forEach(n => n.classList.remove('active'));
+  const circumference = Math.PI * 68;
+  const offset = circumference - (f.score / 100) * circumference;
+  detailPage.innerHTML = `
+    <div class="detail-wrap">
+      <button class="detail-back" onclick="showPage('home')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+        돌아가기
+      </button>
+      <div class="detail-header">
+        <div class="detail-verdict ${verdictClass(f.verdict)}">${verdictLabel(f.verdict)}</div>
+        <div class="detail-title">${f.title}</div>
+        <div class="detail-meta">${f.source} · ${f.date}</div>
+      </div>
+      <div class="gauge-wrap">
+        <div class="gauge-container">
+          <svg width="140" height="80" viewBox="0 0 140 80">
+            <path class="gauge-bg" d="M 10 76 A 60 60 0 0 1 130 76"/>
+            <path class="gauge-fill" id="gaugeArc" d="M 10 76 A 60 60 0 0 1 130 76"
+              stroke-dasharray="${circumference}" stroke-dashoffset="${circumference}"/>
+          </svg>
+          <div class="gauge-label">
+            <div class="gauge-score" id="gaugeScore">0%</div>
+            <div class="gauge-text">신뢰도 점수</div>
+          </div>
+        </div>
+      </div>
+      <div class="detail-section">
+        <div class="detail-sec-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>검증 요약</div>
+        ${f.claims.map(c => `
+          <div class="claim-card">
+            <div class="claim-text">${c.text}</div>
+            <div class="claim-verdict" style="color:${c.verdict==='FALSE'?'var(--badge-false)':'var(--badge-true)'}">${c.verdict === 'TRUE' ? '사실' : '거짓'}</div>
+            <div class="claim-source">출처: <a class="source-link" href="#" onclick="event.preventDefault();showToast('외부 출처로 이동')">${c.source}</a></div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  requestAnimationFrame(() => {
+    const arc = document.getElementById('gaugeArc');
+    if(arc) arc.style.strokeDashoffset = offset;
+    setTimeout(() => { const gs = document.getElementById('gaugeScore'); if(gs) gs.textContent = f.score + '%'; }, 200);
+  });
+}
+
+function showPage(name) {
+  if(name === 'detail') return;
+  $$('.page').forEach(p => p.classList.remove('active'));
+  const target = document.getElementById('page-' + name);
+  if(target) target.classList.add('active');
+  $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === name));
+  document.getElementById('mainContent').scrollTop = 0;
+}
+
+$$('.nav-item').forEach(n => n.onclick = () => showPage(n.dataset.page));
+
+let toastTimer;
+function showToast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function init() {
+  const savedTheme = localStorage.getItem('factly_theme');
+  if(savedTheme) switchTheme(savedTheme);
+  renderHome();
+  renderSaved();
+  renderRankings('today');
+}
+init();
+</script>
+</body>
+</html>

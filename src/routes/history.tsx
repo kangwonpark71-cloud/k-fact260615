@@ -74,9 +74,9 @@ function HistoryPage() {
   };
 
   return (
-    <div className="min-h-screen pb-16 sm:pb-0">
+    <div className="min-h-screen pb-[calc(4rem+env(safe-area-inset-bottom,0px))] sm:pb-0">
       <SiteHeader />
-      <main className="max-w-4xl mx-auto px-6 py-12">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-12">
         <h1 className="text-3xl font-bold mb-2">분석 히스토리</h1>
         <p className="text-sm text-muted-foreground mb-6">이 브라우저에서 수행한 최근 분석 기록입니다.</p>
 
@@ -110,7 +110,7 @@ function HistoryPage() {
                   key={v}
                   data-active={activeVerdict === v}
                   onClick={() => setActiveVerdict(activeVerdict === v ? null : v)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${VERDICT_COLOR[v]}`}
+                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-all duration-200 ${VERDICT_COLOR[v]}`}
                 >
                   {v}
                 </button>
@@ -185,7 +185,7 @@ function HistoryPage() {
                 type="button"
                 onClick={(e) => handleDelete(e, row.id)}
                 disabled={deletingId === row.id}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-40"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors sm:opacity-0 sm:group-hover:opacity-100 disabled:opacity-40"
                 aria-label="삭제"
               >
                 <Trash2 className="w-4 h-4" />

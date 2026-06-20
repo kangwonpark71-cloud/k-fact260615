@@ -6,7 +6,7 @@ import {
   ArrowLeft, ExternalLink, ThumbsUp, ThumbsDown, HelpCircle,
   BookOpen, Share2, Check, ChevronDown, ChevronUp, FileText,
   AlertTriangle, CheckCircle2, XCircle, MinusCircle, AlertCircle,
-  Loader2,
+  Loader2, SmilePlus, Frown, Meh, Eye, Lightbulb, Target,
 } from "lucide-react";
 
 import {
@@ -74,12 +74,51 @@ const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; b
 };
 
 /* ── 신뢰도 직관 레이블 ── */
-function getConfidenceLabel(v: number): { emoji: string; text: string; color: string } {
-  if (v >= 86) return { emoji: "✅", text: "아주 믿을만해요",         color: "text-verdict-true" };
-  if (v >= 71) return { emoji: "😊", text: "꽤 믿을만해요",           color: "text-verdict-true" };
-  if (v >= 51) return { emoji: "🤔", text: "어느 정도 맞을 수 있어요", color: "text-verdict-partial" };
-  if (v >= 31) return { emoji: "😕", text: "조금 불확실해요",          color: "text-verdict-unknown" };
-  return            { emoji: "😰", text: "거의 확인 안 됐어요",       color: "text-verdict-false" };
+function getConfidenceLabel(v: number): { text: string; color: string } {
+  if (v >= 86) return { text: "아주 믿을만해요",     color: "text-verdict-true" };
+  if (v >= 71) return { text: "꽤 믿을만해요",       color: "text-verdict-true" };
+  if (v >= 51) return { text: "어느 정도 맞을 수 있어요", color: "text-verdict-partial" };
+  if (v >= 31) return { text: "조금 불확실해요",     color: "text-verdict-unknown" };
+  return        { text: "거의 확인 안 됐어요",       color: "text-verdict-false" };
+}
+
+/* ── 근거 강도 분석 ── */
+function evidenceStrength(claim: Claim): {
+  supportCount: number;
+  counterCount: number;
+  total: number;
+  label: string;
+  color: string;
+  barColor: string;
+} {
+  const supportCount = claim.supporting_points.length;
+  const counterCount = claim.counter_points.length;
+  const total = supportCount + counterCount;
+  const max = Math.max(supportCount, counterCount, 1);
+
+  if (supportCount >= 2 && supportCount > counterCount) {
+    return { supportCount, counterCount, total,
+      label: "지지 근거 충실", color: "text-verdict-true", barColor: "bg-verdict-true" };
+  }
+  if (counterCount >= 2 && counterCount >= supportCount) {
+    return { supportCount, counterCount, total,
+      label: "반박 근거 우세", color: "text-verdict-false", barColor: "bg-verdict-false" };
+  }
+  if (total > 0) {
+    return { supportCount, counterCount, total,
+      label: "일부 근거 있음", color: "text-verdict-partial", barColor: "bg-verdict-partial" };
+  }
+  return { supportCount, counterCount, total,
+    label: "근거 미제시", color: "text-muted-foreground", barColor: "bg-border" };
+}
+
+/* ── 근거 요약 미리보기 (각 유형별 최대 n개) ── */
+function evidencePreview(claim: Claim, n?: number): { type: "support" | "counter"; text: string }[] {
+  const limit = n ?? 1;
+  const items: { type: "support" | "counter"; text: string }[] = [];
+  for (const p of claim.supporting_points.slice(0, limit)) items.push({ type: "support", text: p });
+  for (const p of claim.counter_points.slice(0, limit)) items.push({ type: "counter", text: p });
+  return items;
 }
 
 /* ── 읽기 모드 토글 ── */
@@ -97,7 +136,7 @@ function ReadingModeToggle({
             : "text-muted-foreground hover:text-foreground"
         }`}
       >
-        📋 자세히 보기
+        <FileText className="w-4 h-4" /> 자세히 보기
       </button>
       <button
         type="button"
@@ -111,7 +150,7 @@ function ReadingModeToggle({
       >
         {loading
           ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> 변환 중…</>
-          : <>👀 쉽게 보기</>}
+          : <><Eye className="w-4 h-4" /> 쉽게 보기</>}
       </button>
     </div>
   );
@@ -399,7 +438,7 @@ function AnalysisPage() {
             />
             {readingMode === "simple" && simplifiedData && (
               <div className="text-xs text-muted-foreground bg-surface-2/60 border border-border/40 rounded-lg px-3 py-2 flex items-center gap-1.5">
-                <span className="text-base">👀</span>
+                <Eye className="w-4 h-4 text-primary shrink-0" />
                 중고등학생도 이해하기 쉬운 말로 바꿔드렸어요!
               </div>
             )}
@@ -409,7 +448,7 @@ function AnalysisPage() {
         {/* 쉽게 보기 - 전체 요약 */}
         {readingMode === "simple" && simplifiedData?.simple_summary && (
           <div className="border border-primary/30 bg-primary/5 rounded-xl px-4 py-3 flex items-start gap-3">
-            <span className="text-xl shrink-0">💡</span>
+            <Lightbulb className="w-5 h-5 text-primary shrink-0 mt-0.5" />
             <div>
               <p className="text-[10px] font-bold text-primary uppercase tracking-widest mb-1">한 줄 요약 (쉬운 버전)</p>
               <p className="text-sm text-foreground/90 leading-relaxed">{simplifiedData.simple_summary}</p>
@@ -424,10 +463,10 @@ function AnalysisPage() {
         <section className="space-y-3">
           <div className="flex items-center justify-between px-1">
             <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              주장별 상세 분석
+              주장별 상세 분석 및 근거
             </h2>
             {readingMode === "simple" && (
-              <span className="text-[10px] text-primary/70 font-medium">👀 쉬운 설명 모드</span>
+              <span className="text-[10px] text-primary/70 font-medium inline-flex items-center gap-1"><Eye className="w-3 h-3" /> 쉬운 설명 모드</span>
             )}
           </div>
           {claims.map((c, i) => (
@@ -558,12 +597,12 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
         {/* 감지된 신호 */}
         {hasSignals && (
           <div>
-            <p className="text-[17px] font-semibold text-muted-foreground mb-1.5">감지된 문체 신호</p>
+            <p className="text-sm font-semibold text-muted-foreground mb-1.5">감지된 문체 신호</p>
             <div className="space-y-1">
               {(style_signals ?? []).map((s, i) => (
                 <div key={i} className="flex items-start gap-1.5">
-                  <span className="text-[15px] text-orange-400 shrink-0 mt-0.5">•</span>
-                  <span className="text-[17px] text-muted-foreground/80 leading-relaxed">{s}</span>
+                  <span className="text-xs text-orange-400 shrink-0 mt-0.5">•</span>
+                  <span className="text-sm text-muted-foreground/80 leading-relaxed">{s}</span>
                 </div>
               ))}
             </div>
@@ -573,11 +612,11 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
         {/* Stage 3: Tavily 증거 URL */}
         {hasUrls && (
           <div>
-            <p className="text-[17px] font-semibold text-muted-foreground mb-1.5">Stage 3 — Tavily 실시간 검색 근거</p>
+            <p className="text-sm font-semibold text-muted-foreground mb-1.5">Stage 3 — Tavily 실시간 검색 근거</p>
             <div className="space-y-1">
               {(evidence_urls ?? []).map((url, i) => (
                 <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-[17px] text-primary/70 hover:text-primary transition-colors group truncate">
+                  className="flex items-center gap-1.5 text-sm text-primary/70 hover:text-primary transition-colors group truncate">
                   <ExternalLink className="w-3 h-3 shrink-0 opacity-50 group-hover:opacity-100" />
                   <span className="truncate">{url}</span>
                 </a>
@@ -678,7 +717,7 @@ function EvidenceLinks({
       <ul className="space-y-1.5">
         {items.map((item, i) => (
           <li key={i} className="flex items-start gap-1.5">
-            <span className="text-muted-foreground/40 shrink-0 mt-0.5 text-[10px]">·</span>
+            <span className="w-1 h-1 rounded-full bg-muted-foreground/30 shrink-0 mt-[7px]" />
             {item.url ? (
               <a
                 href={item.url}
@@ -711,8 +750,8 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
   }, {});
 
   const indexed      = claims.map((c, i) => ({ c, i }));
-  const mainClaims   = indexed.filter(({ c }) => c.verdict !== "미확인");
-  const unknownClaims = indexed.filter(({ c }) => c.verdict === "미확인");
+  const mainClaims   = indexed.filter(({ c }) => c.verdict !== "근거 부족");
+  const unknownClaims = indexed.filter(({ c }) => c.verdict === "근거 부족");
   const isHighlight  = (v: string) => v === "사실" || v === "반대 근거 우세";
 
   /* 공통 근거 패널 */
@@ -767,7 +806,7 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
   return (
     <div className="border border-border/50 bg-surface shadow-[var(--shadow-card)] p-4 sm:p-5">
       <h2 className="font-mono text-[9px] font-bold text-muted-foreground/60 uppercase tracking-widest mb-3">
-        주장 요약
+        핵심 주장 및 근거 요약
       </h2>
 
       {/* 판정 분포 */}
@@ -783,11 +822,7 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
         })}
       </div>
 
-      <p className="text-[10px] text-muted-foreground/50 mb-3">
-        각 주장을 클릭하면 판정 근거와 출처 링크를 확인할 수 있습니다.
-      </p>
-
-      {/* 주장 목록 */}
+      {/* 주장 목록 — 근거 미리보기 포함 */}
       <div className="space-y-2">
         {mainClaims.map(({ c, i }) => {
           const { verdictLabel: vLabel, basisLabel: bLabel } = getVerdictDisplay(c);
@@ -804,6 +839,8 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
               ? "border-l-[3px] border-l-verdict-false"
               : "";
           const ctMeta = CLAIM_TYPE_META[c.claim_type ?? "EMPIRICAL"] ?? CLAIM_TYPE_META.EMPIRICAL;
+          const evStrength = evidenceStrength(c);
+          const preview = evidencePreview(c, 2);
 
           return (
             <div key={i} className={`overflow-hidden ${highlight ? accentClass : ""}`}>
@@ -828,14 +865,18 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                    {/* 주장 유형 배지 */}
                     <span className={`font-mono text-[9px] font-bold border px-1 py-px rounded-sm uppercase tracking-widest ${ctMeta.color}`}>
                       {ctMeta.label}
                     </span>
-                    {/* 국가 공인 입장 접두어 */}
                     {bLabel && (
                       <span className="font-mono text-[9px] font-bold border border-verdict-partial/50 text-verdict-partial bg-verdict-partial/10 px-1 py-px rounded-sm uppercase tracking-widest">
                         {bLabel}
+                      </span>
+                    )}
+                    {/* 근거 강도 배지 */}
+                    {evStrength.total > 0 && (
+                      <span className={`font-mono text-[9px] font-bold border px-1 py-px rounded-sm uppercase tracking-widest ${evStrength.color} border-current/30`}>
+                        {evStrength.label}
                       </span>
                     )}
                     {highlight && (
@@ -847,6 +888,19 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
                   <p className={`leading-snug ${highlight ? "text-sm font-semibold text-foreground" : "text-xs text-foreground/90 leading-relaxed"}`}>
                     {c.claim}
                   </p>
+                  {/* 근거 미리보기 (접힌 상태에서도 표시) */}
+                  {preview.length > 0 && (
+                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1">
+                      {preview.map((ev, ei) => (
+                        <span key={ei} className={`inline-flex items-center gap-1 text-[10px] leading-relaxed ${
+                          ev.type === "support" ? "text-emerald-400/70" : "text-red-400/70"
+                        }`}>
+                          <span className="shrink-0">{ev.type === "support" ? "▲" : "▼"}</span>
+                          <span className="truncate max-w-[200px] sm:max-w-[280px]">{ev.text}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0 ml-2 mt-0.5">
@@ -948,12 +1002,13 @@ function getVerdictDisplay(claim: Claim): { verdictLabel: string; basisLabel: st
   return { verdictLabel: claim.verdict, basisLabel: null };
 }
 
-/* ── 신뢰도 이모지 + 텍스트 표시 ── */
+/* ── 신뢰도 아이콘 + 텍스트 표시 ── */
 function ConfidenceEmoji({ value, large }: { value: number; large?: boolean }) {
-  const { emoji, text, color } = getConfidenceLabel(value);
+  const { text, color } = getConfidenceLabel(value);
+  const Icon = value >= 86 ? CheckCircle2 : value >= 71 ? SmilePlus : value >= 51 ? Meh : value >= 31 ? HelpCircle : Frown;
   return (
     <span className={`inline-flex items-center gap-1 font-medium ${color} ${large ? "text-sm" : "text-xs"}`}>
-      <span>{emoji}</span>
+      <Icon className={large ? "w-4 h-4" : "w-3.5 h-3.5"} />
       <span className={large ? "" : "hidden sm:inline"}>{text}</span>
     </span>
   );
@@ -990,7 +1045,7 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
       {/* ── 쉬운 모드: 아날로지 비유 배너 ── */}
       {isSimple && simpleData?.analogy && (
         <div className="mx-4 sm:mx-5 mt-4 mb-0 flex items-start gap-2.5 bg-primary/6 border border-primary/20 rounded-lg px-3 py-2.5">
-          <span className="text-base shrink-0">🎯</span>
+          <Target className="w-4 h-4 text-primary shrink-0 mt-0.5" />
           <p className="text-xs text-foreground/80 leading-relaxed italic">
             {simpleData.analogy}
           </p>
@@ -1011,12 +1066,38 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium leading-snug mb-1.5 pr-4">{claim.claim}</p>
 
+            {/* 근거 요약 미리보기 (접힌 상태에서도 표시) */}
+            {!isSimple && !expanded && claim.reasoning && (
+              <p className="text-xs text-muted-foreground/70 leading-relaxed mb-1.5 line-clamp-1">
+                {claim.reasoning}
+              </p>
+            )}
+            {!isSimple && !expanded && (claim.supporting_points.length > 0 || claim.counter_points.length > 0) && (
+              <div className="flex flex-wrap gap-3 mb-1.5">
+                {claim.supporting_points.length > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400/70">
+                    <ThumbsUp className="w-2.5 h-2.5" /> 지지 {claim.supporting_points.length}
+                  </span>
+                )}
+                {claim.counter_points.length > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-red-400/70">
+                    <ThumbsDown className="w-2.5 h-2.5" /> 반박 {claim.counter_points.length}
+                  </span>
+                )}
+                {claim.unknowns.length > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-yellow-400/70">
+                    <AlertTriangle className="w-2.5 h-2.5" /> 미비 {claim.unknowns.length}
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* 자세히 모드: SPO 구조 */}
             {!isSimple && (claim.subject || claim.predicate || claim.object) && (
-              <div className="flex items-center gap-1.5 flex-wrap mb-2">
-                {claim.subject   && <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground/70">주어: {claim.subject}</span>}
-                {claim.predicate && <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground/70">서술: {claim.predicate}</span>}
-                {claim.object    && <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground/70">대상: {claim.object}</span>}
+              <div className="flex items-center gap-1 flex-wrap mb-2">
+                {claim.subject   && <span className="text-[9px] bg-border/20 border border-border/40 rounded px-1 py-0.5 text-muted-foreground/60 font-mono">S:{claim.subject}</span>}
+                {claim.predicate && <span className="text-[9px] bg-border/20 border border-border/40 rounded px-1 py-0.5 text-muted-foreground/60 font-mono">P:{claim.predicate}</span>}
+                {claim.object    && <span className="text-[9px] bg-border/20 border border-border/40 rounded px-1 py-0.5 text-muted-foreground/60 font-mono">O:{claim.object}</span>}
               </div>
             )}
 
@@ -1082,12 +1163,12 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
           {isSimple ? (
             <div className="pl-9 grid sm:grid-cols-2 gap-2.5">
               {(simpleData?.simple_supporting ?? []).length > 0 && (
-                <PointList Icon={ThumbsUp} title="😊 이래서 맞는 것 같아요" items={simpleData!.simple_supporting} tone="true"
+                <PointList Icon={ThumbsUp} title="이래서 맞는 것 같아요" items={simpleData!.simple_supporting} tone="true"
                   links={simpleData!.simple_supporting.map(p => `https://news.google.com/search?q=${encodeURIComponent(p.slice(0, 70))}&hl=ko&gl=KR&ceid=KR:ko`)}
                 />
               )}
               {(simpleData?.simple_counter ?? []).length > 0 && (
-                <PointList Icon={ThumbsDown} title="🤔 이래서 의심스러워요" items={simpleData!.simple_counter} tone="false"
+                <PointList Icon={ThumbsDown} title="이래서 의심스러워요" items={simpleData!.simple_counter} tone="false"
                   links={simpleData!.simple_counter.map(p => `https://news.google.com/search?q=${encodeURIComponent(p.slice(0, 70))}&hl=ko&gl=KR&ceid=KR:ko`)}
                 />
               )}
@@ -1218,7 +1299,7 @@ function PointList({ Icon, title, items, tone, links }: {
           const url = links?.[i];
           return (
             <li key={i} className="text-xs text-foreground/80 leading-relaxed flex gap-1.5">
-              <span className="text-muted-foreground/50 shrink-0">·</span>
+              <span className="w-1 h-1 rounded-full bg-muted-foreground/30 shrink-0 mt-[5px]" />
               {url ? (
                 <a
                   href={url}

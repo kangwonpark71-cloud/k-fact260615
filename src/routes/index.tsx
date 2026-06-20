@@ -112,12 +112,12 @@ function HeroSection() {
       {/* 설명 텍스트 */}
       <p
         className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed"
-        style={{ opacity: 0, animation: `fade-slide-up 0.75s ease-out ${DESC_START}ms both` }}
+        style={{ opacity: 0, animation: `fade-slide-up-down 9s ease-out ${DESC_START}ms both` }}
       >
         기사나 게시물 본문을 넣으면&nbsp;
         <strong className="text-foreground/80 font-semibold">핵심 주장 단위로 분리</strong>하고,
         <br className="hidden sm:block" />
-        <strong className="text-foreground/80 font-semibold">지지·반박·미확인 근거</strong>와 신뢰도를 한 화면에 보여드립니다.
+        <strong className="text-foreground/80 font-semibold">지지·반박·근거 부족</strong>와 신뢰도를 한 화면에 보여드립니다.
       </p>
     </section>
   );
@@ -327,7 +327,7 @@ function Home() {
         <HeroSection />
 
         {/* 메인 2열 레이아웃: 좌=입력폼, 우=실시간 뉴스 */}
-        <div className="grid xl:grid-cols-[1fr_420px] gap-6 items-start">
+        <div className="grid md:grid-cols-[1fr_320px] xl:grid-cols-[1fr_420px] gap-6 items-start">
         {/* 좌측: 입력 폼 영역 */}
         <div className="order-1">
 
@@ -614,18 +614,32 @@ function Home() {
 
                 {/* 로딩 스켈레톤 */}
                 {quickLoading && !quickResult && (
-                  <div className="space-y-2 animate-pulse">
-                    <div className="h-3 bg-border/50 rounded-full w-3/4" />
-                    <div className="h-8 bg-border/30 rounded-lg" />
-                    <div className="h-8 bg-border/30 rounded-lg w-5/6" />
+                  <div className="space-y-3 animate-pulse">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 bg-border/50 rounded-full w-16" />
+                      <div className="h-3 bg-border/30 rounded-full flex-1" />
+                    </div>
+                    <div className="h-24 bg-border/15 rounded-xl border border-border/30" />
+                    <div className="h-16 bg-border/15 rounded-xl border border-border/30 w-5/6" />
+                    <div className="h-16 bg-border/15 rounded-xl border border-border/30 w-4/6" />
                   </div>
                 )}
 
                 {/* 오류 */}
                 {quickErr && !quickLoading && (
-                  <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    <span>{quickErr}</span>
+                  <div className="flex items-start gap-2.5 text-xs text-destructive bg-destructive/8 border border-destructive/25 rounded-xl px-4 py-3">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-destructive" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold mb-0.5">분석 중 오류 발생</p>
+                      <p className="text-destructive/80">{quickErr}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setQuickErr(null)}
+                      className="shrink-0 px-2.5 py-1 rounded-lg bg-destructive/15 text-destructive hover:bg-destructive/25 font-medium transition-colors"
+                    >
+                      닫기
+                    </button>
                   </div>
                 )}
 
