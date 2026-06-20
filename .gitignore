@@ -27,6 +27,9 @@ dist-ssr
 !.env.example
 !.env.production
 
+# Debug / temporary files
+_debug_*.txt
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

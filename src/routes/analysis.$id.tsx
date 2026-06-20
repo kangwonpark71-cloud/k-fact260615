@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
+﻿import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef, useState } from "react";
@@ -16,7 +16,7 @@ import {
 import { getSessionId } from "@/lib/session";
 import { SiteHeader, BottomNav } from "@/components/SiteHeader";
 import { VerdictBadge } from "@/components/VerdictBadge";
-import { AuditTrailPanel, type AuditLog, type ExternalFactCheck } from "@/components/AuditTrailPanel";
+import { AuditTrailPanel, type AuditLog, type ExternalFactCheck, type StyleClassification } from "@/components/AuditTrailPanel";
 
 export const Route = createFileRoute("/analysis/$id")({
   component: AnalysisPage,
@@ -70,7 +70,7 @@ const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; b
   "부분 사실":      { icon: MinusCircle,  color: "text-verdict-partial", bg: "bg-verdict-partial/10", border: "border-verdict-partial/30", label: "부분 사실" },
   "근거 부족":      { icon: HelpCircle,   color: "text-verdict-weak",    bg: "bg-verdict-weak/10",    border: "border-verdict-weak/30",    label: "근거 부족" },
   "반대 근거 우세": { icon: XCircle,      color: "text-verdict-false",   bg: "bg-verdict-false/10",   border: "border-verdict-false/30",   label: "반대 근거 우세" },
-  "미확인":         { icon: AlertCircle,  color: "text-verdict-unknown", bg: "bg-verdict-unknown/10", border: "border-verdict-unknown/30", label: "미확인" },
+  "미확인":         { icon: HelpCircle,   color: "text-verdict-weak",    bg: "bg-verdict-weak/10",    border: "border-verdict-weak/30",    label: "근거 부족" },
 };
 
 /* ── 신뢰도 직관 레이블 ── */
@@ -258,6 +258,9 @@ function AnalysisPage() {
     ? rawClaims
     : (pipelineMeta?.items ?? []);
 
+  // 트랜스포머 문체 분류 결과 (Phase 1 + Phase 2 공통 저장)
+  const styleClassification = (pipelineMeta as Record<string, unknown> | null)?.style_classification as StyleClassification | undefined;
+
   // 영토·주권 분쟁 주장 여부 — 고지 배너 표시 여부 결정
   const hasDisputedTerritory = claims.some(c => c.claim_type === "DISPUTED_TERRITORY");
 
@@ -328,7 +331,7 @@ function AnalysisPage() {
                 <h1 className="font-display text-xl sm:text-2xl font-bold leading-snug text-foreground">{dataRow.title as string}</h1>
               </div>
               <div className="shrink-0 flex flex-col items-end gap-2">
-                <VerdictBadge verdict={(dataRow.overall_verdict as string) ?? "미확인"} size="lg" />
+                <VerdictBadge verdict={(dataRow.overall_verdict as string) ?? "근거 부족"} size="lg" />
                 <ConfidenceBar value={(dataRow.overall_confidence as number) ?? 0} />
               </div>
             </div>
@@ -381,7 +384,7 @@ function AnalysisPage() {
             <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground/90">Tavily 심층 검색 중…</p>
-              <p className="text-xs text-muted-foreground">실시간 뉴스·공식 자료로 미확인·사실 항목을 재검증하고 있습니다.</p>
+              <p className="text-xs text-muted-foreground">실시간 뉴스·공식 자료로 근거 부족·사실 항목을 재검증하고 있습니다.</p>
             </div>
           </div>
         )}
@@ -443,6 +446,7 @@ function AnalysisPage() {
           <AuditTrailPanel
             auditLog={auditLog}
             integrity={integrityStatus}
+            styleClassification={styleClassification}
             externalChecks={externalChecks}
             onLoadExternal={handleLoadExternal}
             externalLoading={externalLoading}
@@ -450,7 +454,7 @@ function AnalysisPage() {
         )}
 
         <p className="text-xs text-muted-foreground leading-relaxed p-4 rounded-xl border border-border/50 bg-surface/30">
-          이 결과는 AI 보조 판단이며 단정적 사실확인이 아닙니다. 신뢰도와 미확인 항목을 함께 참고하고,
+          이 결과는 AI 보조 판단이며 단정적 사실확인이 아닙니다. 신뢰도와 근거 부족 항목을 함께 참고하고,
           중요한 의사결정 전에는 표기된 출처 유형의 1차 자료를 직접 확인하세요.
         </p>
       </main>
@@ -461,40 +465,97 @@ function AnalysisPage() {
 /* ── Stage 1+3 파이프라인 메타 패널 ── */
 function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
   const { bias_type, fake_probability, style_signals, evidence_urls } = meta;
+  const sc = (meta as Record<string, unknown>).style_classification as StyleClassification | undefined;
   const hasSignals = (style_signals ?? []).length > 0;
   const hasUrls = (evidence_urls ?? []).length > 0;
-  if (!bias_type && !fake_probability && !hasSignals && !hasUrls) return null;
+  if (!bias_type && !fake_probability && !hasSignals && !hasUrls && !sc) return null;
 
-  const fpct = fake_probability ?? 0;
+  const fpct = sc?.fake_probability ?? fake_probability ?? 0;
+  const credScore = sc?.credibility_score;
   const fpColor = fpct >= 70 ? "text-verdict-false border-verdict-false/50" : fpct >= 40 ? "text-verdict-partial border-verdict-partial/50" : "text-verdict-true border-verdict-true/50";
   const barColor = fpct >= 70 ? "bg-verdict-false" : fpct >= 40 ? "bg-verdict-partial" : "bg-verdict-true";
+  const credColor = credScore !== undefined ? (credScore >= 70 ? "text-verdict-true" : credScore >= 40 ? "text-verdict-partial" : "text-verdict-false") : "";
+  const displayBiasType = sc?.style_category ?? bias_type;
+  const isLLMAnalysis = !!sc;
 
   return (
     <div className="border border-border/50 bg-surface overflow-hidden">
       <div className="px-4 sm:px-5 py-2.5 border-b border-border/30 flex items-center gap-2 bg-surface-2/40">
-        <span className="font-mono text-[13px] font-bold text-muted-foreground/60 uppercase tracking-widest">AI 파이프라인 분석</span>
-        {bias_type && bias_type !== "중립" && (
+        <span className="font-mono text-[13px] font-bold text-muted-foreground/60 uppercase tracking-widest">AI 파이프라인 분析</span>
+        {isLLMAnalysis && (
+          <span className="font-mono text-[11px] text-primary/60 border border-primary/20 px-1.5 py-0.5 rounded-sm">트랜스포머</span>
+        )}
+        {displayBiasType && displayBiasType !== "중립" && displayBiasType !== "사실보도" && displayBiasType !== "학술/공식문서" && (
           <span className="font-mono text-[13px] font-bold text-verdict-partial border border-verdict-partial/30 px-2 py-0.5 rounded-sm ml-auto uppercase tracking-widest">
-            {bias_type} 편향
+            {displayBiasType}
           </span>
         )}
       </div>
       <div className="px-4 sm:px-5 py-3 space-y-3">
-        {/* Stage 1: 가짜 가능성 */}
+        {/* 가짜 가능성 지수 */}
         {fpct > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-1.5">
               <span className="text-[17px] text-muted-foreground font-medium">문체 가짜 가능성 지수</span>
-              <span className={`font-mono text-[18px] font-bold border rounded-sm px-1.5 py-0.5 ml-auto ${fpColor}`}>{fpct}%</span>
+              <div className="ml-auto flex items-center gap-2">
+                {credScore !== undefined && (
+                  <span className={`font-mono text-[15px] font-semibold ${credColor}`}>신뢰도 {credScore}</span>
+                )}
+                <span className={`font-mono text-[18px] font-bold border rounded-sm px-1.5 py-0.5 ${fpColor}`}>{fpct}%</span>
+              </div>
             </div>
             <div className="h-1 bg-surface-2 overflow-hidden">
               <div className={`h-full ${barColor} transition-all`} style={{ width: `${fpct}%` }} />
             </div>
-            <p className="text-[15px] text-muted-foreground/50 mt-1">LIAR Dataset / FakeNewsNet 패턴 기반 TF-IDF 분석</p>
+            <p className="text-[15px] text-muted-foreground/50 mt-1">
+              {isLLMAnalysis
+                ? "SemEval-2020 선동기법 탐지 · LIWC 심리언어학 · NELA-GT 신뢰도 기준 (트랜스포머 분류)"
+                : "LIAR Dataset / FakeNewsNet 패턴 기반 분析"}
+            </p>
           </div>
         )}
 
-        {/* Stage 1: 경고 신호 */}
+        {/* 어텐션 모델 언어학적 지표 요약 */}
+        {sc && (
+          <div className="grid grid-cols-2 gap-1.5 text-[13px]">
+            {[
+              { label: "어휘 풍부도", value: sc.linguistic_features.vocabulary_richness, high: true },
+              { label: "논증 일관성", value: sc.linguistic_features.argument_coherence,  high: true },
+              { label: "출처 귀속",   value: sc.linguistic_features.source_attribution,  high: true },
+              { label: "감정어 밀도", value: sc.linguistic_features.emotional_density,   high: false },
+            ].map(({ label, value, high }) => {
+              const good = high ? value >= 60 : value < 40;
+              const color = good ? "text-verdict-true" : value >= 50 ? "text-verdict-partial" : "text-verdict-false";
+              return (
+                <div key={label} className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground/60 shrink-0">{label}</span>
+                  <div className="flex-1 h-1 rounded-full bg-border overflow-hidden">
+                    <div className={`h-full rounded-full ${good ? "bg-verdict-true" : "bg-verdict-false"}`} style={{ width: `${value}%` }} />
+                  </div>
+                  <span className={`font-mono font-semibold shrink-0 ${color}`}>{value}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 선동 기법 (있을 때만) */}
+        {sc && sc.propaganda_techniques.length > 0 && (
+          <div>
+            <p className="text-[15px] font-semibold text-destructive/80 mb-1.5">
+              탐지된 선동 기법 ({sc.propaganda_techniques.length}건) — SemEval-2020
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {sc.propaganda_techniques.map((t, i) => (
+                <span key={i} className="text-[13px] px-2 py-0.5 rounded-full bg-destructive/10 text-destructive border border-destructive/20">
+                  {t.name}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 감지된 신호 */}
         {hasSignals && (
           <div>
             <p className="text-[17px] font-semibold text-muted-foreground mb-1.5">감지된 문체 신호</p>
@@ -528,7 +589,6 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
     </div>
   );
 }
-
 /* ── 원문 요약 ── */
 function InputSummary({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
@@ -693,7 +753,7 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
               items={c.suggested_sources.map(s => ({ text: `${s.name}${s.type && s.type !== "일반" ? ` (${s.type})` : ""}`, url: generateSourceUrl(s.name, s.type, c.claim) }))} />
           )}
           {c.unknowns.length > 0 && (
-            <EvidenceLinks title="미확인 항목" icon={AlertTriangle} colorClass="text-yellow-400"
+            <EvidenceLinks title="확인 필요 항목" icon={AlertTriangle} colorClass="text-yellow-400"
               items={c.unknowns.map(u => ({ text: u, url: `https://www.google.com/search?q=${encodeURIComponent(u.slice(0, 70))}` }))} />
           )}
         </div>
@@ -713,7 +773,7 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
       {/* 판정 분포 */}
       <div className="flex flex-wrap gap-2 mb-4">
         {Object.entries(verdictCount).map(([verdict, count]) => {
-          const meta = VERDICT_META[verdict] ?? VERDICT_META["미확인"];
+          const meta = VERDICT_META[verdict] ?? VERDICT_META["근거 부족"];
           const Icon = meta.icon;
           return (
             <span key={verdict} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${meta.bg} ${meta.border} ${meta.color}`}>
@@ -734,7 +794,7 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
           const isOp = c.judgment_basis === "의견/견해";
           const meta = isOp
             ? { icon: HelpCircle, color: "text-muted-foreground", bg: "bg-surface-2", border: "border-border/40", label: "의견/견해" }
-            : (VERDICT_META[vLabel] ?? VERDICT_META["미확인"]);
+            : (VERDICT_META[vLabel] ?? VERDICT_META["근거 부족"]);
           const Icon = meta.icon;
           const isExpanded = expandedIdx === i;
           const highlight = !isOp && isHighlight(c.verdict);
@@ -813,7 +873,7 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
         })}
       </div>
 
-      {/* 미확인 섹션 — 기본 접힘 */}
+      {/* 근거 부족 섹션 (이전 DB 레코드 하위 호환) */}
       {unknownClaims.length > 0 && (
         <div className="mt-4 pt-3 border-t border-border/25">
           <button
@@ -823,7 +883,7 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
           >
             <AlertCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
             <span className="text-[11px] text-muted-foreground/60 font-medium">
-              미확인 {unknownClaims.length}건 — {phase2Loading ? "심층 검토 중…" : "근거 부족으로 판정 보류"}
+              근거 부족 {unknownClaims.length}건 — {phase2Loading ? "심층 검토 중…" : "이전 분석 기록"}
             </span>
             <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground/40">
               {showUnknown ? "접기" : "펼치기"}
@@ -836,7 +896,7 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
           {showUnknown && (
             <div className="mt-2 space-y-1.5 opacity-60">
               {unknownClaims.map(({ c, i }) => {
-                const meta = VERDICT_META["미확인"];
+                const meta = VERDICT_META["근거 부족"];
                 const Icon = meta.icon;
                 const isExpanded = expandedIdx === i;
                 return (
@@ -911,7 +971,7 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
   const isOpinion = claim.judgment_basis === "의견/견해";
   const meta = isOpinion
     ? { icon: HelpCircle, color: "text-muted-foreground", bg: "bg-surface-2", border: "border-border/40", label: "의견/견해" }
-    : (VERDICT_META[verdictLabel] ?? VERDICT_META["미확인"]);
+    : (VERDICT_META[verdictLabel] ?? VERDICT_META["근거 부족"]);
   const Icon = meta.icon;
   const isSimple = !!simpleData;
 
@@ -1064,7 +1124,7 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
                 />
               )}
               {claim.unknowns.length > 0 && (
-                <PointList Icon={AlertTriangle} title="미확인 항목" items={claim.unknowns} tone="unknown"
+                <PointList Icon={AlertTriangle} title="확인 필요 항목" items={claim.unknowns} tone="unknown"
                   links={claim.unknowns.map(u => `https://www.google.com/search?q=${encodeURIComponent(u.slice(0, 70))}`)}
                 />
               )}

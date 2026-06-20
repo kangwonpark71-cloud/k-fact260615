@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+﻿import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -33,7 +33,7 @@ const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; b
   "부분 사실":      { icon: MinusCircle,  color: "text-verdict-partial", bg: "bg-verdict-partial/10 border-verdict-partial/30", label: "부분 사실" },
   "근거 부족":      { icon: HelpCircle,   color: "text-verdict-weak",    bg: "bg-verdict-weak/10 border-verdict-weak/30",       label: "근거 부족" },
   "반대 근거 우세": { icon: XCircle,      color: "text-verdict-false",   bg: "bg-verdict-false/10 border-verdict-false/30",     label: "반대 근거 우세" },
-  "미확인":         { icon: AlertCircle,  color: "text-verdict-unknown", bg: "bg-verdict-unknown/10 border-verdict-unknown/30", label: "미확인" },
+  "미확인":         { icon: HelpCircle,   color: "text-verdict-weak",    bg: "bg-verdict-weak/10 border-verdict-weak/30",       label: "근거 부족" },
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -530,7 +530,7 @@ function Home() {
                     </div>
                     <div className="space-y-2 max-h-96 overflow-y-auto pr-0.5">
                       {voiceSentences.map((s, idx) => {
-                        const meta = s.result ? (VERDICT_META[s.result.overall_verdict] ?? VERDICT_META["미확인"]) : null;
+                        const meta = s.result ? (VERDICT_META[s.result.overall_verdict] ?? VERDICT_META["근거 부족"]) : null;
                         const Icon = meta?.icon;
                         const brief = s.result?.highlights[0]?.brief ?? s.result?.summary ?? "";
                         const badgeClass = SPEAKER_BADGE[s.speaker] ?? "";
@@ -704,7 +704,7 @@ function Home() {
                     {quickResult.highlights.length > 0 && (
                       <div className="space-y-2">
                         {quickResult.highlights.map((h, i) => {
-                          const meta = VERDICT_META[h.verdict] ?? VERDICT_META["미확인"];
+                          const meta = VERDICT_META[h.verdict] ?? VERDICT_META["근거 부족"];
                           const Icon = meta.icon;
                           return (
                             <div key={i} className={`rounded-xl border px-3 py-2.5 ${meta.bg}`}>
@@ -854,7 +854,7 @@ function Home() {
 }
 
 function OverallBadge({ verdict, confidence }: { verdict: string; confidence: number }) {
-  const meta = VERDICT_META[verdict] ?? VERDICT_META["미확인"];
+  const meta = VERDICT_META[verdict] ?? VERDICT_META["근거 부족"];
   const Icon = meta.icon;
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-semibold ${meta.bg} ${meta.color}`}>

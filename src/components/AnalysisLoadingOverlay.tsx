@@ -18,8 +18,8 @@ const SLOT = [
   { label: "검토 중",    color: "oklch(0.65 0.15 250)" },
   { label: "부분 사실?", color: "oklch(0.82 0.17 90)" },
   { label: "근거 확인",  color: "oklch(0.65 0 0)" },
-  { label: "미확인?",    color: "oklch(0.68 0.05 240)" },
   { label: "근거 부족?", color: "oklch(0.75 0.17 55)" },
+  { label: "교차 검증",  color: "oklch(0.68 0.05 240)" },
   { label: "반박 검토",  color: "oklch(0.68 0.18 25)" },
 ];
 

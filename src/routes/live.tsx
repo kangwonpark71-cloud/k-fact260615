@@ -37,7 +37,7 @@ const VERDICT_META = {
   "부분 사실":      { icon: MinusCircle,  color: "text-yellow-400",  bg: "bg-yellow-400/10 border-yellow-400/30",  label: "부분 사실" },
   "근거 부족":      { icon: HelpCircle,   color: "text-orange-400",  bg: "bg-orange-400/10 border-orange-400/30",  label: "근거 부족" },
   "반대 근거 우세": { icon: XCircle,      color: "text-red-400",     bg: "bg-red-400/10 border-red-400/30",        label: "반대 근거 우세" },
-  "미확인":         { icon: AlertCircle,  color: "text-muted-foreground", bg: "bg-border/20 border-border/40",      label: "미확인" },
+  "미확인":         { icon: HelpCircle,   color: "text-orange-400",  bg: "bg-orange-400/10 border-orange-400/30",  label: "근거 부족" },
 } as const;
 
 type Utterance = {

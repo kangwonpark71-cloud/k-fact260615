@@ -1,8 +1,133 @@
+import { z } from "zod";
 import { getEnv } from "./runtime-env.server";
 
 // ══════════════════════════════════════════════════
-//  Stage 1: LSTM 문체 분류 — 텍스트 특징 추출 (순수 JS)
-//  LIAR Dataset / FakeNewsNet 학습 패턴 기반 휴리스틱
+//  Stage 1: 트랜스포머 기반 문체 분류 스키마
+//  SemEval-2020 선동 기법 + LIWC 심리언어학 + NELA-GT
+// ══════════════════════════════════════════════════
+
+export const StyleClassificationSchema = z.object({
+  fake_probability:  z.number().int().min(0).max(100).describe("허위정보 확률 0~100"),
+  credibility_score: z.number().int().min(0).max(100).describe("신뢰도 점수 0~100"),
+  style_category: z.enum([
+    "사실보도",
+    "의견/칼럼",
+    "과장/클릭베이트",
+    "여론조작/선동",
+    "허위정보",
+    "학술/공식문서",
+  ]),
+  tone: z.enum(["중립적", "감정적", "위협적", "설득적", "학술적", "선동적"]),
+  propaganda_techniques: z.array(z.object({
+    name:     z.string().max(50),
+    evidence: z.string().max(150),
+  })).max(6),
+  signals: z.array(z.string().max(150)).max(8),
+  linguistic_features: z.object({
+    sentence_complexity:   z.number().int().min(0).max(100),
+    vocabulary_richness:   z.number().int().min(0).max(100),
+    argument_coherence:    z.number().int().min(0).max(100),
+    source_attribution:    z.number().int().min(0).max(100),
+    emotional_density:     z.number().int().min(0).max(100),
+  }),
+  deception_risk: z.object({
+    emotional_manipulation: z.number().int().min(0).max(100),
+    urgency_framing:        z.number().int().min(0).max(100),
+    unverified_statistics:  z.number().int().min(0).max(100),
+    polarizing_language:    z.number().int().min(0).max(100),
+  }),
+  reasoning: z.string().max(400),
+});
+
+export type StyleClassification = z.infer<typeof StyleClassificationSchema>;
+
+export const STYLE_CLASSIFIER_SYSTEM = `당신은 어텐션 트랜스포머 기반 문체 분류 전문 AI입니다. 아래 NLP 연구 프레임워크를 적용하세요.
+
+## 선동 기법 탐지 (SemEval-2020 Task 11 — Propaganda Techniques Corpus 기준)
+탐지 대상 18개 기법 중 실제로 나타난 것만 보고하세요:
+- **Loaded Language**: 강한 정서 반응 유발 어휘 (욕설·경멸·찬양 용어)
+- **Name Calling/Labeling**: 레이블·경멸어로 적 규정 ("매국노", "좌빨", "친일")
+- **Repetition**: 동일 주장 반복을 통한 각인
+- **Exaggeration/Minimisation**: 사실의 과장 또는 의도적 축소
+- **Appeal to Fear/Prejudice**: 공포·혐오·편견에 호소
+- **Black-and-White Fallacy**: 이분법 세계관 강요 ("우리 편 아니면 적")
+- **Bandwagon**: "모두가 안다" 식 다수 의견 편승
+- **Appeal to Authority**: 비전문가를 권위자로 위장
+- **Causal Oversimplification**: 복잡한 인과를 단일 원인으로 단순화
+- **Whataboutism**: 논점 전환으로 비판 회피
+- **Red Herring**: 무관 이슈로 주의 분산
+- **Straw Man**: 상대 주장을 왜곡 후 반박
+- **Thought-Terminating Cliché**: 비판적 사고를 막는 상투적 표현
+- **False Urgency**: 허위 긴박감 조성 ("지금 당장", "오늘까지만")
+
+## 언어학적 지표 (LIWC 심리언어학 + 담화 분석)
+- **sentence_complexity** (0~100): 종속절 밀도·관계사 사용·평균 어절 수 기반
+- **vocabulary_richness** (0~100): TTR(Type-Token Ratio) 기반 어휘 풍부도 (높을수록 좋음)
+- **argument_coherence** (0~100): 전제→결론 구조 일관성·담화 결속성 (높을수록 좋음)
+- **source_attribution** (0~100): "에 따르면"·"발표했" 등 출처 귀속 밀도 (높을수록 좋음)
+- **emotional_density** (0~100): 감정 어휘 비율·극성 강도 (높을수록 감정적)
+
+## 신뢰도 리스크 지표 (NELA-GT 기반)
+- **emotional_manipulation** (0~100): 감정 조작 정도
+- **urgency_framing** (0~100): 허위 긴박감 조성
+- **unverified_statistics** (0~100): 출처 없는 수치·통계 사용 정도
+- **polarizing_language** (0~100): 집단 분열·혐오 조장 언어
+
+## 출력 규칙
+- fake_probability: 0(완전한 사실보도)~100(명백한 허위정보)
+- credibility_score: 0(신뢰불가)~100(완전신뢰) — 보통 fake_probability와 역상관
+- propaganda_techniques: 실제로 탐지된 것만 나열, 없으면 반드시 빈 배열 []
+- signals: 구체적 텍스트 근거 포함 한국어 문장, 없으면 빈 배열
+- reasoning: 핵심 판단 근거 2~3문장 한국어
+- 마크다운 없이 순수 JSON 객체만 반환`;
+
+/** CF Workers AI 응답을 StyleClassification으로 변환 (graceful fallback) */
+export function buildStyleFromCF(obj: Record<string, unknown>): StyleClassification {
+  const n = (v: unknown) => { const x = Number(v); return isNaN(x) ? 50 : Math.min(100, Math.max(0, Math.round(x))); };
+  const s = (v: unknown, max = 150) => (typeof v === "string" ? v : String(v ?? "")).slice(0, max);
+  const CATS = ["사실보도","의견/칼럼","과장/클릭베이트","여론조작/선동","허위정보","학술/공식문서"] as const;
+  const TONES = ["중립적","감정적","위협적","설득적","학술적","선동적"] as const;
+  const cat = CATS.includes(obj.style_category as typeof CATS[number]) ? obj.style_category as typeof CATS[number] : "사실보도";
+  const tone = TONES.includes(obj.tone as typeof TONES[number]) ? obj.tone as typeof TONES[number] : "중립적";
+  const rawTech = Array.isArray(obj.propaganda_techniques) ? obj.propaganda_techniques : [];
+  const techniques = rawTech.slice(0, 6).map((t: unknown) => {
+    if (typeof t === "string") return { name: t.slice(0, 50), evidence: "" };
+    if (t && typeof t === "object") {
+      const o = t as Record<string, unknown>;
+      return { name: s(o.name ?? o.technique ?? o.기법 ?? "", 50), evidence: s(o.evidence ?? o.근거 ?? "", 150) };
+    }
+    return { name: "", evidence: "" };
+  }).filter(t => t.name);
+  const rawSig = Array.isArray(obj.signals) ? obj.signals : [];
+  const lf = (obj.linguistic_features && typeof obj.linguistic_features === "object") ? obj.linguistic_features as Record<string, unknown> : {};
+  const dr = (obj.deception_risk && typeof obj.deception_risk === "object") ? obj.deception_risk as Record<string, unknown> : {};
+  return {
+    fake_probability: n(obj.fake_probability ?? obj.fakeProbability ?? 30),
+    credibility_score: n(obj.credibility_score ?? obj.credibilityScore ?? 70),
+    style_category: cat,
+    tone,
+    propaganda_techniques: techniques,
+    signals: rawSig.slice(0, 8).map((x: unknown) => s(x)),
+    linguistic_features: {
+      sentence_complexity:   n(lf.sentence_complexity   ?? lf.sentenceComplexity   ?? 50),
+      vocabulary_richness:   n(lf.vocabulary_richness   ?? lf.vocabularyRichness   ?? 50),
+      argument_coherence:    n(lf.argument_coherence    ?? lf.argumentCoherence    ?? 50),
+      source_attribution:    n(lf.source_attribution    ?? lf.sourceAttribution    ?? 30),
+      emotional_density:     n(lf.emotional_density     ?? lf.emotionalDensity     ?? 30),
+    },
+    deception_risk: {
+      emotional_manipulation: n(dr.emotional_manipulation ?? dr.emotionalManipulation ?? 20),
+      urgency_framing:        n(dr.urgency_framing        ?? dr.urgencyFraming        ?? 20),
+      unverified_statistics:  n(dr.unverified_statistics  ?? dr.unverifiedStatistics  ?? 20),
+      polarizing_language:    n(dr.polarizing_language    ?? dr.polarizingLanguage    ?? 20),
+    },
+    reasoning: s(obj.reasoning ?? obj.reason ?? "", 400),
+  };
+}
+
+// ══════════════════════════════════════════════════
+//  Stage 1 (레거시): 정규식 휴리스틱 — Phase 1 프롬프트 초기 컨텍스트용
+//  LIAR Dataset / FakeNewsNet 학습 패턴 기반
 // ══════════════════════════════════════════════════
 
 export interface StyleMetrics {

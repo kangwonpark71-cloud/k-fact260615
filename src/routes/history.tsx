@@ -19,15 +19,15 @@ export const Route = createFileRoute("/history")({
   component: HistoryPage,
 });
 
-type Verdict = "사실" | "부분 사실" | "근거 부족" | "반대 근거 우세" | "미확인";
-const VERDICTS: Verdict[] = ["사실", "부분 사실", "근거 부족", "반대 근거 우세", "미확인"];
+type Verdict = "사실" | "부분 사실" | "근거 부족" | "반대 근거 우세";
+const VERDICTS: Verdict[] = ["사실", "부분 사실", "근거 부족", "반대 근거 우세"];
 
-const VERDICT_COLOR: Record<Verdict, string> = {
+const VERDICT_COLOR: Record<string, string> = {
   "사실": "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 data-[active=true]:bg-emerald-500 data-[active=true]:text-white",
   "부분 사실": "bg-blue-500/15 text-blue-400 border-blue-500/30 data-[active=true]:bg-blue-500 data-[active=true]:text-white",
   "근거 부족": "bg-yellow-500/15 text-yellow-400 border-yellow-500/30 data-[active=true]:bg-yellow-500 data-[active=true]:text-white",
   "반대 근거 우세": "bg-red-500/15 text-red-400 border-red-500/30 data-[active=true]:bg-red-500 data-[active=true]:text-white",
-  "미확인": "bg-slate-500/15 text-slate-400 border-slate-500/30 data-[active=true]:bg-slate-500 data-[active=true]:text-white",
+  "미확인": "bg-yellow-500/15 text-yellow-400 border-yellow-500/30 data-[active=true]:bg-yellow-500 data-[active=true]:text-white",
 };
 
 function HistoryPage() {
@@ -173,7 +173,7 @@ function HistoryPage() {
                     </span>
                   ) : (
                     <>
-                      <VerdictBadge verdict={row.overall_verdict ?? "미확인"} size="sm" />
+                      <VerdictBadge verdict={row.overall_verdict ?? "근거 부족"} size="sm" />
                       <div className="text-xs text-muted-foreground mt-1 tabular-nums">
                         신뢰도 {row.overall_confidence ?? 0}%
                       </div>
