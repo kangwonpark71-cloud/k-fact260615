@@ -566,13 +566,13 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
         )}
 
         {/* 어텐션 모델 언어학적 지표 요약 */}
-        {sc && (
+        {sc && sc.linguistic_features && (
           <div className="grid grid-cols-2 gap-1.5 text-[13px]">
             {[
-              { label: "어휘 풍부도", value: sc.linguistic_features.vocabulary_richness, high: true },
-              { label: "논증 일관성", value: sc.linguistic_features.argument_coherence,  high: true },
-              { label: "출처 귀속",   value: sc.linguistic_features.source_attribution,  high: true },
-              { label: "감정어 밀도", value: sc.linguistic_features.emotional_density,   high: false },
+              { label: "어휘 풍부도", value: sc.linguistic_features.vocabulary_richness ?? 50, high: true },
+              { label: "논증 일관성", value: sc.linguistic_features.argument_coherence  ?? 50, high: true },
+              { label: "출처 귀속",   value: sc.linguistic_features.source_attribution  ?? 50, high: true },
+              { label: "감정어 밀도", value: sc.linguistic_features.emotional_density   ?? 50, high: false },
             ].map(({ label, value, high }) => {
               const good = high ? value >= 60 : value < 40;
               const color = good ? "text-verdict-true" : value >= 50 ? "text-verdict-partial" : "text-verdict-false";
@@ -590,7 +590,7 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
         )}
 
         {/* 선동 기법 (있을 때만) */}
-        {sc && sc.propaganda_techniques.length > 0 && (
+        {sc && (sc.propaganda_techniques?.length ?? 0) > 0 && (
           <div>
             <p className="text-[15px] font-semibold text-destructive/80 mb-1.5">
               탐지된 선동 기법 ({sc.propaganda_techniques.length}건) — SemEval-2020

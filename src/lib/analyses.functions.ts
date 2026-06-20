@@ -400,7 +400,7 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
 
   // LLM 분류 결과 우선, 실패 시 정규식 결과 사용
   const fakeProbability = styleClassification?.fake_probability ?? quickStyle.fakeProbability;
-  const styleSignals    = styleClassification?.signals.length ? styleClassification.signals : quickStyle.signals;
+  const styleSignals    = (styleClassification?.signals ?? []).length > 0 ? styleClassification!.signals : quickStyle.signals;
 
   const phase1Payload: AnalysisPayload = {
     id: analysisId,
@@ -668,17 +668,18 @@ export const getAnalysis = createServerFn({ method: "GET" })
 
     const kvRow = await kvGet(data.id);
     if (kvRow) {
+      const isPublicResult = kvRow.status === "phase1_complete" || kvRow.status === "completed";
       const ownedByUser = !!(userId && kvRow.user_id === userId);
       const ownedBySession = !kvRow.user_id && kvRow.session_id === data.sessionId;
       if (kvRow.status !== "pending" || !hasDB) {
-        if (!ownedByUser && !ownedBySession) throw new Error("이 분석을 볼 권한이 없습니다.");
+        if (!isPublicResult && !ownedByUser && !ownedBySession) throw new Error("이 분析을 볼 권한이 없습니다.");
         return kvRow;
       }
     }
 
     if (!hasDB) {
       if (kvRow) return kvRow;
-      throw new Error("분석을 찾을 수 없습니다.");
+      throw new Error("분析을 찾을 수 없습니다.");
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -690,17 +691,19 @@ export const getAnalysis = createServerFn({ method: "GET" })
 
     if (error || !row) {
       if (kvRow) {
+        const isPublicResult = kvRow.status === "phase1_complete" || kvRow.status === "completed";
         const ownedByUser = !!(userId && kvRow.user_id === userId);
         const ownedBySession = !kvRow.user_id && kvRow.session_id === data.sessionId;
-        if (!ownedByUser && !ownedBySession) throw new Error("이 분석을 볼 권한이 없습니다.");
+        if (!isPublicResult && !ownedByUser && !ownedBySession) throw new Error("이 분析을 볼 권한이 없습니다.");
         return kvRow;
       }
-      throw new Error(error ? error.message : "분석을 찾을 수 없습니다.");
+      throw new Error(error ? error.message : "분析을 찾을 수 없습니다.");
     }
 
+    const isPublicResult = row.status === "phase1_complete" || row.status === "completed";
     const ownedByUser = !!(userId && row.user_id === userId);
     const ownedBySession = !row.user_id && row.session_id === data.sessionId;
-    if (!ownedByUser && !ownedBySession) throw new Error("이 분석을 볼 권한이 없습니다.");
+    if (!isPublicResult && !ownedByUser && !ownedBySession) throw new Error("이 분析을 볼 권한이 없습니다.");
     return row;
   });
 

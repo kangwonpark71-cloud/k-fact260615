@@ -139,11 +139,11 @@ function StyleClassificationPanel({ sc }: { sc: StyleClassification }) {
           <Activity className="w-3 h-3" /> 언어학적 지표 (LIWC 기반)
         </p>
         <div className="space-y-1.5">
-          <ScoreBar label="어휘 풍부도" value={sc.linguistic_features.vocabulary_richness}   color="text-verdict-true" />
-          <ScoreBar label="논증 일관성" value={sc.linguistic_features.argument_coherence}    color="text-verdict-true" />
-          <ScoreBar label="출처 귀속"   value={sc.linguistic_features.source_attribution}    color="text-verdict-true" />
-          <ScoreBar label="문장 복잡도" value={sc.linguistic_features.sentence_complexity}   color="text-muted-foreground" />
-          <ScoreBar label="감정어 밀도" value={sc.linguistic_features.emotional_density}     color="text-yellow-500" inverse />
+          <ScoreBar label="어휘 풍부도" value={sc.linguistic_features?.vocabulary_richness ?? 50}   color="text-verdict-true" />
+          <ScoreBar label="논증 일관성" value={sc.linguistic_features?.argument_coherence    ?? 50} color="text-verdict-true" />
+          <ScoreBar label="출처 귀속"   value={sc.linguistic_features?.source_attribution    ?? 50} color="text-verdict-true" />
+          <ScoreBar label="문장 복잡도" value={sc.linguistic_features?.sentence_complexity   ?? 50} color="text-muted-foreground" />
+          <ScoreBar label="감정어 밀도" value={sc.linguistic_features?.emotional_density     ?? 50} color="text-yellow-500" inverse />
         </div>
       </div>
 
