@@ -409,7 +409,14 @@ function AnalysisPage() {
           <PipelineMetaPanel meta={pipelineMeta} />
         )}
 
-        {/* ③ 원문 요약 (접기/펼치기) */}
+        {/* ③ 핵심 키워드 애니메이션 + 원문 요약 */}
+        {(dataRow.input_text as string | null | undefined) && (
+          <KeywordHighlight
+            inputText={dataRow.input_text as string}
+            claims={claims}
+            overallVerdict={dataRow.overall_verdict as string | undefined}
+          />
+        )}
         {(dataRow.input_text as string | null | undefined) && (
           <InputSummary text={dataRow.input_text as string} />
         )}
@@ -639,6 +646,116 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
     </div>
   );
 }
+/* ── 핵심 키워드 하이라이트 ── */
+const KW_STOPWORDS = new Set([
+  "이","가","은","는","을","를","의","에","에서","으로","로","도","과","와","만",
+  "보다","까지","그리고","하지만","그러나","또한","따라서","그래서","하여","위해",
+  "통해","대한","있다","없다","됐다","했다","이다","이며","였다","한","그","저",
+  "때","것","수","더","이상","어","아","에서의","에의","이런","저런","같은","위",
+  "안","뒤","앞","등","및","또","즉","약","년","월","일","기준","수준","이후",
+  "이전","현재","당시","우리","우리나라","지난","다음","각",
+]);
+
+function extractKeywords(text: string): string[] {
+  return text
+    .replace(/[。.!?,;:""''「」『』【】\[\]()]/g, " ")
+    .split(/\s+/)
+    .map(w => w.trim())
+    .filter(w => w.length >= 2 && !KW_STOPWORDS.has(w))
+    .reduce<string[]>((acc, w) => { if (!acc.includes(w)) acc.push(w); return acc; }, [])
+    .slice(0, 18);
+}
+
+const VERDICT_KW_STYLE: Record<string, { bg: string; text: string; border: string; glow: string }> = {
+  "사실":           { bg: "rgba(34,197,94,0.12)",  text: "#16a34a", border: "rgba(34,197,94,0.4)",  glow: "0 0 12px rgba(34,197,94,0.3)" },
+  "부분 사실":      { bg: "rgba(245,158,11,0.12)", text: "#d97706", border: "rgba(245,158,11,0.4)", glow: "0 0 12px rgba(245,158,11,0.3)" },
+  "근거 부족":      { bg: "rgba(249,115,22,0.12)", text: "#ea580c", border: "rgba(249,115,22,0.4)", glow: "0 0 12px rgba(249,115,22,0.25)" },
+  "반대 근거 우세": { bg: "rgba(239,68,68,0.12)",  text: "#dc2626", border: "rgba(239,68,68,0.4)",  glow: "0 0 12px rgba(239,68,68,0.25)" },
+};
+
+function KeywordHighlight({ inputText, claims, overallVerdict }: {
+  inputText: string;
+  claims: Claim[];
+  overallVerdict?: string;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  const [count, setCount] = useState(0);
+
+  const keywords = extractKeywords(inputText);
+
+  // claim 단어 → verdict 맵핑
+  const wordMeta = new Map<string, { verdict: string; confidence: number }>();
+  for (const c of claims) {
+    extractKeywords(c.claim).forEach(w => {
+      if (!wordMeta.has(w)) wordMeta.set(w, { verdict: c.verdict, confidence: c.confidence });
+    });
+  }
+
+  useEffect(() => {
+    const t = setTimeout(() => setRevealed(true), 120);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (!revealed) return;
+    if (count >= keywords.length) return;
+    const t = setTimeout(() => setCount(c => c + 1), 90);
+    return () => clearTimeout(t);
+  }, [revealed, count, keywords.length]);
+
+  const defaultStyle = VERDICT_KW_STYLE[overallVerdict ?? ""] ?? {
+    bg: "rgba(99,102,241,0.08)", text: "#6366f1", border: "rgba(99,102,241,0.3)", glow: "0 0 10px rgba(99,102,241,0.2)",
+  };
+
+  return (
+    <div className="border border-border/40 bg-surface overflow-hidden">
+      <div className="px-4 sm:px-5 py-2.5 border-b border-border/30 flex items-center gap-2 bg-surface-2/40">
+        <span className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-widest">핵심 키워드 분析</span>
+        <div className="ml-auto flex gap-1">
+          {[0,1,2].map(i => (
+            <div key={i} className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce"
+              style={{ animationDelay: `${i * 0.18}s`, animationDuration: "1.1s" }} />
+          ))}
+        </div>
+      </div>
+      <div className="px-4 sm:px-5 py-4 flex flex-wrap gap-2.5 min-h-[68px]">
+        {keywords.map((word, i) => {
+          const meta = wordMeta.get(word);
+          const s = meta ? (VERDICT_KW_STYLE[meta.verdict] ?? defaultStyle) : defaultStyle;
+          const size = meta ? (meta.confidence >= 80 ? "text-[15px]" : meta.confidence >= 60 ? "text-[14px]" : "text-[13px]") : "text-[13px]";
+          const visible = i < count;
+          return (
+            <span
+              key={word}
+              className={`inline-flex items-center rounded-full px-3 py-1 font-semibold border cursor-default select-none transition-all duration-500 ${size}`}
+              style={{
+                background: s.bg,
+                color: visible ? s.text : "transparent",
+                borderColor: visible ? s.border : "transparent",
+                boxShadow: visible ? s.glow : "none",
+                opacity: visible ? 1 : 0,
+                transform: visible ? "translateY(0) scale(1)" : "translateY(10px) scale(0.85)",
+                transitionDelay: `${i * 40}ms`,
+                animation: visible ? `kwFloat ${2.2 + (i % 3) * 0.4}s ease-in-out infinite` : "none",
+                animationDelay: `${i * 0.15 + 0.5}s`,
+              }}
+              title={meta ? `${meta.verdict} (${meta.confidence}%)` : undefined}
+            >
+              {word}
+            </span>
+          );
+        })}
+      </div>
+      <style>{`
+        @keyframes kwFloat {
+          0%, 100% { transform: translateY(0); }
+          50%       { transform: translateY(-4px); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 /* ── 원문 요약 ── */
 function InputSummary({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
