@@ -293,9 +293,16 @@ function AnalysisPage() {
     rawClaims && !Array.isArray(rawClaims) && typeof rawClaims === "object"
       ? rawClaims as PipelineMeta
       : null;
-  const claims: Claim[] = Array.isArray(rawClaims)
+  const normalizeClaim = (c: Claim): Claim => ({
+    ...c,
+    supporting_points: c.supporting_points ?? [],
+    counter_points:    c.counter_points    ?? [],
+    unknowns:          c.unknowns          ?? [],
+    suggested_sources: c.suggested_sources ?? [],
+  });
+  const claims: Claim[] = (Array.isArray(rawClaims)
     ? rawClaims
-    : (pipelineMeta?.items ?? []);
+    : (pipelineMeta?.items ?? [])).map(normalizeClaim);
 
   // 트랜스포머 문체 분류 결과 (Phase 1 + Phase 2 공통 저장)
   const styleClassification = (pipelineMeta as Record<string, unknown> | null)?.style_classification as StyleClassification | undefined;
