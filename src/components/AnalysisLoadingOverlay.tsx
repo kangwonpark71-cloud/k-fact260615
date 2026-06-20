@@ -73,11 +73,11 @@ function ClaimChip({ label, delay }: { label: string; delay: number }) {
           : "border-border/40 bg-background/25"
       }`}
     >
-      <p className="text-[10px] text-muted-foreground/70 leading-snug line-clamp-2 mb-2">
+      <p className="text-[20px] text-muted-foreground/70 leading-snug line-clamp-2 mb-2">
         {label}
       </p>
       <span
-        className="text-[11px] font-bold transition-all duration-150"
+        className="text-[22px] font-bold transition-all duration-150"
         style={{ color: v.color }}
       >
         {v.label}
