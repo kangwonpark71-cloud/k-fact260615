@@ -21,10 +21,10 @@ export const THEME_LIST: ThemeMeta[] = [
 const VALID_THEMES = new Set<string>(["dark", "light", "teen", "thirties", "senior"]);
 
 function migrateTheme(saved: string | null): Theme {
-  if (!saved) return "dark";
+  if (!saved) return "light";
   if (saved === "navy" || saved === "night") return "dark";
   if (VALID_THEMES.has(saved)) return saved as Theme;
-  return "dark";
+  return "light";
 }
 
 interface ThemeCtx {
@@ -32,10 +32,10 @@ interface ThemeCtx {
   setTheme: (t: Theme) => void;
 }
 
-const ThemeContext = createContext<ThemeCtx>({ theme: "dark", setTheme: () => {} });
+const ThemeContext = createContext<ThemeCtx>({ theme: "light", setTheme: () => {} });
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("dark");
+  const [theme, setThemeState] = useState<Theme>("light");
 
   useEffect(() => {
     const saved = localStorage.getItem("factcheck-theme");
