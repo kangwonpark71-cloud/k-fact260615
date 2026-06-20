@@ -418,7 +418,18 @@ function AnalysisPage() {
           />
         )}
         {(dataRow.input_text as string | null | undefined) && (
-          <InputSummary text={dataRow.input_text as string} />
+          <InputSummary
+            text={dataRow.input_text as string}
+            label={(() => {
+              const SKIP = new Set(["분석 결과", "분析 결과", "팩트체크 결과", ""]);
+              const t = dataRow.title as string | undefined;
+              if (t && !SKIP.has(t)) return t;
+              const c = claims[0]?.claim;
+              if (c && c !== "본문 내 주요 주장") return c.length > 50 ? c.slice(0, 48) + "…" : c;
+              const raw = dataRow.input_text as string;
+              return raw.length > 50 ? raw.slice(0, 48) + "…" : raw;
+            })()}
+          />
         )}
 
         {/* 영토·주권 분쟁 주장 포함 시 판정 기준 고지 */}
@@ -757,7 +768,7 @@ function KeywordHighlight({ inputText, claims, overallVerdict }: {
 }
 
 /* ── 원문 요약 ── */
-function InputSummary({ text }: { text: string }) {
+function InputSummary({ text, label }: { text: string; label?: string }) {
   const [open, setOpen] = useState(false);
   const preview = text.slice(0, 200).trimEnd();
   const hasMore = text.length > 200;
@@ -767,12 +778,27 @@ function InputSummary({ text }: { text: string }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2.5 px-4 sm:px-5 py-3 text-left hover:bg-surface-2/50 transition-colors"
+        className="w-full flex items-start gap-2.5 px-4 sm:px-5 py-3 text-left hover:bg-surface-2/50 transition-colors"
       >
-        <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-        <span className="text-sm font-medium flex-1">분석 원문</span>
-        <span className="text-xs text-muted-foreground mr-1">{text.length.toLocaleString()}자</span>
-        {open ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        <FileText className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium shrink-0">분석 원문</span>
+            <span className="text-muted-foreground/30 shrink-0 text-xs">|</span>
+            {label && (
+              <span
+                className="font-semibold text-foreground/85 truncate leading-tight"
+                style={{ fontSize: "15px" }}
+              >
+                {label}
+              </span>
+            )}
+          </div>
+        </div>
+        <span className="text-xs text-muted-foreground shrink-0 mt-0.5 mr-1">{text.length.toLocaleString()}자</span>
+        {open
+          ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+          : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />}
       </button>
       {open && (
         <div className="px-4 sm:px-5 pb-4 pt-1">
