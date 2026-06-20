@@ -364,8 +364,8 @@ function AnalysisPage() {
         <div className="border border-border/60 bg-surface shadow-[var(--shadow-card)]">
           {/* 문서 상단 레이블 바 */}
           <div className="px-5 sm:px-7 py-2 border-b border-border/40 flex items-center justify-between gap-3 bg-surface-2/50">
-            <span className="text-[9px] font-bold tracking-widest uppercase text-muted-foreground/60 font-mono">팩트체크 팩트체크 판정서</span>
-            <span className="text-[9px] text-muted-foreground/40 font-mono">
+            <span className="text-[13.5px] font-bold tracking-widest uppercase text-muted-foreground/60 font-mono">팩트체크 팩트체크 판정서</span>
+            <span className="text-[13.5px] text-muted-foreground/40 font-mono">
               {new Date(dataRow.created_at as string).toLocaleString("ko-KR")}
             </span>
           </div>
