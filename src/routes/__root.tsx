@@ -13,7 +13,6 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AuthProvider } from "../lib/auth";
 import { ThemeProvider } from "../lib/theme";
-import { LiquidBackground } from "../components/LiquidBackground";
 
 function NotFoundComponent() {
   return (
@@ -93,12 +92,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap",
-      },
       {
         rel: "stylesheet",
         href: "https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css",
@@ -115,11 +108,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
-const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('factcheck-theme')||localStorage.getItem('kfact-theme');var valid=['dark','light','teen','thirties','senior'];if(t==='navy'||t==='night')t='dark';document.documentElement.setAttribute('data-theme',valid.indexOf(t)!==-1?t:'dark');}catch(e){}})();`;
+const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('factcheck-theme')||localStorage.getItem('kfact-theme');var valid=['dark','light','teen','thirties','senior'];if(t==='navy'||t==='night')t='dark';document.documentElement.setAttribute('data-theme',valid.indexOf(t)!==-1?t:'light');}catch(e){}})();`;
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="ko" data-theme="dark">
+    <html lang="ko" data-theme="light">
       <head>
         <HeadContent />
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
@@ -139,8 +132,6 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          <LiquidBackground />
-          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
           <Outlet />
         </AuthProvider>
       </ThemeProvider>

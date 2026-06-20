@@ -148,16 +148,16 @@ export function SiteHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 glass">
+      <header className="sticky top-0 z-40 bg-card border-b border-border">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
           {/* 로고 */}
           <Link to="/" className="flex items-center gap-2.5 group" onClick={close}>
-            <div className="w-9 h-9 rounded-sm border-2 border-primary/40 grid place-items-center bg-primary/5 group-hover:border-primary/60 transition-colors">
-              <ShieldCheck className="w-5 h-5 text-primary" />
+            <div className="w-9 h-9 rounded-xl bg-primary grid place-items-center group-hover:bg-primary/90 transition-colors">
+              <ShieldCheck className="w-5 h-5 text-primary-foreground" />
             </div>
             <div className="flex flex-col leading-tight">
-              <span className="font-display font-bold text-base tracking-tight">팩트체크</span>
-              <span className="hidden sm:block text-[10px] text-muted-foreground tracking-widest uppercase">
+              <span className="font-bold text-base tracking-tight">팩트체크</span>
+              <span className="hidden sm:block text-[10px] text-muted-foreground">
                 AI 사실검증
               </span>
             </div>
@@ -226,10 +226,10 @@ export function SiteHeader() {
       {/* 모바일 드로어 오버레이 */}
       {drawerOpen && (
         <div className="fixed inset-0 z-50 sm:hidden" onClick={close}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-black/50" />
 
           <div
-            className="absolute right-0 top-0 h-full w-72 glass border-l border-border/50 flex flex-col shadow-2xl overflow-y-auto"
+            className="absolute right-0 top-0 h-full w-72 bg-card border-l border-border flex flex-col shadow-2xl overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* 드로어 헤더 */}
@@ -335,7 +335,7 @@ export function BottomNav() {
     pathname === path ? "text-primary" : "text-muted-foreground";
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-40 sm:hidden glass border-t border-border/50 flex items-stretch">
+    <nav className="fixed bottom-0 inset-x-0 z-40 sm:hidden bg-card border-t border-border flex items-stretch">
       <Link to="/" className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/")}`}>
         <Home className="w-5 h-5" />
         홈

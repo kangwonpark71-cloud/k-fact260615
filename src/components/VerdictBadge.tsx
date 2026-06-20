@@ -2,27 +2,26 @@ import { CheckCircle2, AlertTriangle, HelpCircle, XCircle } from "lucide-react";
 
 type Verdict = "사실" | "부분 사실" | "근거 부족" | "반대 근거 우세";
 
-const styles: Record<Verdict, { border: string; text: string; bg: string; Icon: typeof CheckCircle2 }> = {
-  "사실":           { border: "border-verdict-true",    text: "text-verdict-true",    bg: "bg-verdict-true/10",    Icon: CheckCircle2 },
-  "부분 사실":      { border: "border-verdict-partial", text: "text-verdict-partial", bg: "bg-verdict-partial/10", Icon: AlertTriangle },
-  "근거 부족":      { border: "border-verdict-weak",    text: "text-verdict-weak",    bg: "bg-verdict-weak/10",    Icon: HelpCircle },
-  "반대 근거 우세": { border: "border-verdict-false",   text: "text-verdict-false",   bg: "bg-verdict-false/10",   Icon: XCircle },
+const styles: Record<Verdict, { text: string; bg: string; Icon: typeof CheckCircle2 }> = {
+  "사실":           { text: "text-verdict-true",    bg: "bg-verdict-true/12",    Icon: CheckCircle2 },
+  "부분 사실":      { text: "text-verdict-partial", bg: "bg-verdict-partial/12", Icon: AlertTriangle },
+  "근거 부족":      { text: "text-verdict-weak",    bg: "bg-verdict-weak/12",    Icon: HelpCircle },
+  "반대 근거 우세": { text: "text-verdict-false",   bg: "bg-verdict-false/12",   Icon: XCircle },
 };
 
 export function VerdictBadge({ verdict, size = "md" }: { verdict: string; size?: "sm" | "md" | "lg" }) {
-  // "미확인"은 "근거 부족"으로 정규화 (기존 DB 레코드 하위 호환)
   const normalized = verdict === "미확인" ? "근거 부족" : verdict;
   const v = styles[normalized as Verdict] ?? styles["근거 부족"];
   const Icon = v.Icon;
   const sizeClass = {
-    sm: "text-[9px] px-1.5 py-0.5 gap-0.5 border",
-    md: "text-[10px] px-2.5 py-1 gap-1 border",
-    lg: "text-xs px-3 py-1.5 gap-1.5 border-2",
+    sm: "text-[10px] px-2 py-0.5 gap-1",
+    md: "text-xs px-2.5 py-1 gap-1",
+    lg: "text-sm px-3.5 py-1.5 gap-1.5",
   }[size];
-  const iconSize = { sm: "w-2.5 h-2.5", md: "w-3 h-3", lg: "w-3.5 h-3.5" }[size];
+  const iconSize = { sm: "w-3 h-3", md: "w-3.5 h-3.5", lg: "w-4 h-4" }[size];
 
   return (
-    <span className={`stamp inline-flex items-center font-bold uppercase tracking-widest rounded-sm ${v.bg} ${v.text} ${v.border} ${sizeClass}`}>
+    <span className={`inline-flex items-center font-semibold rounded-full ${v.bg} ${v.text} ${sizeClass}`}>
       <Icon className={iconSize} />
       {normalized}
     </span>

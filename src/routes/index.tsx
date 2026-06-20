@@ -46,38 +46,6 @@ const L1_START   = 160;  // 첫 줄 시작
 const L2_START   = L1_START + HERO_LINE1.length * CHAR_MS + 180;
 const DESC_START = L2_START + HERO_LINE2.length * CHAR_MS + 230;
 
-/* 파티클 좌표 (고정값 — 리렌더 방지) */
-const HERO_PARTICLES = Object.freeze(
-  Array.from({ length: 18 }, (_, i) => ({
-    x: ((i * 13 + 7)  % 95) + 2,
-    y: ((i * 19 + 11) % 72) + 4,
-    sz: 1.4 + (i % 4) * 0.4,
-    delay: ((i * 0.26) % 3.8).toFixed(2),
-    dur:   (3.8 + (i % 6)).toFixed(1),
-  }))
-);
-
-/* ── 파티클 배경 ── */
-function ParticleField() {
-  return (
-    <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
-      {HERO_PARTICLES.map((p, i) => (
-        <span
-          key={i}
-          className="absolute rounded-full will-change-transform"
-          style={{
-            left: `${p.x}%`,
-            top:  `${p.y}%`,
-            width:  `${p.sz}px`,
-            height: `${p.sz}px`,
-            background: "var(--color-accent)",
-            animation: `particle-drift ${p.dur}s ${p.delay}s ease-in-out infinite`,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
 
 /* ── 글자별 블러 등장 ── */
 function RevealChars({
@@ -106,16 +74,14 @@ function RevealChars({
    ═══════════════════════════════════════════════════════ */
 function HeroSection() {
   return (
-    <section className="relative text-center mb-8 sm:mb-14 py-4 sm:py-8 overflow-hidden">
-      <ParticleField />
-
+    <section className="text-center mb-8 sm:mb-14 py-4 sm:py-8">
       {/* 배지 */}
       <div
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass mb-5 sm:mb-8"
+        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/8 border border-primary/20 mb-5 sm:mb-8"
         style={{ opacity: 0, animation: "badge-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 60ms both" }}
       >
-        <Sparkles className="w-3.5 h-3.5 text-accent" />
-        <span className="text-xs tracking-wide text-muted-foreground">AI 사실검증 보조</span>
+        <Sparkles className="w-3.5 h-3.5 text-primary" />
+        <span className="text-xs font-medium text-primary">AI 사실검증 보조</span>
       </div>
 
       {/* 메인 헤드라인 */}
@@ -370,9 +336,9 @@ function Home() {
           <div className="flex justify-center mb-4">
             <Link
               to="/live"
-              className="inline-flex items-center gap-3 px-10 py-4 rounded-full border-2 bg-gradient-to-r from-amber-400 to-yellow-300 border-amber-300 text-amber-900 text-base font-bold shadow-xl shadow-amber-300/40 hover:scale-105 hover:from-amber-500 hover:to-yellow-400 hover:shadow-amber-400/60 transition-all duration-200 active:scale-95"
+              className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-card border border-border text-foreground text-sm font-semibold hover:bg-secondary transition-colors shadow-[var(--shadow-card)]"
             >
-              <Users className="w-6 h-6" />
+              <Users className="w-4.5 h-4.5 text-primary" />
               대화 분석
             </Link>
           </div>
@@ -389,7 +355,7 @@ function Home() {
         {/* Input card */}
         <form
           onSubmit={onSubmit}
-          className={`glass rounded-2xl p-2 shadow-[var(--shadow-card)] transition-all duration-300 ${loading ? "opacity-0 pointer-events-none absolute inset-x-0 -z-10" : "opacity-100"}`}
+          className={`bg-card rounded-2xl p-2 shadow-[var(--shadow-card)] border border-border transition-all duration-300 ${loading ? "opacity-0 pointer-events-none absolute inset-x-0 -z-10" : "opacity-100"}`}
         >
           {/* 탭 */}
           <div className="flex gap-1 p-1 mb-1">
@@ -407,7 +373,7 @@ function Home() {
             </TabButton>
           </div>
 
-          <div className="bg-background/40 rounded-xl p-4 sm:p-4">
+          <div className="bg-background rounded-xl p-4 sm:p-4">
             {/* URL 모드 */}
             {mode === "url" && (
               <div className="relative mb-3">
@@ -789,7 +755,7 @@ function Home() {
               <button
                 type="submit"
                 disabled={!canSubmit}
-                className="w-full sm:w-auto sm:float-right inline-flex items-center justify-center gap-2 px-6 py-3.5 sm:py-2.5 rounded-xl sm:rounded-lg bg-gradient-to-r from-primary to-accent text-primary-foreground font-semibold text-base sm:text-sm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-[var(--shadow-glow)]"
+                className="w-full sm:w-auto sm:float-right inline-flex items-center justify-center gap-2 px-6 py-3.5 sm:py-2.5 rounded-xl sm:rounded-lg bg-primary text-primary-foreground font-semibold text-base sm:text-sm hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? (
                   <>
@@ -911,7 +877,7 @@ function Feature({
   return (
     <div
       ref={ref}
-      className="glass rounded-xl p-5 sm:p-5 flex gap-4 sm:block reveal-item"
+      className="bg-card rounded-xl p-5 sm:p-5 flex gap-4 sm:block reveal-item border border-border shadow-[var(--shadow-card)]"
       style={visible ? {
         opacity: 1,
         transform: "none",
