@@ -7,7 +7,7 @@ export type SupportedProvider = "gemini" | "openai" | "anthropic";
 const MODELS: Record<SupportedProvider, string> = {
   gemini: "gemini-2.5-flash",
   openai: "gpt-4o-mini",
-  anthropic: "claude-3-5-haiku-20241022",
+  anthropic: "claude-haiku-4-5-20251001",
 };
 
 export function createModelInstance(provider: SupportedProvider, apiKey: string) {
