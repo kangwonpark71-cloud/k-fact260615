@@ -530,7 +530,10 @@ function AnalysisPage() {
     <div className="min-h-screen pb-16 sm:pb-0">
       <SiteHeader />
       <BottomNav />
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-5">
+      <main
+        className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-5"
+        style={{ "--muted-foreground": "oklch(0.30 0.025 255)" } as React.CSSProperties}
+      >
         <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-4 h-4" /> 새 분석
         </Link>
@@ -563,9 +566,9 @@ function AnalysisPage() {
 
             {/* 요약 */}
             {cleanSummary ? (
-              <p className="text-sm text-muted-foreground leading-relaxed border-t border-border/30 pt-4">{cleanSummary}</p>
+              <p className="text-sm text-foreground/85 leading-relaxed border-t border-border/30 pt-4">{cleanSummary}</p>
             ) : (
-              <p className="text-sm text-muted-foreground/40 leading-relaxed border-t border-border/30 pt-4 italic">심층 분석 결과 생성 중…</p>
+              <p className="text-sm text-muted-foreground/50 leading-relaxed border-t border-border/30 pt-4 italic">심층 분석 결과 생성 중…</p>
             )}
 
             {/* 원문 링크 + 공유 */}
@@ -700,7 +703,7 @@ function AnalysisPage() {
           />
         )}
 
-        <p className="text-xs text-muted-foreground leading-relaxed p-4 rounded-xl border border-border/50 bg-surface/30">
+        <p className="text-xs text-foreground/60 leading-relaxed p-4 rounded-xl border border-border/50 bg-surface/30">
           이 결과는 AI 보조 판단이며 단정적 사실확인이 아닙니다. 신뢰도와 근거 부족 항목을 함께 참고하고,
           중요한 의사결정 전에는 표기된 출처 유형의 1차 자료를 직접 확인하세요.
         </p>
@@ -1635,7 +1638,7 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
 
             {/* 근거 요약 미리보기 (접힌 상태에서도 표시) */}
             {!isSimple && !expanded && claim.reasoning && (
-              <p className="text-xs text-muted-foreground/70 leading-relaxed mb-1.5 line-clamp-1">
+              <p className="text-xs text-foreground/65 leading-relaxed mb-1.5 line-clamp-1">
                 {claim.reasoning}
               </p>
             )}
@@ -1727,7 +1730,7 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
 
           {/* 자세히 모드: 원본 reasoning */}
           {!isSimple && claim.reasoning && (
-            <p className="text-sm text-muted-foreground leading-relaxed pl-9">{claim.reasoning}</p>
+            <p className="text-sm text-foreground/80 leading-relaxed pl-9">{claim.reasoning}</p>
           )}
 
           {/* 쉬운 모드: simple 근거 목록 */}
@@ -1940,16 +1943,16 @@ function PointList({ Icon, title, items, tone, links }: {
         {items.map((p, i) => {
           const url = links?.[i];
           return (
-            <li key={i} className="text-xs text-foreground/80 leading-relaxed flex gap-1.5">
+            <li key={i} className="text-xs text-foreground/85 leading-relaxed flex gap-1.5">
               <span className="w-1 h-1 rounded-full bg-muted-foreground/30 shrink-0 mt-[5px]" />
               {url ? (
                 <a
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`hover:underline underline-offset-2 inline-flex items-start gap-1 group ${colorClass} opacity-85 hover:opacity-100 transition-opacity`}
+                  className={`hover:underline underline-offset-2 inline-flex items-start gap-1 group ${colorClass} opacity-90 hover:opacity-100 transition-opacity`}
                 >
-                  <span className="flex-1 text-foreground/80 group-hover:text-foreground transition-colors">{p}</span>
+                  <span className="flex-1 text-foreground/85 group-hover:text-foreground transition-colors">{p}</span>
                   <ExternalLink className="w-3 h-3 shrink-0 mt-0.5 opacity-40 group-hover:opacity-80 transition-opacity" />
                 </a>
               ) : (
