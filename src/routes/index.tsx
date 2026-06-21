@@ -5,7 +5,7 @@ import {
   ArrowRight, Link2, FileText, Sparkles, ShieldCheck,
   Search, Scale, Mic, Loader2, AlertCircle, CheckCircle2,
   HelpCircle, XCircle, MinusCircle, ThumbsUp, ThumbsDown,
-  TriangleAlert, RefreshCw, MessageSquare, Users,
+  TriangleAlert, RefreshCw, MessageSquare, Users, ChevronRight,
 } from "lucide-react";
 
 import { analyzeContent, quickAnalyzeContent, type QuickCheckResult } from "@/lib/analyses.functions";
@@ -331,18 +331,6 @@ function Home() {
         {/* 좌측: 입력 폼 영역 */}
         <div className="order-1">
 
-        {/* ── 대화 분석 버튼 (폼 위 중앙) ── */}
-        {!loading && (
-          <div className="flex justify-center mb-4">
-            <Link
-              to="/live"
-              className="inline-flex items-center gap-2.5 px-6 py-3 rounded-xl bg-card border border-border text-foreground text-sm font-semibold hover:bg-secondary transition-colors shadow-[var(--shadow-card)]"
-            >
-              <Users className="w-4.5 h-4.5 text-primary" />
-              대화 분석
-            </Link>
-          </div>
-        )}
 
         {/* 분석 로딩 오버레이 */}
         {loading && (
@@ -358,7 +346,7 @@ function Home() {
           className={`bg-card rounded-2xl p-2 shadow-[var(--shadow-card)] border border-border transition-all duration-300 ${loading ? "opacity-0 pointer-events-none absolute inset-x-0 -z-10" : "opacity-100"}`}
         >
           {/* 탭 */}
-          <div className="flex gap-1 p-1 mb-1">
+          <div className="flex items-center gap-1 p-1 mb-1">
             <TabButton active={mode === "text"} onClick={() => handleModeChange("text")}>
               <FileText className="w-4 h-4" />
               <span>텍스트</span>
@@ -371,6 +359,14 @@ function Home() {
               <Mic className="w-4 h-4" />
               <span>음성 입력</span>
             </TabButton>
+            <div className="flex-1" />
+            <Link
+              to="/live"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-surface-2 border border-border/40 hover:border-border transition-all whitespace-nowrap"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">대화 분석</span>
+            </Link>
           </div>
 
           <div className="bg-background rounded-xl p-4 sm:p-4">
@@ -815,18 +811,32 @@ function Home() {
           />
         </section>
 
-        <p className="text-center text-sm text-muted-foreground mt-10 sm:mt-12 max-w-xl mx-auto leading-relaxed px-2">
-          ※ 팩트체크는 사실검증을 <strong className="text-foreground/80">보조</strong>하는 도구이며 최종 판정 도구가 아닙니다.
-          중요한 의사결정 전에는 반드시 신뢰할 수 있는 1차 출처를 직접 확인하세요.
-        </p>
-
-        <div className="text-center mt-6">
+        {/* 하단 섹션 */}
+        <div className="mt-12 sm:mt-16 grid sm:grid-cols-2 gap-4">
+          {/* 히스토리 링크 카드 */}
           <Link
             to="/history"
-            className="inline-flex items-center gap-1 text-sm sm:text-sm text-muted-foreground hover:text-foreground transition-colors py-2 px-4"
+            className="group flex items-center gap-4 rounded-xl border border-border/50 bg-card px-5 py-4 hover:border-primary/30 hover:bg-surface-2/50 hover:shadow-sm transition-all duration-200 shadow-[var(--shadow-card)]"
           >
-            이전 분석 기록 보기 →
+            <div className="w-9 h-9 rounded-lg bg-primary/8 border border-primary/20 flex items-center justify-center shrink-0">
+              <MessageSquare className="w-4.5 h-4.5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-foreground">이전 분석 기록</p>
+              <p className="text-xs text-muted-foreground mt-0.5">이 브라우저에서 수행한 팩트체크 기록 보기</p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
           </Link>
+
+          {/* 면책 고지 */}
+          <div className="flex items-start gap-3 rounded-xl border border-border/30 bg-surface/50 px-5 py-4">
+            <div className="w-9 h-9 rounded-lg bg-amber-400/8 border border-amber-400/20 flex items-center justify-center shrink-0 mt-0.5">
+              <ShieldCheck className="w-4.5 h-4.5 text-amber-500" />
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              팩트체크는 사실검증을 <strong className="text-foreground/70">보조</strong>하는 도구이며 최종 판정이 아닙니다. 중요한 의사결정 전 1차 출처를 직접 확인하세요.
+            </p>
+          </div>
         </div>
       </main>
     </div>
@@ -891,7 +901,7 @@ function Feature({
   return (
     <div
       ref={ref}
-      className="bg-card rounded-xl p-5 sm:p-5 flex gap-4 sm:block reveal-item border border-border shadow-[var(--shadow-card)]"
+      className="group bg-card rounded-xl p-5 flex gap-4 sm:block reveal-item border border-border hover:border-primary/25 hover:shadow-md shadow-[var(--shadow-card)] transition-all duration-200 cursor-default"
       style={visible ? {
         opacity: 1,
         transform: "none",
@@ -901,16 +911,17 @@ function Feature({
       }}
       data-visible={visible ? "true" : undefined}
     >
-      <div className="shrink-0 sm:mb-3">
+      <div className="shrink-0 sm:mb-3 flex sm:justify-between sm:items-start">
         <div
-          className="w-9 h-9 sm:w-8 sm:h-8 rounded-lg border border-primary/20 bg-primary/8 flex items-center justify-center"
+          className="w-9 h-9 sm:w-8 sm:h-8 rounded-lg border border-primary/20 bg-primary/8 flex items-center justify-center group-hover:bg-primary/14 group-hover:border-primary/35 transition-colors"
           style={visible ? { animation: `float-pulse 3s ${index * 400}ms ease-in-out infinite` } : undefined}
         >
           <Icon className="w-5 h-5 sm:w-4 sm:h-4 text-primary" />
         </div>
+        <ChevronRight className="hidden sm:block w-4 h-4 text-muted-foreground/20 group-hover:text-primary/40 group-hover:translate-x-0.5 transition-all" />
       </div>
       <div>
-        <h3 className="font-semibold text-base sm:text-base mb-1.5">{title}</h3>
+        <h3 className="font-semibold text-base mb-1.5">{title}</h3>
         <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
       </div>
     </div>
