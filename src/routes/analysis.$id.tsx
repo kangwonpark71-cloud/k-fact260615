@@ -694,15 +694,16 @@ const VERDICT_KW_STYLE: Record<string, { bg: string; text: string; border: strin
   "반대 근거 우세": { bg: "rgba(239,68,68,0.12)",  text: "#dc2626", border: "rgba(239,68,68,0.4)",  glow: "0 0 12px rgba(239,68,68,0.25)" },
 };
 
+type KwPhase = "hidden" | "pop" | "float";
+
 function KeywordHighlight({ inputText, claims, overallVerdict }: {
   inputText: string;
   claims: Claim[];
   overallVerdict?: string;
 }) {
-  const [kwVisible, setKwVisible] = useState<boolean[]>([]);
+  const [kwPhases, setKwPhases] = useState<KwPhase[]>([]);
   const [slideIdx, setSlideIdx] = useState(0);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [slideDir, setSlideDir] = useState<"left" | "right">("left");
+  const [slideAnim, setSlideAnim] = useState<"idle" | "out-left" | "out-right" | "in">("idle");
   const [progress, setProgress] = useState(0);
 
   const keywords = extractKeywords(inputText);
@@ -715,101 +716,106 @@ function KeywordHighlight({ inputText, claims, overallVerdict }: {
   }
 
   const defaultStyle = VERDICT_KW_STYLE[overallVerdict ?? ""] ?? {
-    bg: "rgba(99,102,241,0.08)", text: "#6366f1", border: "rgba(99,102,241,0.3)", glow: "0 0 10px rgba(99,102,241,0.2)",
+    bg: "rgba(99,102,241,0.1)", text: "#6366f1", border: "rgba(99,102,241,0.35)", glow: "0 0 14px rgba(99,102,241,0.25)",
   };
 
-  // 키워드 순차 reveal
+  // 키워드 순차 pop → float (animation 속성만 전환, transition 미사용)
   useEffect(() => {
+    setKwPhases(keywords.map(() => "hidden" as KwPhase));
     const timers: ReturnType<typeof setTimeout>[] = [];
     keywords.forEach((_, i) => {
       timers.push(setTimeout(() => {
-        setKwVisible(v => { const n = [...v]; n[i] = true; return n; });
-      }, 250 + i * 95));
+        setKwPhases(p => { const n = [...p]; n[i] = "pop"; return n; });
+        timers.push(setTimeout(() => {
+          setKwPhases(p => { const n = [...p]; n[i] = "float"; return n; });
+        }, 580));
+      }, 200 + i * 120));
     });
     return () => timers.forEach(clearTimeout);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 슬라이드쇼 자동 전환 + 프로그레스
-  const SLIDE_MS = 4800;
+  // 슬라이드 자동 전환
+  const SLIDE_MS = 5200;
   useEffect(() => {
     if (claims.length <= 1) return;
     setProgress(0);
     const startAt = Date.now();
-    const raf = setInterval(() => {
-      setProgress(Math.min(((Date.now() - startAt) / SLIDE_MS) * 100, 100));
-    }, 40);
-    const t = setTimeout(() => {
-      clearInterval(raf);
-      setSlideDir("left");
-      setIsTransitioning(true);
-      setTimeout(() => {
-        setSlideIdx(i => (i + 1) % claims.length);
-        setIsTransitioning(false);
-        setProgress(0);
-      }, 300);
-    }, SLIDE_MS);
+    const raf = setInterval(() => setProgress(Math.min(((Date.now() - startAt) / SLIDE_MS) * 100, 100)), 40);
+    const t = setTimeout(() => { clearInterval(raf); advance("next"); }, SLIDE_MS);
     return () => { clearTimeout(t); clearInterval(raf); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slideIdx, claims.length]);
 
-  const goTo = (idx: number) => {
-    if (idx === slideIdx || isTransitioning) return;
-    setSlideDir(idx > slideIdx ? "left" : "right");
-    setIsTransitioning(true);
+  const advance = (dir: "next" | "prev") => {
+    if (slideAnim !== "idle") return;
+    setSlideAnim(dir === "next" ? "out-left" : "out-right");
     setTimeout(() => {
-      setSlideIdx(idx);
-      setIsTransitioning(false);
+      setSlideIdx(i => dir === "next" ? (i + 1) % claims.length : (i - 1 + claims.length) % claims.length);
+      setSlideAnim("in");
       setProgress(0);
-    }, 280);
+      setTimeout(() => setSlideAnim("idle"), 400);
+    }, 300);
+  };
+
+  const goTo = (idx: number) => {
+    if (idx === slideIdx || slideAnim !== "idle") return;
+    advance(idx > slideIdx ? "next" : "prev");
+    // 목표 인덱스가 next/prev와 다를 수 있으므로 직접 지정
+    setTimeout(() => setSlideIdx(idx), 310);
   };
 
   const currentClaim = claims[slideIdx];
-  const claimVStyle = currentClaim
-    ? (VERDICT_KW_STYLE[currentClaim.verdict] ?? defaultStyle)
-    : defaultStyle;
+  const claimVStyle = currentClaim ? (VERDICT_KW_STYLE[currentClaim.verdict] ?? defaultStyle) : defaultStyle;
+
+  const slideStyleMap: Record<string, React.CSSProperties> = {
+    "out-left":  { opacity: 0, transform: "translateX(-32px) scale(0.96)", transition: "all 0.28s cubic-bezier(0.4,0,1,1)" },
+    "out-right": { opacity: 0, transform: "translateX(32px) scale(0.96)",  transition: "all 0.28s cubic-bezier(0.4,0,1,1)" },
+    "in":        { opacity: 1, transform: "translateX(0) scale(1)",         transition: "all 0.38s cubic-bezier(0,0,0.2,1)" },
+    "idle":      { opacity: 1, transform: "translateX(0) scale(1)",         transition: "all 0.2s ease" },
+  };
 
   return (
     <div className="border border-border/40 bg-surface overflow-hidden">
       {/* 헤더 */}
       <div className="px-4 sm:px-5 py-2.5 border-b border-border/30 flex items-center gap-2 bg-surface-2/40">
-        <Sparkles className="w-3.5 h-3.5 text-primary/60" />
+        <Sparkles className="w-3.5 h-3.5 text-primary/70" style={{ animation: "sparkPulse 2.4s ease-in-out infinite" }} />
         <span className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-widest">AI 분석 하이라이트</span>
         <div className="ml-auto flex gap-1">
           {[0, 1, 2].map(i => (
-            <div key={i} className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce"
-              style={{ animationDelay: `${i * 0.18}s`, animationDuration: "1.1s" }} />
+            <div key={i} className="w-1.5 h-1.5 rounded-full bg-primary/50"
+              style={{ animation: `kwDot 1.4s ease-in-out ${i * 0.22}s infinite` }} />
           ))}
         </div>
       </div>
 
-      {/* ── 섹션 1: 핵심 키워드 클라우드 ── */}
-      <div className="px-4 sm:px-5 pt-4 pb-3.5 border-b border-border/20">
+      {/* 섹션 1: 핵심 키워드 */}
+      <div className="px-4 sm:px-5 pt-4 pb-4 border-b border-border/20">
         <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest mb-3">핵심 키워드</p>
-        <div className="flex flex-wrap gap-2 min-h-[52px] items-center">
+        <div className="flex flex-wrap gap-2.5 min-h-[60px] items-center">
           {keywords.map((word, i) => {
             const meta = wordMeta.get(word);
             const s = meta ? (VERDICT_KW_STYLE[meta.verdict] ?? defaultStyle) : defaultStyle;
             const conf = meta?.confidence ?? 50;
-            const szPad = conf >= 80
-              ? "text-[16px] px-3.5 py-1.5"
-              : conf >= 65 ? "text-[14px] px-3 py-1"
-              : "text-[12px] px-2.5 py-0.5";
-            const vis = !!kwVisible[i];
+            const szPad = conf >= 80 ? "text-[15px] px-3.5 py-1.5" : conf >= 65 ? "text-[13px] px-3 py-1" : "text-[12px] px-2.5 py-0.5";
+            const phase = kwPhases[i] ?? "hidden";
             return (
               <span
                 key={word}
                 className={`inline-flex items-center rounded-full font-semibold border cursor-default select-none ${szPad}`}
                 style={{
-                  background: vis ? s.bg : "transparent",
-                  color: vis ? s.text : "transparent",
-                  borderColor: vis ? s.border : "transparent",
-                  boxShadow: vis ? s.glow : "none",
-                  opacity: vis ? 1 : 0,
-                  transform: vis ? "translateY(0) scale(1)" : "translateY(16px) scale(0.7)",
-                  transition: "opacity 0.45s cubic-bezier(0.34,1.56,0.64,1), transform 0.45s cubic-bezier(0.34,1.56,0.64,1), background 0.3s, color 0.3s, border-color 0.3s, box-shadow 0.3s",
-                  transitionDelay: vis ? `${i * 22}ms` : "0ms",
-                  animation: vis ? `kwFloat ${2.4 + (i % 4) * 0.38}s ease-in-out infinite` : "none",
-                  animationDelay: `${i * 0.18 + 0.6}s`,
+                  background: phase !== "hidden" ? s.bg : "transparent",
+                  color: phase !== "hidden" ? s.text : "transparent",
+                  borderColor: phase !== "hidden" ? s.border : "transparent",
+                  boxShadow: phase === "float" ? s.glow : "none",
+                  // transition은 색상만, transform/opacity는 animation 전용
+                  transition: "background 0.3s, color 0.3s, border-color 0.3s, box-shadow 0.5s",
+                  animation: phase === "pop"
+                    ? "kwPop 0.58s cubic-bezier(0.34,1.56,0.64,1) forwards"
+                    : phase === "float"
+                    ? `kwFloat ${2.0 + (i % 5) * 0.4}s ease-in-out ${i * 0.12}s infinite`
+                    : "none",
+                  opacity: phase === "hidden" ? 0 : undefined,
                 }}
                 title={meta ? `${meta.verdict} (${meta.confidence}%)` : undefined}
               >
@@ -817,70 +823,57 @@ function KeywordHighlight({ inputText, claims, overallVerdict }: {
               </span>
             );
           })}
+          {keywords.length === 0 && (
+            <span className="text-xs text-muted-foreground/30 italic">키워드 분석 중…</span>
+          )}
         </div>
       </div>
 
-      {/* ── 섹션 2: 핵심 주장 슬라이드쇼 ── */}
+      {/* 섹션 2: 핵심 주장 슬라이드쇼 */}
       {claims.length > 0 && (
         <div>
-          {/* 슬라이드 헤더 */}
           <div className="px-4 sm:px-5 pt-3 pb-0 flex items-center justify-between">
             <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">핵심 주장</p>
-            <div className="flex items-center gap-2">
-              {claims.length > 1 && (
-                <>
-                  <button type="button" onClick={() => goTo((slideIdx - 1 + claims.length) % claims.length)}
-                    className="w-5 h-5 rounded-full border border-border/40 flex items-center justify-center hover:bg-surface-2 transition-colors">
-                    <ChevronLeft className="w-3 h-3 text-muted-foreground" />
-                  </button>
-                  <span className="text-[10px] text-muted-foreground/50 tabular-nums">{slideIdx + 1} / {claims.length}</span>
-                  <button type="button" onClick={() => goTo((slideIdx + 1) % claims.length)}
-                    className="w-5 h-5 rounded-full border border-border/40 flex items-center justify-center hover:bg-surface-2 transition-colors">
-                    <ChevronRight className="w-3 h-3 text-muted-foreground" />
-                  </button>
-                </>
-              )}
-            </div>
+            {claims.length > 1 && (
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => advance("prev")}
+                  className="w-5 h-5 rounded-full border border-border/40 flex items-center justify-center hover:bg-surface-2 transition-colors">
+                  <ChevronLeft className="w-3 h-3 text-muted-foreground" />
+                </button>
+                <span className="text-[10px] text-muted-foreground/50 tabular-nums">{slideIdx + 1} / {claims.length}</span>
+                <button type="button" onClick={() => advance("next")}
+                  className="w-5 h-5 rounded-full border border-border/40 flex items-center justify-center hover:bg-surface-2 transition-colors">
+                  <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* 슬라이드 본문 */}
           <div className="px-4 sm:px-5 pt-2.5 pb-3 overflow-hidden">
             <div
               className="rounded-xl p-4 border"
               style={{
-                background: `linear-gradient(135deg, ${claimVStyle.bg} 0%, transparent 100%)`,
+                background: `linear-gradient(135deg, ${claimVStyle.bg} 0%, transparent 70%)`,
                 borderColor: claimVStyle.border,
-                opacity: isTransitioning ? 0 : 1,
-                transform: isTransitioning
-                  ? (slideDir === "left" ? "translateX(-18px)" : "translateX(18px)")
-                  : "translateX(0)",
-                transition: "opacity 0.28s ease, transform 0.28s ease",
+                ...slideStyleMap[slideAnim],
               }}
             >
-              {/* 주장 텍스트 — 단어 단위 순차 등장 */}
-              <ClaimTextReveal
+              <ClaimTyping
                 key={`${slideIdx}-${currentClaim?.claim ?? ""}`}
                 text={currentClaim?.claim ?? ""}
+                accentColor={claimVStyle.text}
               />
-
-              {/* 이유 한줄 */}
               {currentClaim?.reasoning && (
-                <p className="text-xs text-muted-foreground mt-2 leading-relaxed line-clamp-2">
+                <p className="text-xs text-muted-foreground mt-2 leading-relaxed line-clamp-2 opacity-75">
                   {currentClaim.reasoning}
                 </p>
               )}
-
-              {/* 판정 + 신뢰도 */}
               <div className="flex items-center gap-2.5 mt-3 flex-wrap">
-                <span
-                  className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold border"
-                  style={{ background: claimVStyle.bg, color: claimVStyle.text, borderColor: claimVStyle.border }}
-                >
+                <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold border"
+                  style={{ background: claimVStyle.bg, color: claimVStyle.text, borderColor: claimVStyle.border }}>
                   {currentClaim?.verdict ?? "근거 부족"}
                 </span>
                 <span className="text-[11px] text-muted-foreground">신뢰도 {currentClaim?.confidence ?? 0}%</span>
-
-                {/* 미니 원형 게이지 */}
                 <div className="ml-auto shrink-0">
                   <MiniCircle value={currentClaim?.confidence ?? 0} color={claimVStyle.text} />
                 </div>
@@ -888,33 +881,17 @@ function KeywordHighlight({ inputText, claims, overallVerdict }: {
             </div>
           </div>
 
-          {/* 프로그레스 바 + 인디케이터 */}
           {claims.length > 1 && (
-            <div className="px-4 sm:px-5 pb-3.5">
+            <div className="px-4 sm:px-5 pb-4">
               <div className="h-0.5 w-full bg-border/25 rounded-full overflow-hidden mb-2.5">
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${progress}%`,
-                    background: claimVStyle.text,
-                    transition: "width 0.04s linear",
-                  }}
-                />
+                <div className="h-full rounded-full" style={{ width: `${progress}%`, background: claimVStyle.text, transition: "width 0.04s linear" }} />
               </div>
               <div className="flex items-center justify-center gap-1.5">
                 {claims.map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => goTo(i)}
+                  <button key={i} type="button" onClick={() => goTo(i)}
                     className="rounded-full transition-all duration-300 focus:outline-none"
-                    style={{
-                      width: i === slideIdx ? "22px" : "6px",
-                      height: "6px",
-                      background: i === slideIdx ? claimVStyle.text : "rgba(0,0,0,0.12)",
-                    }}
-                    aria-label={`주장 ${i + 1}`}
-                  />
+                    style={{ width: i === slideIdx ? "22px" : "6px", height: "6px", background: i === slideIdx ? claimVStyle.text : "rgba(0,0,0,0.12)" }}
+                    aria-label={`주장 ${i + 1}`} />
                 ))}
               </div>
             </div>
@@ -923,49 +900,83 @@ function KeywordHighlight({ inputText, claims, overallVerdict }: {
       )}
 
       <style>{`
-        @keyframes kwFloat {
-          0%, 100% { transform: translateY(0) scale(1); }
-          50%       { transform: translateY(-4px) scale(1.03); }
+        @keyframes kwPop {
+          0%   { opacity: 0; transform: scale(0.15) rotate(-10deg); filter: blur(8px); }
+          55%  { opacity: 1; transform: scale(1.22) rotate(2deg);  filter: blur(0); }
+          75%  { transform: scale(0.93) rotate(-1deg); }
+          100% { opacity: 1; transform: scale(1) rotate(0deg); filter: blur(0); }
         }
-        @keyframes wordPop {
-          0%   { opacity: 0; transform: translateY(6px) scale(0.88); }
-          60%  { transform: translateY(-2px) scale(1.04); }
-          100% { opacity: 1; transform: translateY(0) scale(1); }
+        @keyframes kwFloat {
+          0%, 100% { transform: translateY(0px); }
+          38%       { transform: translateY(-7px); }
+          72%       { transform: translateY(4px); }
+        }
+        @keyframes kwDot {
+          0%, 100% { transform: scale(0.8); opacity: 0.3; }
+          50%       { transform: scale(1.6); opacity: 1; }
+        }
+        @keyframes sparkPulse {
+          0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.6; }
+          50%       { transform: scale(1.25) rotate(15deg); opacity: 1; }
+        }
+        @keyframes wordIn {
+          0%   { opacity: 0; transform: translateY(9px) scale(0.9); filter: blur(3px); }
+          100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+        }
+        @keyframes cursorBlink {
+          0%, 100% { opacity: 1; }
+          50%       { opacity: 0; }
         }
       `}</style>
     </div>
   );
 }
 
-/* ── 주장 텍스트 단어별 순차 등장 ── */
-function ClaimTextReveal({ text }: { text: string }) {
-  const words = text.split(" ").filter(Boolean);
-  const [visCount, setVisCount] = useState(0);
+/* ── 타이핑 커서 효과 핵심 주장 ── */
+function ClaimTyping({ text, accentColor }: { text: string; accentColor: string }) {
+  const words = text.split(/(\s+)/).filter(Boolean);
+  const [count, setCount] = useState(0);
+  const done = count >= words.length;
 
   useEffect(() => {
-    setVisCount(0);
+    setCount(0);
     const timers: ReturnType<typeof setTimeout>[] = [];
     words.forEach((_, i) => {
-      timers.push(setTimeout(() => setVisCount(c => c + 1), i * 55));
+      timers.push(setTimeout(() => setCount(c => c + 1), 60 + i * 75));
     });
     return () => timers.forEach(clearTimeout);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
 
   return (
-    <p className="text-sm font-medium text-foreground leading-relaxed">
-      {words.map((word, i) => (
+    <p className="text-sm font-medium text-foreground leading-relaxed min-h-[1.5em]">
+      {words.map((w, i) => (
         <span
           key={i}
-          className="inline-block mr-[0.28em]"
           style={{
-            opacity: i < visCount ? 1 : 0,
-            animation: i < visCount ? "wordPop 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards" : "none",
+            display: "inline-block",
+            marginRight: /^\s+$/.test(w) ? "0.3em" : undefined,
+            animation: i < count ? `wordIn 0.35s cubic-bezier(0.34,1.56,0.64,1) both` : "none",
+            opacity: i < count ? 1 : 0,
           }}
         >
-          {word}
+          {/^\s+$/.test(w) ? " " : w}
         </span>
       ))}
+      {!done && (
+        <span
+          style={{
+            display: "inline-block",
+            width: "2px",
+            height: "1em",
+            background: accentColor,
+            marginLeft: "2px",
+            verticalAlign: "middle",
+            borderRadius: "1px",
+            animation: "cursorBlink 0.65s ease-in-out infinite",
+          }}
+        />
+      )}
     </p>
   );
 }
