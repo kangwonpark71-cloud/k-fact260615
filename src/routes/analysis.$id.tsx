@@ -287,6 +287,12 @@ function AnalysisPage() {
     );
   }
 
+  // 헤더에서 반복 사용하는 값들
+  const overallVerdict = (dataRow.overall_verdict as string) ?? "근거 부족";
+  const overallConfidence = (dataRow.overall_confidence as number) ?? 0;
+  // [가짜가능성:XX%] 접두어 제거 (구 데이터 호환)
+  const cleanSummary = ((dataRow.summary as string | undefined) ?? "").replace(/^\[가짜가능성:\d+%\]\s*/, "");
+
   // 구 형식(배열) + 신 형식(파이프라인 메타 객체) 모두 처리
   // dataRow is declared above
   const rawClaims = dataRow.claims as unknown;
@@ -365,30 +371,33 @@ function AnalysisPage() {
         <div className="border border-border/60 bg-surface shadow-[var(--shadow-card)]">
           {/* 문서 상단 레이블 바 */}
           <div className="px-5 sm:px-7 py-2 border-b border-border/40 flex items-center justify-between gap-3 bg-surface-2/50">
-            <span className="text-[13.5px] font-bold tracking-widest uppercase text-muted-foreground/60 font-mono">팩트체크 팩트체크 판정서</span>
+            <span className="text-[13.5px] font-bold tracking-widest uppercase text-muted-foreground/60 font-mono">팩트체크 판정서</span>
             <span className="text-[13.5px] text-muted-foreground/40 font-mono">
               {new Date(dataRow.created_at as string).toLocaleString("ko-KR")}
             </span>
           </div>
 
           <div className="px-5 sm:px-7 py-5 sm:py-7">
-            {/* 제목 + 스탬프 */}
+            {/* 제목 + 게이지 */}
             <div className="flex items-start gap-4 mb-4">
               <div className="flex-1 min-w-0">
                 <h1 className="font-display text-xl sm:text-2xl font-bold leading-snug text-foreground">{dataRow.title as string}</h1>
+                <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                  <VerdictBadge verdict={overallVerdict} size="md" />
+                  <span className="text-sm text-muted-foreground">신뢰도 <strong className="text-foreground">{overallConfidence}%</strong></span>
+                </div>
               </div>
-              <div className="shrink-0 flex flex-col items-center gap-2">
-                <VerdictGauge
-                  verdict={(dataRow.overall_verdict as string) ?? "근거 부족"}
-                  confidence={(dataRow.overall_confidence as number) ?? 0}
-                  size="lg"
-                />
-                <ConfidenceBar value={(dataRow.overall_confidence as number) ?? 0} />
+              <div className="shrink-0">
+                <VerdictGauge verdict={overallVerdict} confidence={overallConfidence} size="lg" />
               </div>
             </div>
 
             {/* 요약 */}
-            <p className="text-sm text-muted-foreground leading-relaxed border-t border-border/30 pt-4">{dataRow.summary as string}</p>
+            {cleanSummary ? (
+              <p className="text-sm text-muted-foreground leading-relaxed border-t border-border/30 pt-4">{cleanSummary}</p>
+            ) : (
+              <p className="text-sm text-muted-foreground/40 leading-relaxed border-t border-border/30 pt-4 italic">심층 분석 결과 생성 중…</p>
+            )}
 
             {/* 원문 링크 + 공유 */}
             <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border/30">
@@ -764,7 +773,7 @@ function KeywordHighlight({ inputText, claims, overallVerdict }: {
       {/* 헤더 */}
       <div className="px-4 sm:px-5 py-2.5 border-b border-border/30 flex items-center gap-2 bg-surface-2/40">
         <Sparkles className="w-3.5 h-3.5 text-primary/60" />
-        <span className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-widest">AI 분析 하이라이트</span>
+        <span className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-widest">AI 분석 하이라이트</span>
         <div className="ml-auto flex gap-1">
           {[0, 1, 2].map(i => (
             <div key={i} className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce"

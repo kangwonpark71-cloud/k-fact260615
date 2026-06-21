@@ -542,7 +542,7 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
       input_text: bodyText.slice(0, 8000),
       source_url: sourceUrl ?? null,
       title: parsed.title,
-      summary: `[가짜가능성:${styleAnalysis.fakeProbability}%] ${parsed.summary}`,
+      summary: parsed.summary,
       overall_verdict: parsed.overall_verdict,
       overall_confidence: parsed.overall_confidence,
       claims: {
