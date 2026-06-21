@@ -212,7 +212,7 @@ export function buildStyleAnalysis(text: string): StyleAnalysis {
 }
 
 export function styleAnalysisToPromptBlock(analysis: StyleAnalysis): string {
-  const { metrics: m, fakeProbability, signals } = analysis;
+  const { metrics: m, fakeProbability, signals = [] } = analysis;
   return [
     `[Stage 1 — 문체 분류 결과]`,
     `가짜 가능성 지수: ${fakeProbability}% (LIAR/FakeNewsNet 패턴 기반)`,

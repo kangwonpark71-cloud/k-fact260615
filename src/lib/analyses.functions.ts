@@ -445,7 +445,7 @@ async function processAnalysisPhase2(
     // Phase 1 트랜스포머 분류 결과 재사용 — 재실행 없음
     const quickStyle = buildStyleAnalysis(bodyText);
     const styleAnalysis = phase1StyleClassification
-      ? { ...quickStyle, fakeProbability: phase1StyleClassification.fake_probability, signals: phase1StyleClassification.signals }
+      ? { ...quickStyle, fakeProbability: phase1StyleClassification.fake_probability ?? quickStyle.fakeProbability, signals: phase1StyleClassification.signals ?? quickStyle.signals }
       : quickStyle;
     const styleBlock = styleAnalysisToPromptBlock(styleAnalysis);
 
@@ -572,6 +572,8 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
     return completedPayload;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? (err.stack ?? "").slice(0, 800) : "";
+    console.error("[phase2 ERROR]", msg, "\n", stack);
     const failPayload = {
       id: analysisId, status: "phase2_failed",
       title: "심층 분석 실패", summary: msg.slice(0, 300), claims: [],
@@ -587,9 +589,8 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
 
 export const analyzeContent = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => InputSchema.parse(input))
-  .handler(async ({ data }): Promise<{
-    id: string; cached: boolean; pending: boolean; analysisResult?: Record<string, unknown>;
-  }> => {
+  // @ts-expect-error TanStack Start ValidateSerializableMapped doesn't accept dynamic KV types
+  .handler(async ({ data }) => {
     const userId = await getOptionalUserId();
     await checkRateLimit(data.sessionId, userId);
 
@@ -662,7 +663,8 @@ export const getAnalysis = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) =>
     z.object({ id: z.string().uuid(), sessionId: z.string().min(1) }).parse(input),
   )
-  .handler(async ({ data }): Promise<Record<string, unknown>> => {
+  // @ts-expect-error TanStack Start ValidateSerializableMapped doesn't accept dynamic KV types
+  .handler(async ({ data }) => {
     const userId = await getOptionalUserId();
     const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -716,7 +718,8 @@ export const continueAnalysis = createServerFn({ method: "POST" })
       sourceUrl: z.string().optional(),
     }).parse(input),
   )
-  .handler(async ({ data }): Promise<Record<string, unknown>> => {
+  // @ts-expect-error TanStack Start ValidateSerializableMapped doesn't accept dynamic KV types
+  .handler(async ({ data }) => {
     const userId = await getOptionalUserId();
 
     const kvRow = await kvGet(data.id);
@@ -804,11 +807,6 @@ export const deleteAnalysis = createServerFn({ method: "POST" })
 
 /* ── 실시간 빠른 팩트체크 ── */
 
-// 후처리 필드 포함 최종 타입
-export type QuickCheckResult = z.infer<typeof QuickCheckSchema> & {
-  fake_probability: number;   // Stage 1: JS 계산 가짜 확률
-  style_signals: string[];    // Stage 1: 경고 신호 목록
-};
 
 const QUICK_SYSTEM = `당신은 다국어 팩트체크 AI입니다. 학습 지식을 적극 활용하여 각 주장에 단호한 판정을 내립니다. 입력 언어로 응답하되 판정 enum은 한국어 고정(사실/부분 사실/근거 부족/반대 근거 우세).
 
@@ -1081,10 +1079,11 @@ export const getSharedAnalysis = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) =>
     z.object({ token: z.string().min(10).max(32) }).parse(input),
   )
-  .handler(async ({ data }): Promise<Record<string, unknown>> => {
+  // @ts-expect-error TanStack Start ValidateSerializableMapped doesn't accept dynamic KV types
+  .handler(async ({ data }) => {
     const shareData = await kvGet(`share:${data.token}`);
     if (!shareData) throw new Error("유효하지 않거나 만료된 공유 링크입니다.");
-    const analysisId = shareData.analysisId;
+    const analysisId = shareData.analysisId as string;
 
     const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
     if (hasDB) {

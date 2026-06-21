@@ -39,12 +39,13 @@ export function getCfBinding<T>(name: string): T | null {
   return v != null ? (v as T) : null;
 }
 
+const BOM = new RegExp("^﻿");
 export function getEnv(key: string): string | undefined {
   // Try Cloudflare env object first (covers secrets + vars)
   const cfVal = (_cfEnv as Record<string, unknown>)[key];
-  if (typeof cfVal === "string" && cfVal.length > 0) return cfVal;
+  if (typeof cfVal === "string" && cfVal.length > 0) return cfVal.replace(BOM, "").trim();
   // Fallback: nodejs_compat populates process.env with CF bindings
   const procVal = process.env[key];
-  if (typeof procVal === "string" && procVal.length > 0) return procVal;
+  if (typeof procVal === "string" && procVal.length > 0) return procVal.replace(BOM, "").trim();
   return undefined;
 }

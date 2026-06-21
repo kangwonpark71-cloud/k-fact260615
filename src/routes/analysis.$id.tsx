@@ -7,6 +7,7 @@ import {
   BookOpen, Share2, Check, ChevronDown, ChevronUp, FileText,
   AlertTriangle, CheckCircle2, XCircle, MinusCircle, AlertCircle,
   Loader2, SmilePlus, Frown, Meh, Eye, Lightbulb, Target,
+  Sparkles, ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 import {
@@ -91,8 +92,8 @@ function evidenceStrength(claim: Claim): {
   color: string;
   barColor: string;
 } {
-  const supportCount = claim.supporting_points.length;
-  const counterCount = claim.counter_points.length;
+  const supportCount = (claim.supporting_points ?? []).length;
+  const counterCount = (claim.counter_points ?? []).length;
   const total = supportCount + counterCount;
   const max = Math.max(supportCount, counterCount, 1);
 
@@ -611,7 +612,7 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
         {sc && (sc.propaganda_techniques?.length ?? 0) > 0 && (
           <div>
             <p className="text-[15px] font-semibold text-destructive/80 mb-1.5">
-              탐지된 선동 기법 ({sc.propaganda_techniques.length}건) — SemEval-2020
+              탐지된 선동 기법 ({sc.propaganda_techniques?.length ?? 0}건) — SemEval-2020
             </p>
             <div className="flex flex-wrap gap-1.5">
               {sc.propaganda_techniques.map((t, i) => (
@@ -689,12 +690,14 @@ function KeywordHighlight({ inputText, claims, overallVerdict }: {
   claims: Claim[];
   overallVerdict?: string;
 }) {
-  const [revealed, setRevealed] = useState(false);
-  const [count, setCount] = useState(0);
+  const [kwVisible, setKwVisible] = useState<boolean[]>([]);
+  const [slideIdx, setSlideIdx] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [slideDir, setSlideDir] = useState<"left" | "right">("left");
+  const [progress, setProgress] = useState(0);
 
   const keywords = extractKeywords(inputText);
 
-  // claim 단어 → verdict 맵핑
   const wordMeta = new Map<string, { verdict: string; confidence: number }>();
   for (const c of claims) {
     extractKeywords(c.claim).forEach(w => {
@@ -702,68 +705,289 @@ function KeywordHighlight({ inputText, claims, overallVerdict }: {
     });
   }
 
-  useEffect(() => {
-    const t = setTimeout(() => setRevealed(true), 120);
-    return () => clearTimeout(t);
-  }, []);
-
-  useEffect(() => {
-    if (!revealed) return;
-    if (count >= keywords.length) return;
-    const t = setTimeout(() => setCount(c => c + 1), 90);
-    return () => clearTimeout(t);
-  }, [revealed, count, keywords.length]);
-
   const defaultStyle = VERDICT_KW_STYLE[overallVerdict ?? ""] ?? {
     bg: "rgba(99,102,241,0.08)", text: "#6366f1", border: "rgba(99,102,241,0.3)", glow: "0 0 10px rgba(99,102,241,0.2)",
   };
 
+  // 키워드 순차 reveal
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    keywords.forEach((_, i) => {
+      timers.push(setTimeout(() => {
+        setKwVisible(v => { const n = [...v]; n[i] = true; return n; });
+      }, 250 + i * 95));
+    });
+    return () => timers.forEach(clearTimeout);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 슬라이드쇼 자동 전환 + 프로그레스
+  const SLIDE_MS = 4800;
+  useEffect(() => {
+    if (claims.length <= 1) return;
+    setProgress(0);
+    const startAt = Date.now();
+    const raf = setInterval(() => {
+      setProgress(Math.min(((Date.now() - startAt) / SLIDE_MS) * 100, 100));
+    }, 40);
+    const t = setTimeout(() => {
+      clearInterval(raf);
+      setSlideDir("left");
+      setIsTransitioning(true);
+      setTimeout(() => {
+        setSlideIdx(i => (i + 1) % claims.length);
+        setIsTransitioning(false);
+        setProgress(0);
+      }, 300);
+    }, SLIDE_MS);
+    return () => { clearTimeout(t); clearInterval(raf); };
+  }, [slideIdx, claims.length]);
+
+  const goTo = (idx: number) => {
+    if (idx === slideIdx || isTransitioning) return;
+    setSlideDir(idx > slideIdx ? "left" : "right");
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setSlideIdx(idx);
+      setIsTransitioning(false);
+      setProgress(0);
+    }, 280);
+  };
+
+  const currentClaim = claims[slideIdx];
+  const claimVStyle = currentClaim
+    ? (VERDICT_KW_STYLE[currentClaim.verdict] ?? defaultStyle)
+    : defaultStyle;
+
   return (
     <div className="border border-border/40 bg-surface overflow-hidden">
+      {/* 헤더 */}
       <div className="px-4 sm:px-5 py-2.5 border-b border-border/30 flex items-center gap-2 bg-surface-2/40">
-        <span className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-widest">핵심 키워드 분析</span>
+        <Sparkles className="w-3.5 h-3.5 text-primary/60" />
+        <span className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-widest">AI 분析 하이라이트</span>
         <div className="ml-auto flex gap-1">
-          {[0,1,2].map(i => (
+          {[0, 1, 2].map(i => (
             <div key={i} className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce"
               style={{ animationDelay: `${i * 0.18}s`, animationDuration: "1.1s" }} />
           ))}
         </div>
       </div>
-      <div className="px-4 sm:px-5 py-4 flex flex-wrap gap-2.5 min-h-[68px]">
-        {keywords.map((word, i) => {
-          const meta = wordMeta.get(word);
-          const s = meta ? (VERDICT_KW_STYLE[meta.verdict] ?? defaultStyle) : defaultStyle;
-          const size = meta ? (meta.confidence >= 80 ? "text-[15px]" : meta.confidence >= 60 ? "text-[14px]" : "text-[13px]") : "text-[13px]";
-          const visible = i < count;
-          return (
-            <span
-              key={word}
-              className={`inline-flex items-center rounded-full px-3 py-1 font-semibold border cursor-default select-none transition-all duration-500 ${size}`}
-              style={{
-                background: s.bg,
-                color: visible ? s.text : "transparent",
-                borderColor: visible ? s.border : "transparent",
-                boxShadow: visible ? s.glow : "none",
-                opacity: visible ? 1 : 0,
-                transform: visible ? "translateY(0) scale(1)" : "translateY(10px) scale(0.85)",
-                transitionDelay: `${i * 40}ms`,
-                animation: visible ? `kwFloat ${2.2 + (i % 3) * 0.4}s ease-in-out infinite` : "none",
-                animationDelay: `${i * 0.15 + 0.5}s`,
-              }}
-              title={meta ? `${meta.verdict} (${meta.confidence}%)` : undefined}
-            >
-              {word}
-            </span>
-          );
-        })}
+
+      {/* ── 섹션 1: 핵심 키워드 클라우드 ── */}
+      <div className="px-4 sm:px-5 pt-4 pb-3.5 border-b border-border/20">
+        <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest mb-3">핵심 키워드</p>
+        <div className="flex flex-wrap gap-2 min-h-[52px] items-center">
+          {keywords.map((word, i) => {
+            const meta = wordMeta.get(word);
+            const s = meta ? (VERDICT_KW_STYLE[meta.verdict] ?? defaultStyle) : defaultStyle;
+            const conf = meta?.confidence ?? 50;
+            const szPad = conf >= 80
+              ? "text-[16px] px-3.5 py-1.5"
+              : conf >= 65 ? "text-[14px] px-3 py-1"
+              : "text-[12px] px-2.5 py-0.5";
+            const vis = !!kwVisible[i];
+            return (
+              <span
+                key={word}
+                className={`inline-flex items-center rounded-full font-semibold border cursor-default select-none ${szPad}`}
+                style={{
+                  background: vis ? s.bg : "transparent",
+                  color: vis ? s.text : "transparent",
+                  borderColor: vis ? s.border : "transparent",
+                  boxShadow: vis ? s.glow : "none",
+                  opacity: vis ? 1 : 0,
+                  transform: vis ? "translateY(0) scale(1)" : "translateY(16px) scale(0.7)",
+                  transition: "opacity 0.45s cubic-bezier(0.34,1.56,0.64,1), transform 0.45s cubic-bezier(0.34,1.56,0.64,1), background 0.3s, color 0.3s, border-color 0.3s, box-shadow 0.3s",
+                  transitionDelay: vis ? `${i * 22}ms` : "0ms",
+                  animation: vis ? `kwFloat ${2.4 + (i % 4) * 0.38}s ease-in-out infinite` : "none",
+                  animationDelay: `${i * 0.18 + 0.6}s`,
+                }}
+                title={meta ? `${meta.verdict} (${meta.confidence}%)` : undefined}
+              >
+                {word}
+              </span>
+            );
+          })}
+        </div>
       </div>
+
+      {/* ── 섹션 2: 핵심 주장 슬라이드쇼 ── */}
+      {claims.length > 0 && (
+        <div>
+          {/* 슬라이드 헤더 */}
+          <div className="px-4 sm:px-5 pt-3 pb-0 flex items-center justify-between">
+            <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">핵심 주장</p>
+            <div className="flex items-center gap-2">
+              {claims.length > 1 && (
+                <>
+                  <button type="button" onClick={() => goTo((slideIdx - 1 + claims.length) % claims.length)}
+                    className="w-5 h-5 rounded-full border border-border/40 flex items-center justify-center hover:bg-surface-2 transition-colors">
+                    <ChevronLeft className="w-3 h-3 text-muted-foreground" />
+                  </button>
+                  <span className="text-[10px] text-muted-foreground/50 tabular-nums">{slideIdx + 1} / {claims.length}</span>
+                  <button type="button" onClick={() => goTo((slideIdx + 1) % claims.length)}
+                    className="w-5 h-5 rounded-full border border-border/40 flex items-center justify-center hover:bg-surface-2 transition-colors">
+                    <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* 슬라이드 본문 */}
+          <div className="px-4 sm:px-5 pt-2.5 pb-3 overflow-hidden">
+            <div
+              className="rounded-xl p-4 border"
+              style={{
+                background: `linear-gradient(135deg, ${claimVStyle.bg} 0%, transparent 100%)`,
+                borderColor: claimVStyle.border,
+                opacity: isTransitioning ? 0 : 1,
+                transform: isTransitioning
+                  ? (slideDir === "left" ? "translateX(-18px)" : "translateX(18px)")
+                  : "translateX(0)",
+                transition: "opacity 0.28s ease, transform 0.28s ease",
+              }}
+            >
+              {/* 주장 텍스트 — 단어 단위 순차 등장 */}
+              <ClaimTextReveal
+                key={`${slideIdx}-${currentClaim?.claim ?? ""}`}
+                text={currentClaim?.claim ?? ""}
+              />
+
+              {/* 이유 한줄 */}
+              {currentClaim?.reasoning && (
+                <p className="text-xs text-muted-foreground mt-2 leading-relaxed line-clamp-2">
+                  {currentClaim.reasoning}
+                </p>
+              )}
+
+              {/* 판정 + 신뢰도 */}
+              <div className="flex items-center gap-2.5 mt-3 flex-wrap">
+                <span
+                  className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold border"
+                  style={{ background: claimVStyle.bg, color: claimVStyle.text, borderColor: claimVStyle.border }}
+                >
+                  {currentClaim?.verdict ?? "근거 부족"}
+                </span>
+                <span className="text-[11px] text-muted-foreground">신뢰도 {currentClaim?.confidence ?? 0}%</span>
+
+                {/* 미니 원형 게이지 */}
+                <div className="ml-auto shrink-0">
+                  <MiniCircle value={currentClaim?.confidence ?? 0} color={claimVStyle.text} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 프로그레스 바 + 인디케이터 */}
+          {claims.length > 1 && (
+            <div className="px-4 sm:px-5 pb-3.5">
+              <div className="h-0.5 w-full bg-border/25 rounded-full overflow-hidden mb-2.5">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${progress}%`,
+                    background: claimVStyle.text,
+                    transition: "width 0.04s linear",
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-center gap-1.5">
+                {claims.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => goTo(i)}
+                    className="rounded-full transition-all duration-300 focus:outline-none"
+                    style={{
+                      width: i === slideIdx ? "22px" : "6px",
+                      height: "6px",
+                      background: i === slideIdx ? claimVStyle.text : "rgba(0,0,0,0.12)",
+                    }}
+                    aria-label={`주장 ${i + 1}`}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <style>{`
         @keyframes kwFloat {
-          0%, 100% { transform: translateY(0); }
-          50%       { transform: translateY(-4px); }
+          0%, 100% { transform: translateY(0) scale(1); }
+          50%       { transform: translateY(-4px) scale(1.03); }
+        }
+        @keyframes wordPop {
+          0%   { opacity: 0; transform: translateY(6px) scale(0.88); }
+          60%  { transform: translateY(-2px) scale(1.04); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
         }
       `}</style>
     </div>
+  );
+}
+
+/* ── 주장 텍스트 단어별 순차 등장 ── */
+function ClaimTextReveal({ text }: { text: string }) {
+  const words = text.split(" ").filter(Boolean);
+  const [visCount, setVisCount] = useState(0);
+
+  useEffect(() => {
+    setVisCount(0);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    words.forEach((_, i) => {
+      timers.push(setTimeout(() => setVisCount(c => c + 1), i * 55));
+    });
+    return () => timers.forEach(clearTimeout);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+
+  return (
+    <p className="text-sm font-medium text-foreground leading-relaxed">
+      {words.map((word, i) => (
+        <span
+          key={i}
+          className="inline-block mr-[0.28em]"
+          style={{
+            opacity: i < visCount ? 1 : 0,
+            animation: i < visCount ? "wordPop 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards" : "none",
+          }}
+        >
+          {word}
+        </span>
+      ))}
+    </p>
+  );
+}
+
+/* ── 미니 원형 신뢰도 게이지 ── */
+function MiniCircle({ value, color }: { value: number; color: string }) {
+  const r = 13;
+  const circ = 2 * Math.PI * r;
+  const [animated, setAnimated] = useState(0);
+
+  useEffect(() => {
+    const t = setTimeout(() => setAnimated(value), 60);
+    return () => clearTimeout(t);
+  }, [value]);
+
+  return (
+    <svg width="34" height="34" viewBox="0 0 34 34">
+      <circle cx="17" cy="17" r={r} fill="none" stroke="rgba(0,0,0,0.08)" strokeWidth="3" />
+      <circle
+        cx="17" cy="17" r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeDasharray={circ}
+        strokeDashoffset={circ - (animated / 100) * circ}
+        transform="rotate(-90 17 17)"
+        style={{ transition: "stroke-dashoffset 0.8s cubic-bezier(0.34,1.56,0.64,1)" }}
+      />
+      <text x="17" y="21" textAnchor="middle" fontSize="8.5" fontWeight="700" fill={color}>{value}</text>
+    </svg>
   );
 }
 

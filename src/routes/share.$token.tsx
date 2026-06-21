@@ -43,20 +43,20 @@ type Claim = {
   evidence_urls?: string[];
 };
 
-const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; bg: string; label: string }> = {
-  "사실":           { icon: CheckCircle2, color: "text-verdict-true",    bg: "bg-verdict-true/10",    label: "사실" },
-  "부분 사실":      { icon: MinusCircle,  color: "text-verdict-partial", bg: "bg-verdict-partial/10", label: "부분 사실" },
-  "근거 부족":      { icon: HelpCircle,   color: "text-verdict-weak",    bg: "bg-verdict-weak/10",    label: "근거 부족" },
-  "반대 근거 우세": { icon: XCircle,      color: "text-verdict-false",   bg: "bg-verdict-false/10",   label: "반대 근거 우세" },
+const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; bg: string; border: string; label: string }> = {
+  "사실":           { icon: CheckCircle2, color: "text-verdict-true",    bg: "bg-verdict-true/10",    border: "border-verdict-true/30",    label: "사실" },
+  "부분 사실":      { icon: MinusCircle,  color: "text-verdict-partial", bg: "bg-verdict-partial/10", border: "border-verdict-partial/30", label: "부분 사실" },
+  "근거 부족":      { icon: HelpCircle,   color: "text-verdict-weak",    bg: "bg-verdict-weak/10",    border: "border-verdict-weak/30",    label: "근거 부족" },
+  "반대 근거 우세": { icon: XCircle,      color: "text-verdict-false",   bg: "bg-verdict-false/10",   border: "border-verdict-false/30",   label: "반대 근거 우세" },
 };
 
 function SharedAnalysisPage() {
   const { token } = Route.useParams();
   const [copied, setCopied] = useState(false);
 
-  const { data: analysis, isLoading, error } = useQuery({
+  const { data: analysis, isLoading, error } = useQuery<Record<string, unknown>>({
     queryKey: ["shared-analysis", token],
-    queryFn: () => getSharedAnalysis({ data: { token } }),
+    queryFn: () => getSharedAnalysis({ data: { token } }) as Promise<Record<string, unknown>>,
     retry: 1,
     staleTime: 5 * 60 * 1000,
   });
