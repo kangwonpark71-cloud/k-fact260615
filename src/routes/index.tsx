@@ -74,10 +74,10 @@ function RevealChars({
    ═══════════════════════════════════════════════════════ */
 function HeroSection() {
   return (
-    <section className="text-center mb-8 sm:mb-14 py-4 sm:py-8">
+    <section className="text-center mb-5 sm:mb-7 py-2 sm:py-4">
       {/* 배지 */}
       <div
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/8 border border-primary/20 mb-5 sm:mb-8"
+        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/8 border border-primary/20 mb-3 sm:mb-4"
         style={{ opacity: 0, animation: "badge-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 60ms both" }}
       >
         <Sparkles className="w-3.5 h-3.5 text-primary" />
@@ -85,7 +85,7 @@ function HeroSection() {
       </div>
 
       {/* 메인 헤드라인 */}
-      <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold leading-[1.12] mb-4 sm:mb-6 select-none">
+      <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold leading-[1.12] mb-0 select-none">
         <RevealChars
           text={HERO_LINE1}
           startMs={L1_START}
@@ -97,28 +97,6 @@ function HeroSection() {
           className="block hero-shimmer"
         />
       </h1>
-
-      {/* 스캔 라인 구분선 */}
-      <div
-        className="mx-auto mb-6 sm:mb-8 h-px origin-center"
-        style={{
-          maxWidth: 360,
-          background: "linear-gradient(90deg, transparent, var(--color-accent), transparent)",
-          opacity: 0,
-          animation: `draw-rule-fade 1.2s ease-out ${DESC_START - 180}ms both`,
-        }}
-      />
-
-      {/* 설명 텍스트 */}
-      <p
-        className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed"
-        style={{ opacity: 0, animation: `fade-slide-up-down 9s ease-out ${DESC_START}ms both` }}
-      >
-        기사나 게시물 본문을 넣으면&nbsp;
-        <strong className="text-foreground/80 font-semibold">핵심 주장 단위로 분리</strong>하고,
-        <br className="hidden sm:block" />
-        <strong className="text-foreground/80 font-semibold">지지·반박·근거 부족</strong>와 신뢰도를 한 화면에 보여드립니다.
-      </p>
     </section>
   );
 }
@@ -322,7 +300,7 @@ function Home() {
       <SiteHeader />
       <BottomNav />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-36 sm:pb-32">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 pb-36 sm:pb-32">
         {/* Hero */}
         <HeroSection />
 
