@@ -83,75 +83,104 @@ function getConfidenceLabel(v: number): { text: string; color: string } {
   return        { text: "거의 확인 안 됐어요",       color: "text-verdict-false" };
 }
 
-/* ── AI 생각 타이핑 애니메이션 ── */
-const AI_THOUGHTS: Record<string, [string[], string[]]> = {
-  "사실": [
-    [
-      "오, 이건 꽤 믿을 만해요! 근거들이 일관되게 확인됐어요 ✓",
-      "검증 지표가 모두 긍정적으로 나왔어요. 신뢰할 수 있어요!",
-      "제가 찾은 근거들이 주장을 잘 뒷받침하고 있어요 👍",
-    ],
-    [
-      "사실인 것 같지만, 확신하기엔 근거가 조금 부족해요",
-      "방향은 맞는 것 같아요. 세부 내용은 한 번 더 확인해 보세요",
-      "근거는 있는데 더 많은 자료가 있으면 좋겠네요 🤔",
-    ],
-  ],
-  "부분 사실": [
-    [
-      "반은 맞고 반은 좀 과장됐어요. 맥락이 정말 중요해요!",
-      "일부는 확인됐지만 전체적으로는 좀 단순화된 것 같아요",
-      "사실과 의견이 섞여 있네요. 꼼꼼히 구분해 보세요 🧐",
-    ],
-    [
-      "어느 정도 맞는 부분이 있긴 한데 완전하지는 않아요",
-      "핵심은 맞지만 세부 내용에서 약간 빗나간 것 같아요",
-      "맥락에 따라 다르게 해석될 수 있는 내용이에요 🤔",
-    ],
-  ],
-  "근거 부족": [
-    [
-      "확인하고 싶은데 근거가 충분히 보이지 않아요 😅",
-      "뭔가 있는 것 같긴 한데... 자료가 더 필요할 것 같아요",
-      "현재로선 판단하기 어려운 내용이에요. 저도 헷갈려요 🤔",
-    ],
-    [
-      "근거가 꽤 부족해요. 출처를 직접 확인해 보시길 권해요",
-      "이건 저도 잘 모르겠어요. 전문가 의견을 찾아보세요",
-      "판단하기 어려운 내용이에요. 신중하게 접근해 보세요",
-    ],
-  ],
-  "반대 근거 우세": [
-    [
-      "이 주장은 사실과 꽤 달라요! 주의가 필요해요 ⚠️",
-      "반박 자료가 훨씬 더 많이 나왔어요. 다시 확인해 보세요",
-      "여러 근거들이 이 주장과 반대 방향을 가리키고 있어요",
-    ],
-    [
-      "전반적으로 사실과 거리가 있어 보여요. 조심하세요!",
-      "잘못된 정보일 가능성이 높아 보여요 🚨 주의하세요",
-      "주장보다 반대 근거가 훨씬 많이 나왔어요. 확인 필요해요",
-    ],
-  ],
-  "미확인": [
-    [
-      "아직 판단하기 어려운 상태예요. 자료가 더 필요해요",
-      "확인이 완전히 되지 않았어요. 계속 분석 중이에요!",
-      "근거를 더 모아봐야 할 것 같아요. 조금만 기다려요 🔍",
-    ],
-    [
-      "분석이 완료되지 않았어요. 결과를 곧 확인할 수 있어요",
-      "아직 확실하지 않아요. 잠시 후 다시 확인해 보세요",
-      "근거를 분석 중이에요. 조금만 더 기다려 주세요 ⏳",
-    ],
-  ],
+/* ── AI 생각: 핵심 주장 기반 동적 문구 생성 ── */
+const THOUGHT_FALLBACK: Record<string, string[]> = {
+  "사실":           ["근거가 탄탄해요. 여러 출처에서 일관되게 확인됐어요 ✓", "검증 지표가 모두 긍정적이에요. 꽤 믿을 만한 내용이에요!"],
+  "부분 사실":      ["반은 맞고 반은 좀 과장됐어요. 맥락이 정말 중요해요!", "핵심은 맞지만 세부 내용에서 약간 빗나간 것 같아요 🤔"],
+  "근거 부족":      ["확인하고 싶은데 근거가 충분히 보이지 않아요 😅", "뭔가 있는 것 같긴 한데... 자료가 더 필요할 것 같아요"],
+  "반대 근거 우세": ["이 주장은 사실과 꽤 달라요! 주의가 필요해요 ⚠️", "반박 자료가 훨씬 더 많이 나왔어요. 다시 확인해 보세요"],
 };
+
+function trim68(s: string): string {
+  return s.length > 68 ? s.slice(0, 66) + "…" : s;
+}
+
+function snip(text: string, maxLen = 16): string {
+  const t = text.replace(/\s+/g, " ").trim();
+  return t.length > maxLen ? t.slice(0, maxLen) + "…" : t;
+}
+
+function generateAiThoughts(claims: Claim[], verdict: string, confidence: number): string[] {
+  const thoughts: string[] = [];
+  const total = claims.length;
+
+  if (total > 0) {
+    const trueCnt  = claims.filter(c => c.verdict === "사실").length;
+    const falseCnt = claims.filter(c => c.verdict === "반대 근거 우세").length;
+    const weakCnt  = claims.filter(c => c.verdict === "근거 부족").length;
+    const partCnt  = claims.filter(c => c.verdict === "부분 사실").length;
+
+    // 1. 전체 통계 각도
+    if (trueCnt === total && total >= 2) {
+      thoughts.push(trim68(`${total}개 주장이 전부 사실로 확인됐어요! 상당히 신뢰할 만한 내용이에요 ✓`));
+    } else if (falseCnt === total && total >= 2) {
+      thoughts.push(trim68(`${total}개 주장 모두에 반박 근거가 나왔어요. 전반적으로 의심스러워요 ⚠️`));
+    } else if (trueCnt > 0 && falseCnt > 0) {
+      thoughts.push(trim68(`사실 ${trueCnt}개, 반박 ${falseCnt}개. 주장이 뒤섞인 복잡한 내용이에요 🤔`));
+    } else if (weakCnt > 0 && weakCnt >= Math.ceil(total / 2)) {
+      thoughts.push(trim68(`${weakCnt}개 주장이 검증 자료가 부족해요. 확인이 쉽지 않은 내용이네요`));
+    } else if (partCnt === total && total >= 2) {
+      thoughts.push(trim68(`모든 주장이 부분적으로만 맞아요. 단순화된 내용인 것 같아요`));
+    }
+
+    // 2. 가장 확실한 주장 하이라이트
+    const sorted = [...claims].sort((a, b) => b.confidence - a.confidence);
+    const top = sorted[0];
+    if (top) {
+      const s = snip(top.claim);
+      if (top.verdict === "사실" && top.confidence >= 75) {
+        thoughts.push(trim68(`"${s}" — 이 부분이 가장 확실해요! (${top.confidence}%) ✓`));
+      } else if (top.verdict === "반대 근거 우세" && top.confidence >= 70) {
+        thoughts.push(trim68(`"${s}" — 이 주장은 사실과 많이 달라요 (${top.confidence}%) ⚠️`));
+      } else if (top.verdict === "근거 부족") {
+        thoughts.push(trim68(`"${s}" — 이게 가장 판단하기 어려웠어요 😅`));
+      }
+    }
+
+    // 3. 지지/반박 근거 균형
+    const totalSupp = claims.reduce((s, c) => s + (c.supporting_points?.length ?? 0), 0);
+    const totalCont = claims.reduce((s, c) => s + (c.counter_points?.length ?? 0), 0);
+    if (totalSupp + totalCont >= 3) {
+      if (totalSupp > totalCont + 2) {
+        thoughts.push(trim68(`지지 근거(${totalSupp}개)가 반박(${totalCont}개)보다 압도적으로 많아요!`));
+      } else if (totalCont > totalSupp + 2) {
+        thoughts.push(trim68(`반박 근거(${totalCont}개)가 지지(${totalSupp}개)보다 훨씬 많아요. 주의 필요!`));
+      } else if (totalSupp > 0 && totalCont > 0) {
+        thoughts.push(trim68(`지지 ${totalSupp}개 vs 반박 ${totalCont}개 — 팽팽해서 판단이 쉽지 않아요`));
+      }
+    }
+
+    // 4. 주장 타입별 특이점
+    const hasDisputed = claims.some(c => c.claim_type === "DISPUTED_TERRITORY");
+    const hasOpinion  = claims.some(c => c.claim_type === "OPINION");
+    if (hasDisputed) {
+      thoughts.push("영토·주권 관련 주장이 포함됐어요. 복잡한 판정 기준이 적용됐어요");
+    } else if (hasOpinion && total > 1) {
+      thoughts.push("의견성 주장이 섞여 있어요. 사실과 주관적 표현을 구분해야 해요");
+    }
+
+    // 5. 가장 낮은 신뢰도 주장 언급 (top과 다를 때)
+    const bottom = sorted[sorted.length - 1];
+    if (bottom && bottom !== top && bottom.confidence < 45) {
+      const bs = snip(bottom.claim, 14);
+      thoughts.push(trim68(`"${bs}" — 신뢰도가 ${bottom.confidence}%로 가장 낮았어요`));
+    }
+  }
+
+  // 최소 3개 보장 — 부족하면 fallback에서 보충
+  const fallback = THOUGHT_FALLBACK[verdict] ?? THOUGHT_FALLBACK["근거 부족"];
+  for (const t of fallback) {
+    if (thoughts.length >= 4) break;
+    if (!thoughts.includes(t)) thoughts.push(t);
+  }
+
+  return thoughts;
+}
 
 type ThoughtPhase = "intro" | "typing" | "hold" | "out";
 
-function AiThought({ verdict, confidence }: { verdict: string; confidence: number }) {
-  const groups = AI_THOUGHTS[verdict] ?? AI_THOUGHTS["근거 부족"];
-  const thoughts = groups[confidence >= 65 ? 0 : 1];
+function AiThought({ verdict, confidence, claims }: { verdict: string; confidence: number; claims: Claim[] }) {
+  const thoughts = generateAiThoughts(claims, verdict, confidence);
   const [idx, setIdx] = useState(0);
   const [charCount, setCharCount] = useState(0);
   const [phase, setPhase] = useState<ThoughtPhase>("intro");
@@ -159,7 +188,7 @@ function AiThought({ verdict, confidence }: { verdict: string; confidence: numbe
 
   useEffect(() => {
     if (phase === "intro") {
-      const t = setTimeout(() => { setPhase("typing"); setCharCount(0); }, 750);
+      const t = setTimeout(() => { setPhase("typing"); setCharCount(0); }, 800);
       return () => clearTimeout(t);
     }
     if (phase === "typing") {
@@ -167,52 +196,50 @@ function AiThought({ verdict, confidence }: { verdict: string; confidence: numbe
         const t = setTimeout(() => setPhase("hold"), 150);
         return () => clearTimeout(t);
       }
-      const t = setTimeout(() => setCharCount(c => c + 1), 34);
+      const t = setTimeout(() => setCharCount(c => c + 1), 32);
       return () => clearTimeout(t);
     }
     if (phase === "hold") {
-      const t = setTimeout(() => setPhase("out"), 3000);
+      const t = setTimeout(() => setPhase("out"), 3200);
       return () => clearTimeout(t);
     }
     if (phase === "out") {
-      const t = setTimeout(() => { setIdx(i => i + 1); setCharCount(0); setPhase("typing"); }, 420);
+      const t = setTimeout(() => { setIdx(i => (i + 1) % thoughts.length); setCharCount(0); setPhase("typing"); }, 400);
       return () => clearTimeout(t);
     }
-  }, [phase, charCount, current.length]);
+  }, [phase, charCount, current.length, thoughts.length]);
 
   const dotBg: Record<string, string> = {
     "사실": "bg-emerald-500",
     "부분 사실": "bg-blue-500",
     "근거 부족": "bg-yellow-500",
     "반대 근거 우세": "bg-red-500",
-    "미확인": "bg-muted-foreground",
   };
-  const pingColor = dotBg[verdict] ?? "bg-primary";
   const dotColor = dotBg[verdict] ?? "bg-primary";
 
   return (
     <>
-      <style>{`@keyframes aiCursorBlink { 0%,100%{opacity:1}50%{opacity:0} }`}</style>
-      <div className="mt-3 flex items-start gap-2.5 min-h-[1.6em]">
+      <style>{`@keyframes aiCursorBlink{0%,100%{opacity:1}50%{opacity:0}}`}</style>
+      <div className="mt-3 flex items-start gap-2.5 min-h-[1.5em]">
         <div className="shrink-0 flex items-center gap-1.5 mt-[3px]">
           <span className="relative flex h-2 w-2">
-            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-50 ${pingColor}`} />
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-50 ${dotColor}`} />
             <span className={`relative inline-flex rounded-full h-2 w-2 ${dotColor}`} />
           </span>
           <span className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">AI 생각</span>
         </div>
         <p
-          className="text-xs text-muted-foreground/80 leading-relaxed flex-1 italic"
+          className="text-[12.5px] text-muted-foreground/75 leading-relaxed flex-1 italic"
           style={{ opacity: phase === "out" ? 0 : 1, transition: "opacity 0.38s ease" }}
         >
           {phase === "intro" ? (
-            <span className="opacity-40">생각 중…</span>
+            <span className="opacity-35">분석 결과 정리 중…</span>
           ) : (
             <>
               {current.slice(0, charCount)}
               {phase === "typing" && (
                 <span
-                  className="inline-block w-[1.5px] h-[0.85em] bg-current ml-[1px] align-middle opacity-60"
+                  className="inline-block w-[1.5px] h-[0.85em] bg-current ml-[1px] align-middle opacity-55"
                   style={{ animation: "aiCursorBlink 0.65s ease-in-out infinite" }}
                 />
               )}
@@ -527,7 +554,7 @@ function AnalysisPage() {
                   <VerdictBadge verdict={overallVerdict} size="md" />
                   <span className="text-sm text-muted-foreground">신뢰도 <strong className="text-foreground">{overallConfidence}%</strong></span>
                 </div>
-                <AiThought verdict={overallVerdict} confidence={overallConfidence} />
+                <AiThought verdict={overallVerdict} confidence={overallConfidence} claims={claims} />
               </div>
               <div className="shrink-0">
                 <VerdictGauge verdict={overallVerdict} confidence={overallConfidence} size="lg" />
