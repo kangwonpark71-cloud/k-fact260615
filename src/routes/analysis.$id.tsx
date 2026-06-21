@@ -83,6 +83,147 @@ function getConfidenceLabel(v: number): { text: string; color: string } {
   return        { text: "거의 확인 안 됐어요",       color: "text-verdict-false" };
 }
 
+/* ── AI 생각 타이핑 애니메이션 ── */
+const AI_THOUGHTS: Record<string, [string[], string[]]> = {
+  "사실": [
+    [
+      "오, 이건 꽤 믿을 만해요! 근거들이 일관되게 확인됐어요 ✓",
+      "검증 지표가 모두 긍정적으로 나왔어요. 신뢰할 수 있어요!",
+      "제가 찾은 근거들이 주장을 잘 뒷받침하고 있어요 👍",
+    ],
+    [
+      "사실인 것 같지만, 확신하기엔 근거가 조금 부족해요",
+      "방향은 맞는 것 같아요. 세부 내용은 한 번 더 확인해 보세요",
+      "근거는 있는데 더 많은 자료가 있으면 좋겠네요 🤔",
+    ],
+  ],
+  "부분 사실": [
+    [
+      "반은 맞고 반은 좀 과장됐어요. 맥락이 정말 중요해요!",
+      "일부는 확인됐지만 전체적으로는 좀 단순화된 것 같아요",
+      "사실과 의견이 섞여 있네요. 꼼꼼히 구분해 보세요 🧐",
+    ],
+    [
+      "어느 정도 맞는 부분이 있긴 한데 완전하지는 않아요",
+      "핵심은 맞지만 세부 내용에서 약간 빗나간 것 같아요",
+      "맥락에 따라 다르게 해석될 수 있는 내용이에요 🤔",
+    ],
+  ],
+  "근거 부족": [
+    [
+      "확인하고 싶은데 근거가 충분히 보이지 않아요 😅",
+      "뭔가 있는 것 같긴 한데... 자료가 더 필요할 것 같아요",
+      "현재로선 판단하기 어려운 내용이에요. 저도 헷갈려요 🤔",
+    ],
+    [
+      "근거가 꽤 부족해요. 출처를 직접 확인해 보시길 권해요",
+      "이건 저도 잘 모르겠어요. 전문가 의견을 찾아보세요",
+      "판단하기 어려운 내용이에요. 신중하게 접근해 보세요",
+    ],
+  ],
+  "반대 근거 우세": [
+    [
+      "이 주장은 사실과 꽤 달라요! 주의가 필요해요 ⚠️",
+      "반박 자료가 훨씬 더 많이 나왔어요. 다시 확인해 보세요",
+      "여러 근거들이 이 주장과 반대 방향을 가리키고 있어요",
+    ],
+    [
+      "전반적으로 사실과 거리가 있어 보여요. 조심하세요!",
+      "잘못된 정보일 가능성이 높아 보여요 🚨 주의하세요",
+      "주장보다 반대 근거가 훨씬 많이 나왔어요. 확인 필요해요",
+    ],
+  ],
+  "미확인": [
+    [
+      "아직 판단하기 어려운 상태예요. 자료가 더 필요해요",
+      "확인이 완전히 되지 않았어요. 계속 분석 중이에요!",
+      "근거를 더 모아봐야 할 것 같아요. 조금만 기다려요 🔍",
+    ],
+    [
+      "분석이 완료되지 않았어요. 결과를 곧 확인할 수 있어요",
+      "아직 확실하지 않아요. 잠시 후 다시 확인해 보세요",
+      "근거를 분석 중이에요. 조금만 더 기다려 주세요 ⏳",
+    ],
+  ],
+};
+
+type ThoughtPhase = "intro" | "typing" | "hold" | "out";
+
+function AiThought({ verdict, confidence }: { verdict: string; confidence: number }) {
+  const groups = AI_THOUGHTS[verdict] ?? AI_THOUGHTS["근거 부족"];
+  const thoughts = groups[confidence >= 65 ? 0 : 1];
+  const [idx, setIdx] = useState(0);
+  const [charCount, setCharCount] = useState(0);
+  const [phase, setPhase] = useState<ThoughtPhase>("intro");
+  const current = thoughts[idx % thoughts.length];
+
+  useEffect(() => {
+    if (phase === "intro") {
+      const t = setTimeout(() => { setPhase("typing"); setCharCount(0); }, 750);
+      return () => clearTimeout(t);
+    }
+    if (phase === "typing") {
+      if (charCount >= current.length) {
+        const t = setTimeout(() => setPhase("hold"), 150);
+        return () => clearTimeout(t);
+      }
+      const t = setTimeout(() => setCharCount(c => c + 1), 34);
+      return () => clearTimeout(t);
+    }
+    if (phase === "hold") {
+      const t = setTimeout(() => setPhase("out"), 3000);
+      return () => clearTimeout(t);
+    }
+    if (phase === "out") {
+      const t = setTimeout(() => { setIdx(i => i + 1); setCharCount(0); setPhase("typing"); }, 420);
+      return () => clearTimeout(t);
+    }
+  }, [phase, charCount, current.length]);
+
+  const dotBg: Record<string, string> = {
+    "사실": "bg-emerald-500",
+    "부분 사실": "bg-blue-500",
+    "근거 부족": "bg-yellow-500",
+    "반대 근거 우세": "bg-red-500",
+    "미확인": "bg-muted-foreground",
+  };
+  const pingColor = dotBg[verdict] ?? "bg-primary";
+  const dotColor = dotBg[verdict] ?? "bg-primary";
+
+  return (
+    <>
+      <style>{`@keyframes aiCursorBlink { 0%,100%{opacity:1}50%{opacity:0} }`}</style>
+      <div className="mt-3 flex items-start gap-2.5 min-h-[1.6em]">
+        <div className="shrink-0 flex items-center gap-1.5 mt-[3px]">
+          <span className="relative flex h-2 w-2">
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-50 ${pingColor}`} />
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${dotColor}`} />
+          </span>
+          <span className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">AI 생각</span>
+        </div>
+        <p
+          className="text-xs text-muted-foreground/80 leading-relaxed flex-1 italic"
+          style={{ opacity: phase === "out" ? 0 : 1, transition: "opacity 0.38s ease" }}
+        >
+          {phase === "intro" ? (
+            <span className="opacity-40">생각 중…</span>
+          ) : (
+            <>
+              {current.slice(0, charCount)}
+              {phase === "typing" && (
+                <span
+                  className="inline-block w-[1.5px] h-[0.85em] bg-current ml-[1px] align-middle opacity-60"
+                  style={{ animation: "aiCursorBlink 0.65s ease-in-out infinite" }}
+                />
+              )}
+            </>
+          )}
+        </p>
+      </div>
+    </>
+  );
+}
+
 /* ── 근거 강도 분석 ── */
 function evidenceStrength(claim: Claim): {
   supportCount: number;
@@ -386,6 +527,7 @@ function AnalysisPage() {
                   <VerdictBadge verdict={overallVerdict} size="md" />
                   <span className="text-sm text-muted-foreground">신뢰도 <strong className="text-foreground">{overallConfidence}%</strong></span>
                 </div>
+                <AiThought verdict={overallVerdict} confidence={overallConfidence} />
               </div>
               <div className="shrink-0">
                 <VerdictGauge verdict={overallVerdict} confidence={overallConfidence} size="lg" />
