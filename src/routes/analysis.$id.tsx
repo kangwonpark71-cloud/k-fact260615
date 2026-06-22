@@ -273,7 +273,23 @@ function generateAiThoughts(claims: Claim[], verdict: string, confidence: number
     if (!thoughts.includes(t)) thoughts.push(t);
   }
 
-  return thoughts.filter(Boolean);
+  /* ── 중복·유사 문장 제거 (핵심 키워드 기준 60% 이상 겹치면 제거) ── */
+  const keyTokens = (s: string) =>
+    s.replace(/[""「」『』\s]/g, "").split(/(?=[가-힣A-Z])|(?<=[가-힣A-Z])/).filter(t => t.length >= 2);
+
+  const deduped: string[] = [];
+  for (const t of thoughts) {
+    const tk = new Set(keyTokens(t));
+    const isDupe = deduped.some(existing => {
+      const ek = new Set(keyTokens(existing));
+      const inter = [...tk].filter(k => ek.has(k)).length;
+      return inter / Math.min(tk.size, ek.size) > 0.55;
+    });
+    if (!isDupe) deduped.push(t);
+    if (deduped.length >= 5) break;
+  }
+
+  return deduped.filter(Boolean);
 }
 
 type ThoughtPhase = "intro" | "typing" | "hold" | "out";
