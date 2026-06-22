@@ -1782,6 +1782,13 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium leading-snug mb-1.5 pr-2">{claim.claim}</p>
 
+            {/* 근거 요약 미리보기 (접힌 상태에서도 표시) */}
+            {!isSimple && !expanded && claim.reasoning && (
+              <p className="text-xs text-foreground/65 leading-relaxed mb-1.5 line-clamp-1">
+                {claim.reasoning}
+              </p>
+            )}
+
             {!isSimple && !expanded && (claim.supporting_points.length > 0 || claim.counter_points.length > 0) && (
               <div className="flex flex-wrap gap-3 mb-1.5">
                 {claim.supporting_points.length > 0 && (
@@ -1837,13 +1844,6 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
               ) : (
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 border text-xs font-semibold rounded-sm shrink-0 ${meta.bg} ${meta.border} ${meta.color}`}>
                   <Icon className="w-3 h-3" /> {isOpinion ? "의견/견해" : meta.label}
-                </span>
-              )}
-
-              {/* 핵심 문장 — 판정 배지 바로 옆 */}
-              {!isSimple && !expanded && claim.reasoning && (
-                <span className="text-[11px] text-foreground/55 line-clamp-1 flex-1 min-w-0 leading-relaxed">
-                  {extractFirstSentence(claim.reasoning, 8, 90) ?? claim.reasoning}
                 </span>
               )}
 

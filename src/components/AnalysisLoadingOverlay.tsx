@@ -86,15 +86,15 @@ function ClaimChip({ label, delay }: { label: string; delay: number }) {
     <div className={`rounded-xl border px-3 py-2.5 transition-all duration-400 ${
       settled ? "border-primary/25 bg-primary/5" : "border-border/40 bg-background/20"
     }`}>
-      <p className="text-[13px] sm:text-[12px] text-muted-foreground/80 leading-snug line-clamp-2 mb-2">
+      <p className="text-[16px] text-muted-foreground/80 leading-snug line-clamp-2 mb-2">
         {label}
       </p>
       {settled && verdict ? (
-        <span className={`inline-flex items-center gap-1 text-[12px] font-bold px-2 py-0.5 rounded-full border ${verdictClass}`}>
+        <span className={`inline-flex items-center gap-1 text-[15px] font-bold px-2.5 py-1 rounded-full border ${verdictClass}`}>
           {verdict}
         </span>
       ) : (
-        <span className="text-[14px] font-bold transition-all duration-150" style={{ color: v.color }}>
+        <span className="text-[18px] font-bold transition-all duration-150" style={{ color: v.color }}>
           {v.label}
         </span>
       )}
