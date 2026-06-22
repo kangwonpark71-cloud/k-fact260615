@@ -221,12 +221,22 @@ function generateAiThoughts(claims: Claim[], verdict: string, confidence: number
     } else {
       thoughts.push(trim68(`${quoteSnip(snip(wc.claim, 18), 20)} — 추천 출처에서 직접 확인이 필요해요`));
     }
-  } else if (weakClaims.length === total && total >= 2) {
+  } else if (weakClaims.length === total && total >= 1) {
     const allUnknowns = claims.flatMap(c => c.unknowns ?? []);
+    const bestReasoning = [...weakClaims]
+      .sort((a, b) => (b.reasoning?.length ?? 0) - (a.reasoning?.length ?? 0))
+      .find(c => c.reasoning && c.reasoning.length >= 15);
+    const reasonSnip = bestReasoning ? extractFirstSentence(bestReasoning.reasoning, 12, 65) : null;
+    const realClaims = weakClaims.filter(c => c.claim !== "본문 내 주요 주장" && c.claim.length >= 15);
+
     if (allUnknowns.length > 0) {
-      thoughts.push(trim68(`공통 검증 장벽: ${quoteSnip(allUnknowns[0], 48)}`));
+      thoughts.push(trim68(`💡 확인 필요: ${quoteSnip(allUnknowns[0], 48)}`));
+    } else if (reasonSnip) {
+      thoughts.push(trim68(`💡 ${reasonSnip}`));
+    } else if (realClaims.length > 0) {
+      thoughts.push(trim68(`${quoteSnip(snip(realClaims[0].claim, 24), 26)} — 공신력 있는 1차 출처 확인 권장`));
     } else {
-      thoughts.push("비공개 데이터나 내부 자료 없이는 판단하기 어려운 내용이에요");
+      thoughts.push("공개 자료만으로 판단하기 어려운 내용이에요 — 1차 출처 직접 확인 권장");
     }
   }
 
@@ -1624,7 +1634,7 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
           >
             <AlertCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
             <span className="text-[11px] text-muted-foreground/60 font-medium">
-              근거 부족 {unknownClaims.length}건 — {phase2Loading ? "심층 검토 중…" : "이전 분석 기록"}
+              근거 부족 {unknownClaims.length}건 — {phase2Loading ? "심층 검토 중…" : "검증 보류 항목"}
             </span>
             <span className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground/40">
               {showUnknown ? "접기" : "펼치기"}
