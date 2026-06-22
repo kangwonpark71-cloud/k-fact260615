@@ -135,7 +135,7 @@ function StyleClassificationPanel({ sc }: { sc: StyleClassification }) {
 
       {/* 언어학적 지표 */}
       <div>
-        <p className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+        <p className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-widest mb-2 flex items-center gap-1.5">
           <Activity className="w-3 h-3" /> 언어학적 지표 (LIWC 기반)
         </p>
         <div className="space-y-1.5">
@@ -149,7 +149,7 @@ function StyleClassificationPanel({ sc }: { sc: StyleClassification }) {
 
       {/* 기만 리스크 지표 */}
       <div>
-        <p className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+        <p className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-widest mb-2 flex items-center gap-1.5">
           <AlertOctagon className="w-3 h-3" /> 기만 리스크 (NELA-GT 기반)
         </p>
         <div className="space-y-1.5">
@@ -166,7 +166,7 @@ function StyleClassificationPanel({ sc }: { sc: StyleClassification }) {
           <button
             type="button"
             onClick={() => setShowTech(v => !v)}
-            className="flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest hover:text-foreground transition-colors"
+            className="flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground/80 uppercase tracking-widest hover:text-foreground transition-colors"
           >
             <Zap className="w-3 h-3" />
             탐지된 선동 기법 — SemEval-2020 ({sc.propaganda_techniques.length}건)
@@ -250,12 +250,12 @@ export function AuditTrailPanel({ auditLog, integrity, styleClassification, exte
             <Section title="1단계 분석 (학습 지식 기반)" icon={<Cpu className="w-3.5 h-3.5" />}>
               <div className="text-xs space-y-1.5 text-muted-foreground">
                 <div className="flex gap-2">
-                  <span className="text-foreground/60 shrink-0">사용 모델</span>
+                  <span className="text-muted-foreground shrink-0">사용 모델</span>
                   <span className="font-mono">{auditLog.phase1.model}</span>
                 </div>
                 {auditLog.phase1.fake_probability > 0 && (
                   <div className="flex gap-2">
-                    <span className="text-foreground/60 shrink-0">가짜 가능성 지수</span>
+                    <span className="text-muted-foreground shrink-0">가짜 가능성 지수</span>
                     <span className={`font-semibold ${auditLog.phase1.fake_probability >= 60 ? "text-destructive" : auditLog.phase1.fake_probability >= 30 ? "text-yellow-500" : "text-verdict-true"}`}>
                       {auditLog.phase1.fake_probability}%
                     </span>
@@ -263,7 +263,7 @@ export function AuditTrailPanel({ auditLog, integrity, styleClassification, exte
                 )}
                 {auditLog.phase1.style_signals && auditLog.phase1.style_signals.length > 0 && (
                   <div className="flex gap-2 flex-wrap pt-1">
-                    <span className="text-foreground/60 shrink-0 leading-5">탐지된 신호</span>
+                    <span className="text-muted-foreground shrink-0 leading-5">탐지된 신호</span>
                     <div className="flex flex-wrap gap-1">
                       {auditLog.phase1.style_signals.map((s, i) => (
                         <span key={i} className="px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 text-[10px] border border-yellow-500/20">
@@ -282,16 +282,16 @@ export function AuditTrailPanel({ auditLog, integrity, styleClassification, exte
             <Section title="2단계 분析 (Tavily 검색 기반)" icon={<Search className="w-3.5 h-3.5" />}>
               <div className="text-xs space-y-2 text-muted-foreground">
                 <div className="flex gap-2">
-                  <span className="text-foreground/60 shrink-0">사용 모델</span>
+                  <span className="text-muted-foreground shrink-0">사용 모델</span>
                   <span className="font-mono">{auditLog.phase2.model}</span>
                 </div>
                 <div className="flex gap-2">
-                  <span className="text-foreground/60 shrink-0">검색 증거 수</span>
+                  <span className="text-muted-foreground shrink-0">검색 증거 수</span>
                   <span className="font-semibold text-foreground/80">{auditLog.phase2.evidence_count}건</span>
                 </div>
                 {auditLog.phase2.search_queries.length > 0 && (
                   <div className="space-y-1">
-                    <p className="text-foreground/60">사용된 검색어</p>
+                    <p className="text-muted-foreground">사용된 검색어</p>
                     <div className="space-y-1">
                       {auditLog.phase2.search_queries.map((q, i) => (
                         <div key={i} className="flex items-start gap-1.5">
@@ -304,7 +304,7 @@ export function AuditTrailPanel({ auditLog, integrity, styleClassification, exte
                 )}
                 {auditLog.phase2.sources_reviewed.length > 0 && (
                   <div className="space-y-1">
-                    <p className="text-foreground/60">검토한 출처 ({auditLog.phase2.sources_reviewed.length}건)</p>
+                    <p className="text-muted-foreground">검토한 출처 ({auditLog.phase2.sources_reviewed.length}건)</p>
                     <div className="space-y-0.5 max-h-36 overflow-y-auto">
                       {auditLog.phase2.sources_reviewed.map((s, i) => (
                         <a

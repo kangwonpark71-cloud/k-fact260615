@@ -231,7 +231,7 @@ export function TrendingNews({ onAnalyze, listMaxHeight, listMinHeight }: Props)
                           {item.source}
                         </span>
                         {item.pubDate && (
-                          <span className="text-xs sm:text-[10px] text-muted-foreground/60">
+                          <span className="text-xs sm:text-[10px] text-muted-foreground/80">
                             {timeAgo(item.pubDate)}
                           </span>
                         )}
@@ -266,7 +266,7 @@ export function TrendingNews({ onAnalyze, listMaxHeight, listMinHeight }: Props)
 
       {/* 푸터 */}
       <div className="border-t border-border/40 px-4 py-2.5 sm:py-2">
-        <p className="text-xs sm:text-[10px] text-muted-foreground/50 text-center">
+        <p className="text-xs sm:text-[10px] text-muted-foreground/80 text-center">
           매일 9시·14시(KST) 업데이트 · 뉴스·정부·네이버·YouTube·DC인사이드·FM코리아·X(Twitter)
         </p>
       </div>

@@ -226,10 +226,10 @@ function AiThought({ verdict, confidence, claims }: { verdict: string; confidenc
             <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-50 ${dotColor}`} />
             <span className={`relative inline-flex rounded-full h-2 w-2 ${dotColor}`} />
           </span>
-          <span className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">AI 생각</span>
+          <span className="text-[10px] font-bold text-muted-foreground/70 uppercase tracking-widest">AI 생각</span>
         </div>
         <p
-          className="text-[12.5px] text-muted-foreground/75 leading-relaxed flex-1 italic"
+          className="text-[12.5px] text-muted-foreground leading-relaxed flex-1 italic"
           style={{ opacity: phase === "out" ? 0 : 1, transition: "opacity 0.38s ease" }}
         >
           {phase === "intro" ? (
@@ -532,7 +532,6 @@ function AnalysisPage() {
       <BottomNav />
       <main
         className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-5"
-        style={{ "--muted-foreground": "oklch(0.30 0.025 255)" } as React.CSSProperties}
       >
         <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-4 h-4" /> 새 분석
@@ -542,8 +541,8 @@ function AnalysisPage() {
         <div className="border border-border/60 bg-surface shadow-[var(--shadow-card)]">
           {/* 문서 상단 레이블 바 */}
           <div className="px-5 sm:px-7 py-2 border-b border-border/40 flex items-center justify-between gap-3 bg-surface-2/50">
-            <span className="text-[13.5px] font-bold tracking-widest uppercase text-muted-foreground/60 font-mono">팩트체크 판정서</span>
-            <span className="text-[13.5px] text-muted-foreground/40 font-mono">
+            <span className="text-[13.5px] font-bold tracking-widest uppercase text-muted-foreground font-mono">팩트체크 판정서</span>
+            <span className="text-[13.5px] text-muted-foreground/70 font-mono">
               {new Date(dataRow.created_at as string).toLocaleString("ko-KR")}
             </span>
           </div>
@@ -566,9 +565,9 @@ function AnalysisPage() {
 
             {/* 요약 */}
             {cleanSummary ? (
-              <p className="text-sm text-foreground/85 leading-relaxed border-t border-border/30 pt-4">{cleanSummary}</p>
+              <p className="text-sm text-foreground leading-relaxed border-t border-border/30 pt-4">{cleanSummary}</p>
             ) : (
-              <p className="text-sm text-muted-foreground/50 leading-relaxed border-t border-border/30 pt-4 italic">심층 분석 결과 생성 중…</p>
+              <p className="text-sm text-muted-foreground leading-relaxed border-t border-border/30 pt-4 italic">심층 분석 결과 생성 중…</p>
             )}
 
             {/* 원문 링크 + 공유 */}
@@ -703,7 +702,7 @@ function AnalysisPage() {
           />
         )}
 
-        <p className="text-xs text-foreground/60 leading-relaxed p-4 rounded-xl border border-border/50 bg-surface/30">
+        <p className="text-xs text-muted-foreground leading-relaxed p-4 rounded-xl border border-border/50 bg-surface/30">
           이 결과는 AI 보조 판단이며 단정적 사실확인이 아닙니다. 신뢰도와 근거 부족 항목을 함께 참고하고,
           중요한 의사결정 전에는 표기된 출처 유형의 1차 자료를 직접 확인하세요.
         </p>
@@ -731,9 +730,9 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
   return (
     <div className="border border-border/50 bg-surface overflow-hidden">
       <div className="px-4 sm:px-5 py-2.5 border-b border-border/30 flex items-center gap-2 bg-surface-2/40">
-        <span className="font-mono text-[13px] font-bold text-muted-foreground/60 uppercase tracking-widest">AI 파이프라인 분析</span>
+        <span className="font-mono text-[13px] font-bold text-muted-foreground uppercase tracking-widest">AI 파이프라인 분析</span>
         {isLLMAnalysis && (
-          <span className="font-mono text-[11px] text-primary/60 border border-primary/20 px-1.5 py-0.5 rounded-sm">트랜스포머</span>
+          <span className="font-mono text-[11px] text-primary/80 border border-primary/30 px-1.5 py-0.5 rounded-sm">트랜스포머</span>
         )}
         {displayBiasType && displayBiasType !== "중립" && displayBiasType !== "사실보도" && displayBiasType !== "학술/공식문서" && (
           <span className="font-mono text-[13px] font-bold text-verdict-partial border border-verdict-partial/30 px-2 py-0.5 rounded-sm ml-auto uppercase tracking-widest">
@@ -757,7 +756,7 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
             <div className="h-1 bg-surface-2 overflow-hidden">
               <div className={`h-full ${barColor} transition-all`} style={{ width: `${fpct}%` }} />
             </div>
-            <p className="text-[15px] text-muted-foreground/50 mt-1">
+            <p className="text-[15px] text-muted-foreground/80 mt-1">
               {isLLMAnalysis
                 ? "SemEval-2020 선동기법 탐지 · LIWC 심리언어학 · NELA-GT 신뢰도 기준 (트랜스포머 분류)"
                 : "LIAR Dataset / FakeNewsNet 패턴 기반 분析"}
@@ -778,7 +777,7 @@ function PipelineMetaPanel({ meta }: { meta: PipelineMeta }) {
               const color = good ? "text-verdict-true" : value >= 50 ? "text-verdict-partial" : "text-verdict-false";
               return (
                 <div key={label} className="flex items-center gap-1.5">
-                  <span className="text-muted-foreground/60 shrink-0">{label}</span>
+                  <span className="text-muted-foreground shrink-0">{label}</span>
                   <div className="flex-1 h-1 rounded-full bg-border overflow-hidden">
                     <div className={`h-full rounded-full ${good ? "bg-verdict-true" : "bg-verdict-false"}`} style={{ width: `${value}%` }} />
                   </div>
@@ -952,7 +951,7 @@ function KeywordHighlight({ inputText, claims, overallVerdict }: {
       {/* 헤더 */}
       <div className="px-4 sm:px-5 py-2.5 border-b border-border/30 flex items-center gap-2 bg-surface-2/40">
         <Sparkles className="w-3.5 h-3.5 text-primary/70" style={{ animation: "sparkPulse 2.4s ease-in-out infinite" }} />
-        <span className="text-[11px] font-bold text-muted-foreground/60 uppercase tracking-widest">AI 분석 하이라이트</span>
+        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">AI 분석 하이라이트</span>
         <div className="ml-auto flex gap-1">
           {[0, 1, 2].map(i => (
             <div key={i} className="w-1.5 h-1.5 rounded-full bg-primary/50"
@@ -963,7 +962,7 @@ function KeywordHighlight({ inputText, claims, overallVerdict }: {
 
       {/* 섹션 1: 핵심 키워드 */}
       <div className="px-4 sm:px-5 pt-4 pb-4 border-b border-border/20">
-        <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest mb-3">핵심 키워드</p>
+        <p className="text-[10px] font-bold text-muted-foreground/70 uppercase tracking-widest mb-3">핵심 키워드</p>
         <div className="flex flex-wrap gap-2.5 min-h-[60px] items-center">
           {keywords.map((word, i) => {
             const meta = wordMeta.get(word);
@@ -996,7 +995,7 @@ function KeywordHighlight({ inputText, claims, overallVerdict }: {
             );
           })}
           {keywords.length === 0 && (
-            <span className="text-xs text-muted-foreground/30 italic">키워드 분석 중…</span>
+            <span className="text-xs text-muted-foreground/60 italic">키워드 분석 중…</span>
           )}
         </div>
       </div>
@@ -1005,14 +1004,14 @@ function KeywordHighlight({ inputText, claims, overallVerdict }: {
       {claims.length > 0 && (
         <div>
           <div className="px-4 sm:px-5 pt-3 pb-0 flex items-center justify-between">
-            <p className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest">핵심 주장</p>
+            <p className="text-[10px] font-bold text-muted-foreground/70 uppercase tracking-widest">핵심 주장</p>
             {claims.length > 1 && (
               <div className="flex items-center gap-2">
                 <button type="button" onClick={() => advance("prev")}
                   className="w-5 h-5 rounded-full border border-border/40 flex items-center justify-center hover:bg-surface-2 transition-colors">
                   <ChevronLeft className="w-3 h-3 text-muted-foreground" />
                 </button>
-                <span className="text-[10px] text-muted-foreground/50 tabular-nums">{slideIdx + 1} / {claims.length}</span>
+                <span className="text-[10px] text-muted-foreground/80 tabular-nums">{slideIdx + 1} / {claims.length}</span>
                 <button type="button" onClick={() => advance("next")}
                   className="w-5 h-5 rounded-full border border-border/40 flex items-center justify-center hover:bg-surface-2 transition-colors">
                   <ChevronRight className="w-3 h-3 text-muted-foreground" />
@@ -1036,7 +1035,7 @@ function KeywordHighlight({ inputText, claims, overallVerdict }: {
                 accentColor={claimVStyle.text}
               />
               {currentClaim?.reasoning && (
-                <p className="text-xs text-muted-foreground mt-2 leading-relaxed line-clamp-2 opacity-75">
+                <p className="text-xs text-muted-foreground mt-2 leading-relaxed line-clamp-2">
                   {currentClaim.reasoning}
                 </p>
               )}
@@ -1225,7 +1224,7 @@ function InputSummary({ text, label }: { text: string; label?: string }) {
       )}
       {!open && (
         <div className="px-4 sm:px-5 pb-3">
-          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 opacity-70">
+          <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
             {preview}{hasMore ? "…" : ""}
           </p>
         </div>
@@ -1366,7 +1365,7 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
               items={c.unknowns.map(u => ({ text: u, url: `https://www.google.com/search?q=${encodeURIComponent(u.slice(0, 70))}` }))} />
           )}
         </div>
-        <p className="text-[10px] text-muted-foreground/40 pt-1">
+        <p className="text-[10px] text-muted-foreground/70 pt-1">
           출처 링크는 검색 결과로 연결됩니다. 1차 자료를 직접 확인하세요.
         </p>
       </div>
@@ -1375,7 +1374,7 @@ function ClaimOverview({ claims, phase2Loading }: { claims: Claim[]; phase2Loadi
 
   return (
     <div className="border border-border/50 bg-surface shadow-[var(--shadow-card)] p-4 sm:p-5">
-      <h2 className="font-mono text-[9px] font-bold text-muted-foreground/60 uppercase tracking-widest mb-3">
+      <h2 className="font-mono text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-3">
         핵심 주장 및 근거 요약
       </h2>
 

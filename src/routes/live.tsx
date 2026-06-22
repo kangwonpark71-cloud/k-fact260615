@@ -579,11 +579,11 @@ function LivePage() {
             <>
               <LiveWaveform active color={speakerColor} />
               {interim ? (
-                <p className="text-sm text-foreground/65 italic px-1 leading-relaxed">
+                <p className="text-sm text-foreground/90 italic px-1 leading-relaxed">
                   {interim}<span className="inline-block w-0.5 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
                 </p>
               ) : (
-                <p className="text-xs text-muted-foreground/60 px-1">말씀하세요 — 발언 완료 시 자동 기록됩니다</p>
+                <p className="text-xs text-muted-foreground px-1">말씀하세요 — 발언 완료 시 자동 기록됩니다</p>
               )}
             </>
           )}
@@ -637,17 +637,17 @@ function LivePage() {
               )}
             </div>
             <div className="space-y-1.5">
-              <p className="text-sm font-semibold text-foreground/75">
+              <p className="text-sm font-semibold text-foreground/90">
                 {isListening ? "말씀해 보세요" : "대화를 시작해보세요"}
               </p>
-              <p className="text-xs text-muted-foreground/55 max-w-xs leading-relaxed mx-auto">
+              <p className="text-xs text-muted-foreground max-w-xs leading-relaxed mx-auto">
                 {isListening
                   ? "발언이 완료되면 자동으로 기록되고 실시간 팩트체크가 시작됩니다"
                   : "마이크로 말하거나 아래 입력창에 직접 발언을 입력하세요"}
               </p>
             </div>
             {!isListening && (
-              <div className="flex items-center gap-2 text-[11px] text-muted-foreground/40">
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground/70">
                 {["마이크 준비", "발언 시작", "실시간 판정"].map((step, i) => (
                   <div key={step} className="flex items-center gap-2">
                     {i > 0 && <span className="opacity-30">›</span>}
@@ -683,7 +683,7 @@ function LivePage() {
         </div>
 
         {isSupported === false && (
-          <p className="text-xs text-muted-foreground/50 text-center flex items-center justify-center gap-1.5">
+          <p className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1.5">
             <MicOff className="w-3.5 h-3.5" /> Chrome 브라우저에서만 음성 인식이 지원됩니다
           </p>
         )}
@@ -741,7 +741,7 @@ function UtteranceCard({ u, isNew }: { u: Utterance; isNew: boolean }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1.5">
               <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${style.badge}`}>{u.speaker}</span>
-              <span className="text-[10px] text-muted-foreground/60">{u.time}</span>
+              <span className="text-[10px] text-muted-foreground/80">{u.time}</span>
               {u.result.bias_type && u.result.bias_type !== "중립" && (
                 <span className="text-[10px] font-medium text-orange-400 bg-orange-400/10 border border-orange-400/20 px-1.5 py-0.5 rounded-full">
                   {u.result.bias_type} 편향
@@ -775,7 +775,7 @@ function UtteranceCard({ u, isNew }: { u: Utterance; isNew: boolean }) {
         )}
 
         {u.result.summary && (
-          <p className="text-xs text-foreground/65 leading-relaxed pl-6 border-l-2 border-red-400/30">{u.result.summary}</p>
+          <p className="text-xs text-foreground/90 leading-relaxed pl-6 border-l-2 border-red-400/30">{u.result.summary}</p>
         )}
 
         {falseHighlights.length > 0 && (
@@ -790,7 +790,7 @@ function UtteranceCard({ u, isNew }: { u: Utterance; isNew: boolean }) {
                     {h.object    && <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground">대상: {h.object}</span>}
                   </div>
                 )}
-                {h.brief && <p className="text-[11px] text-foreground/62 leading-relaxed mb-1">{h.brief}</p>}
+                {h.brief && <p className="text-[11px] text-foreground/85 leading-relaxed mb-1">{h.brief}</p>}
                 {h.counter && (
                   <div className="flex items-start gap-1.5 mt-1">
                     <ThumbsDown className="w-3 h-3 text-red-400 shrink-0 mt-0.5" />
@@ -831,7 +831,7 @@ function UtteranceCard({ u, isNew }: { u: Utterance; isNew: boolean }) {
           )}
           {u.result.naver_factchecks && <NaverRefs items={u.result.naver_factchecks} />}
         </div>
-        <span className="text-[10px] text-muted-foreground/35 shrink-0 mt-1 group-hover:text-muted-foreground/55 transition-colors">{u.time}</span>
+        <span className="text-[10px] text-muted-foreground/60 shrink-0 mt-1 group-hover:text-muted-foreground/80 transition-colors">{u.time}</span>
       </div>
     );
   }
@@ -849,7 +849,7 @@ function UtteranceCard({ u, isNew }: { u: Utterance; isNew: boolean }) {
       <div className="flex-1 min-w-0">
         <p className="text-sm text-foreground/88 leading-relaxed">{u.text}</p>
         {u.checking && (
-          <p className="text-[11px] text-muted-foreground/55 mt-0.5 flex items-center gap-1">
+          <p className="text-[11px] text-muted-foreground/80 mt-0.5 flex items-center gap-1">
             <RefreshCw className="w-2.5 h-2.5 animate-spin" /> 팩트체크 중…
           </p>
         )}

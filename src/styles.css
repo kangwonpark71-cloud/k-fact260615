@@ -69,7 +69,7 @@
   --secondary: oklch(0.94 0.006 255);
   --secondary-foreground: oklch(0.15 0.03 255);
   --muted: oklch(0.94 0.006 255);
-  --muted-foreground: oklch(0.63 0.015 255);
+  --muted-foreground: oklch(0.47 0.020 255);
   --accent: oklch(0.58 0.18 258);
   --accent-foreground: oklch(1 0 0);
   --destructive: oklch(0.56 0.19 20);
@@ -93,19 +93,19 @@
   --shadow-card: 0 0 0 1px oklch(1 0 0 / 0.08), 0 2px 8px 0 oklch(0 0 0 / 0.30);
 
   --background: oklch(0.13 0.01 255);
-  --foreground: oklch(0.97 0 0);
-  --surface: oklch(0.20 0.015 255);
-  --surface-2: oklch(0.25 0.018 255);
-  --card: oklch(0.20 0.015 255);
-  --card-foreground: oklch(0.97 0 0);
-  --popover: oklch(0.18 0.013 255);
-  --popover-foreground: oklch(0.97 0 0);
+  --foreground: oklch(0.93 0.005 255);
+  --surface: oklch(0.21 0.015 255);
+  --surface-2: oklch(0.26 0.018 255);
+  --card: oklch(0.21 0.015 255);
+  --card-foreground: oklch(0.93 0.005 255);
+  --popover: oklch(0.19 0.013 255);
+  --popover-foreground: oklch(0.93 0.005 255);
   --primary: oklch(0.65 0.14 255);
   --primary-foreground: oklch(0.97 0 0);
-  --secondary: oklch(0.26 0.020 255);
-  --secondary-foreground: oklch(0.97 0 0);
-  --muted: oklch(0.22 0.016 255);
-  --muted-foreground: oklch(0.63 0.015 255);
+  --secondary: oklch(0.27 0.020 255);
+  --secondary-foreground: oklch(0.93 0.005 255);
+  --muted: oklch(0.23 0.016 255);
+  --muted-foreground: oklch(0.72 0.015 255);
   --accent: oklch(0.65 0.14 255);
   --accent-foreground: oklch(0.97 0 0);
   --destructive: oklch(0.58 0.19 20);
@@ -141,7 +141,7 @@
   --secondary: oklch(0.25 0.08 290);
   --secondary-foreground: oklch(0.95 0.01 300);
   --muted: oklch(0.22 0.06 290);
-  --muted-foreground: oklch(0.66 0.08 290);
+  --muted-foreground: oklch(0.74 0.08 290);
   --accent: oklch(0.80 0.20 210);
   --accent-foreground: oklch(0.12 0.05 290);
   --destructive: oklch(0.60 0.22 25);
@@ -246,12 +246,40 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    line-height: 1.65;
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  }
+
+  p, li, dt, dd {
+    line-height: 1.75;
+  }
+
+  ::selection {
+    background-color: oklch(0.58 0.18 258 / 0.22);
+  }
+
+  :root[data-theme="dark"] ::selection,
+  :root[data-theme="teen"] ::selection {
+    background-color: oklch(0.65 0.14 255 / 0.35);
+  }
+
+  input, textarea, select {
+    color: var(--color-foreground);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-muted-foreground);
+    opacity: 0.85;
   }
 
   h1, h2, h3, .display {
     font-family: var(--font-sans);
     letter-spacing: -0.03em;
     font-weight: 700;
+    line-height: 1.3;
   }
 
   :root[data-theme="senior"] h1 { font-size: 1.75rem; }
@@ -272,17 +300,17 @@
 
   /* 다크 계열 — 반투명 레이어 */
   :root[data-theme="dark"] .glass {
-    background: oklch(1 0 0 / 0.04);
+    background: oklch(1 0 0 / 0.07);
     backdrop-filter: blur(12px);
-    border: 1px solid oklch(1 0 0 / 0.10);
+    border: 1px solid oklch(1 0 0 / 0.12);
     box-shadow: var(--shadow-card);
   }
 
   /* 10대 glass */
   :root[data-theme="teen"] .glass {
-    background: oklch(1 0 0 / 0.04);
+    background: oklch(1 0 0 / 0.07);
     backdrop-filter: blur(12px);
-    border: 1px solid oklch(0.78 0.22 330 / 0.20);
+    border: 1px solid oklch(0.78 0.22 330 / 0.25);
     box-shadow: var(--shadow-card);
   }
 

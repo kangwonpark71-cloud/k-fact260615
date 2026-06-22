@@ -708,7 +708,7 @@ function Home() {
                     )}
 
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-[10px] text-muted-foreground/50 leading-relaxed">
+                      <p className="text-[10px] text-muted-foreground/80 leading-relaxed">
                         ※ 미리보기는 빠른 추론 결과입니다.
                       </p>
                       <button
@@ -811,7 +811,7 @@ function Home() {
               <ShieldCheck className="w-4.5 h-4.5 text-amber-500" />
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              팩트체크는 사실검증을 <strong className="text-foreground/70">보조</strong>하는 도구이며 최종 판정이 아닙니다. 중요한 의사결정 전 1차 출처를 직접 확인하세요.
+              팩트체크는 사실검증을 <strong className="text-foreground/90">보조</strong>하는 도구이며 최종 판정이 아닙니다. 중요한 의사결정 전 1차 출처를 직접 확인하세요.
             </p>
           </div>
         </div>
