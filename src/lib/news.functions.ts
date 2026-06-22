@@ -3,6 +3,7 @@ import { getEnv, getCfBinding } from "./runtime-env.server";
 
 export type SourceType =
   | "factcheck"
+  | "daum"
   | "news"
   | "government"
   | "naver"
@@ -26,7 +27,7 @@ interface KVBinding {
   get(key: string, type: "json"): Promise<unknown>;
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
 }
-const KV_KEY = "trending-news-v1";
+const KV_KEY = "trending-news-v2";
 function getNewsKV(): KVBinding | null { return getCfBinding<KVBinding>("NEWS_CACHE"); }
 
 // ── 인메모리 폴백 캐시 (KV 없는 환경용) ──
@@ -180,6 +181,53 @@ async function fetchSnuFactcheck(): Promise<TrendingItem[]> {
         score: 0,
       };
     });
+  } catch { return []; }
+}
+
+// ── 다음뉴스 언론사별 팩트체크 ──
+// API: https://news.daum.net/factcheck (SvelteKit 앱이 호출하는 내부 엔드포인트)
+const DAUM_FACTCHECK_API =
+  "https://issue.daum.net/api/arms/STYLER_CLUSTER_NEWSES_WITH_DUPLICATED?clusterIds=5186669&limit=30";
+
+type DaumFactcheckContent = {
+  id: string;
+  type: string;
+  title: string;
+  summary?: string;
+  pcUrl: string;
+  cpName?: string;
+  createdAt?: string;
+};
+
+type DaumFactcheckResponse = {
+  code: number;
+  document: { data: { contents: DaumFactcheckContent[] } };
+};
+
+async function fetchDaumFactcheck(): Promise<TrendingItem[]> {
+  try {
+    const res = await fetch(DAUM_FACTCHECK_API, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+        "Referer": "https://news.daum.net/factcheck",
+        "Origin": "https://news.daum.net",
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return [];
+    const json = await res.json() as DaumFactcheckResponse;
+    const contents = json?.document?.data?.contents ?? [];
+    return contents.slice(0, 30).map((it): TrendingItem => ({
+      id: stableId(it.pcUrl ?? it.id),
+      title: (it.title ?? "").slice(0, 120),
+      link: it.pcUrl,
+      pubDate: it.createdAt ?? "",
+      source: it.cpName ?? "다음",
+      sourceType: "daum",
+      description: it.summary?.slice(0, 200),
+      score: 0,
+    }));
   } catch { return []; }
 }
 
@@ -412,7 +460,7 @@ function calcScore(item: TrendingItem): number {
   const factKws = ["팩트체크","사실확인","거짓","허위","오해","진실","검증","확인결과","논란","주장"];
   for (const kw of factKws) if (item.title.includes(kw)) { score += 12; break; }
   const bonus: Record<SourceType, number> = {
-    factcheck: 30, government: 24, naver: 18,
+    factcheck: 30, daum: 28, government: 24, naver: 18,
     news: 12, youtube: 10, community: 8, social: 6,
   };
   score += bonus[item.sourceType] ?? 0;
@@ -449,11 +497,12 @@ export const fetchTrendingNews = createServerFn({ method: "GET" }).handler(async
     return _cache;
   }
 
-  const [rssAll, naverItems, snuItems, ytItems, dcItems, fmItems, xItems, ilbeItems] =
+  const [rssAll, naverItems, snuItems, daumItems, ytItems, dcItems, fmItems, xItems, ilbeItems] =
     await Promise.all([
       Promise.all(RSS_SOURCES.map((s) => safeRss(s.url, s.name, s.type, s.max))).then((r) => r.flat()),
       fetchNaverNews(),
       fetchSnuFactcheck(),
+      fetchDaumFactcheck(),
       fetchYouTube(),
       fetchDCInside(),
       fetchFMKorea(),
@@ -462,8 +511,8 @@ export const fetchTrendingNews = createServerFn({ method: "GET" }).handler(async
     ]);
 
   const merged = [
-    ...snuItems, ...naverItems, ...ytItems, ...dcItems,
-    ...fmItems, ...ilbeItems, ...xItems, ...rssAll,
+    ...daumItems, ...snuItems, ...naverItems, ...ytItems,
+    ...dcItems, ...fmItems, ...ilbeItems, ...xItems, ...rssAll,
   ];
 
   const seen = new Set<string>();

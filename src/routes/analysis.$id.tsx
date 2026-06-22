@@ -39,7 +39,7 @@ export const Route = createFileRoute("/analysis/$id")({
   notFoundComponent: () => <div className="p-12 text-center">분석을 찾을 수 없습니다.</div>,
 });
 
-type ClaimType = "EMPIRICAL" | "DISPUTED_TERRITORY" | "OPINION" | "DOMESTIC_LAW_FACT";
+type ClaimType = "EMPIRICAL" | "DISPUTED_TERRITORY" | "OPINION" | "DOMESTIC_LAW_FACT" | "ANACHRONISM";
 
 type Claim = {
   claim: string;
@@ -1705,6 +1705,7 @@ const CLAIM_TYPE_META: Record<string, { label: string; color: string }> = {
   DISPUTED_TERRITORY: { label: "분쟁주장", color: "text-verdict-partial border-verdict-partial/50 bg-verdict-partial/10" },
   OPINION:            { label: "의견/견해", color: "text-muted-foreground border-border/50 bg-surface-2" },
   DOMESTIC_LAW_FACT:  { label: "법령사실", color: "text-accent border-accent/40 bg-accent/10" },
+  ANACHRONISM:        { label: "🕰️ 시대 오류", color: "text-purple-600 dark:text-purple-400 border-purple-400/50 bg-purple-50 dark:bg-purple-400/10" },
 };
 
 /* 판정 기준에 따라 표시 레이블 결정 */
@@ -1712,6 +1713,8 @@ function getVerdictDisplay(claim: Claim): { verdictLabel: string; basisLabel: st
   const basis = claim.judgment_basis;
   if (basis === "의견/견해") return { verdictLabel: "의견/견해", basisLabel: null };
   if (basis === "국가 공인 입장") return { verdictLabel: claim.verdict, basisLabel: "국가 공인 입장" };
+  if (claim.claim_type === "ANACHRONISM" || basis === "역사적 사실")
+    return { verdictLabel: claim.verdict, basisLabel: "시대 오류" };
   return { verdictLabel: claim.verdict, basisLabel: null };
 }
 
@@ -1779,12 +1782,6 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium leading-snug mb-1.5 pr-2">{claim.claim}</p>
 
-            {/* 근거 요약 미리보기 (접힌 상태에서도 표시) */}
-            {!isSimple && !expanded && claim.reasoning && (
-              <p className="text-xs text-foreground/65 leading-relaxed mb-1.5 line-clamp-1">
-                {claim.reasoning}
-              </p>
-            )}
             {!isSimple && !expanded && (claim.supporting_points.length > 0 || claim.counter_points.length > 0) && (
               <div className="flex flex-wrap gap-3 mb-1.5">
                 {claim.supporting_points.length > 0 && (
@@ -1823,7 +1820,11 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
               )}
               {/* 판정 기준 접두어 */}
               {basisLabel && (
-                <span className="font-mono text-[9px] font-bold border border-verdict-partial/50 text-verdict-partial bg-verdict-partial/10 px-1.5 py-0.5 rounded-sm uppercase tracking-widest">
+                <span className={`font-mono text-[9px] font-bold border px-1.5 py-0.5 rounded-sm uppercase tracking-widest ${
+                  basisLabel === "시대 오류"
+                    ? "border-purple-400/50 text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-400/10"
+                    : "border-verdict-partial/50 text-verdict-partial bg-verdict-partial/10"
+                }`}>
                   {basisLabel}
                 </span>
               )}
@@ -1834,13 +1835,20 @@ function ClaimCard({ index, claim, reviewing, simpleData }: {
                   {simpleData.friendly_verdict}
                 </span>
               ) : (
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 border text-xs font-semibold rounded-sm ${meta.bg} ${meta.border} ${meta.color}`}>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 border text-xs font-semibold rounded-sm shrink-0 ${meta.bg} ${meta.border} ${meta.color}`}>
                   <Icon className="w-3 h-3" /> {isOpinion ? "의견/견해" : meta.label}
                 </span>
               )}
 
+              {/* 핵심 문장 — 판정 배지 바로 옆 */}
+              {!isSimple && !expanded && claim.reasoning && (
+                <span className="text-[11px] text-foreground/55 line-clamp-1 flex-1 min-w-0 leading-relaxed">
+                  {extractFirstSentence(claim.reasoning, 8, 90) ?? claim.reasoning}
+                </span>
+              )}
+
               {reviewing
-                ? <span className="inline-flex items-center gap-1 text-[10px] text-primary/70 font-medium"><Loader2 className="w-3 h-3 animate-spin" />심층 검토 중…</span>
+                ? <span className="inline-flex items-center gap-1 text-[10px] text-primary/70 font-medium shrink-0"><Loader2 className="w-3 h-3 animate-spin" />심층 검토 중…</span>
                 : isSimple
                   ? <ConfidenceEmoji value={claim.confidence} />
                   : <ConfidenceBar value={claim.confidence} compact />}

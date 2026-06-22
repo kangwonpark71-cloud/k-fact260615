@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Flame, RefreshCw, ExternalLink, Search,
   Newspaper, Shield, Building2, Zap, ChevronDown, ChevronUp,
-  Youtube, MessageSquare, Hash,
+  Youtube, MessageSquare, Hash, CheckSquare,
 } from "lucide-react";
 
 import { fetchTrendingNews, refreshTrendingNews, type TrendingItem, type SourceType } from "@/lib/news.functions";
@@ -17,17 +17,19 @@ interface Props {
 }
 
 const SOURCE_META: Record<SourceType, { label: string; color: string; bg: string; Icon: LucideIcon }> = {
-  factcheck:  { label: "팩트체크", color: "text-violet-400",  bg: "bg-violet-400/15 border-violet-400/30",  Icon: Shield },
-  government: { label: "정부",     color: "text-blue-400",   bg: "bg-blue-400/15 border-blue-400/30",   Icon: Building2 },
-  naver:      { label: "네이버",   color: "text-green-400",  bg: "bg-green-400/15 border-green-400/30",  Icon: Zap },
-  news:       { label: "뉴스",     color: "text-amber-400",  bg: "bg-amber-400/15 border-amber-400/30",  Icon: Newspaper },
-  youtube:    { label: "YouTube",  color: "text-red-400",    bg: "bg-red-400/15 border-red-400/30",      Icon: Youtube },
-  community:  { label: "커뮤니티", color: "text-orange-400", bg: "bg-orange-400/15 border-orange-400/30", Icon: MessageSquare },
-  social:     { label: "SNS",      color: "text-sky-400",    bg: "bg-sky-400/15 border-sky-400/30",      Icon: Hash },
+  factcheck:  { label: "팩트체크",    color: "text-violet-400",  bg: "bg-violet-400/15 border-violet-400/30",  Icon: Shield },
+  daum:       { label: "다음팩트체크", color: "text-rose-400",    bg: "bg-rose-400/15 border-rose-400/30",      Icon: CheckSquare },
+  government: { label: "정부",        color: "text-blue-400",   bg: "bg-blue-400/15 border-blue-400/30",   Icon: Building2 },
+  naver:      { label: "네이버",      color: "text-green-400",  bg: "bg-green-400/15 border-green-400/30",  Icon: Zap },
+  news:       { label: "뉴스",        color: "text-amber-400",  bg: "bg-amber-400/15 border-amber-400/30",  Icon: Newspaper },
+  youtube:    { label: "YouTube",     color: "text-red-400",    bg: "bg-red-400/15 border-red-400/30",      Icon: Youtube },
+  community:  { label: "커뮤니티",    color: "text-orange-400", bg: "bg-orange-400/15 border-orange-400/30", Icon: MessageSquare },
+  social:     { label: "SNS",         color: "text-sky-400",    bg: "bg-sky-400/15 border-sky-400/30",      Icon: Hash },
 };
 
 const FILTER_TABS: { key: SourceType | "all"; label: string }[] = [
   { key: "all",       label: "전체" },
+  { key: "daum",      label: "다음팩트체크" },
   { key: "factcheck", label: "팩트체크" },
   { key: "news",      label: "최신뉴스" },
   { key: "government",label: "정부" },
@@ -228,8 +230,14 @@ export function TrendingNews({ onAnalyze, listMaxHeight, listMinHeight }: Props)
                       <div className="flex items-center gap-2 mt-2 sm:mt-1.5 flex-wrap">
                         <span className={`inline-flex items-center gap-1 px-2 sm:px-1.5 py-1 sm:py-0.5 rounded border text-xs sm:text-[10px] font-medium ${meta.bg} ${meta.color}`}>
                           <Icon className="w-3 h-3 sm:w-2.5 sm:h-2.5" />
-                          {item.source}
+                          {item.sourceType === "daum" ? "다음팩트체크" : item.source}
                         </span>
+                        {/* 다음팩트체크: 언론사명 별도 배지 */}
+                        {item.sourceType === "daum" && item.source && (
+                          <span className="inline-flex items-center px-2 sm:px-1.5 py-1 sm:py-0.5 rounded border text-xs sm:text-[10px] font-medium bg-surface-2 border-border/50 text-muted-foreground">
+                            {item.source}
+                          </span>
+                        )}
                         {item.pubDate && (
                           <span className="text-xs sm:text-[10px] text-muted-foreground/80">
                             {timeAgo(item.pubDate)}
@@ -267,7 +275,7 @@ export function TrendingNews({ onAnalyze, listMaxHeight, listMinHeight }: Props)
       {/* 푸터 */}
       <div className="border-t border-border/40 px-4 py-2.5 sm:py-2">
         <p className="text-xs sm:text-[10px] text-muted-foreground/80 text-center">
-          매일 9시·14시(KST) 업데이트 · 뉴스·정부·네이버·YouTube·DC인사이드·FM코리아·X(Twitter)
+          매일 9시·14시(KST) 업데이트 · 다음팩트체크·SNU·뉴스·정부·네이버·YouTube·DC·X
         </p>
       </div>
 

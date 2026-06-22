@@ -278,6 +278,11 @@ function HistoryPage() {
                     <p className="font-medium text-sm leading-snug text-foreground group-hover:text-primary transition-colors line-clamp-2">
                       {row.title ?? (row.status === "pending" ? "분석 중…" : "(제목 없음)")}
                     </p>
+                    {(row as Record<string, unknown>).summary && row.status !== "pending" && (
+                      <p className="text-[11px] text-foreground/55 mt-0.5 line-clamp-1 leading-relaxed">
+                        {(row as Record<string, unknown>).summary as string}
+                      </p>
+                    )}
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/60">
                         <Clock className="w-3 h-3" />
