@@ -271,9 +271,16 @@ export interface SearchEvidence {
   score: number;
 }
 
-export async function searchEvidence(claim: string): Promise<SearchEvidence[]> {
+export async function searchEvidence(
+  claim: string,
+  options?: { includeDomains?: string[]; searchDepth?: "basic" | "advanced"; maxResults?: number },
+): Promise<SearchEvidence[]> {
   const apiKey = getEnv("TAVILY_API_KEY");
   if (!apiKey) return [];
+
+  const includeDomains = options?.includeDomains ?? [];
+  const searchDepth = options?.searchDepth ?? "advanced";
+  const maxResults = options?.maxResults ?? 5;
 
   try {
     const res = await fetch("https://api.tavily.com/search", {
@@ -282,20 +289,20 @@ export async function searchEvidence(claim: string): Promise<SearchEvidence[]> {
       body: JSON.stringify({
         api_key: apiKey,
         query: claim,
-        max_results: 5,
-        search_depth: "advanced",
+        max_results: maxResults,
+        search_depth: searchDepth,
         include_answer: false,
         include_raw_content: false,
-        include_domains: [],
+        include_domains: includeDomains,
         exclude_domains: [],
       }),
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return [];
     const data = await res.json() as {
       results?: Array<{ title: string; url: string; content: string; score: number }>;
     };
-    return (data.results ?? []).slice(0, 5).map(r => ({
+    return (data.results ?? []).slice(0, maxResults).map(r => ({
       title:   (r.title ?? "").slice(0, 120),
       url:     r.url ?? "",
       snippet: (r.content ?? "").slice(0, 500),
@@ -329,7 +336,7 @@ export function formatEvidenceBlock(
   }
 
   const blocks: string[] = ["[Stage 3 — Tavily 실시간 검색 결과]"];
-  claims.slice(0, 3).forEach((claim, i) => {
+  claims.slice(0, 5).forEach((claim, i) => {
     const evs = evidenceMap[i] ?? [];
     blocks.push(`\n주장 ${i + 1}: "${claim}"`);
     if (evs.length === 0) {
@@ -404,14 +411,46 @@ export function rankSearchResults(
   });
 }
 
+// 도메인 특화 검색 — 주장 유형 + 키워드로 권위 출처 필터링
+const DOMAIN_RULES: Array<{
+  keywords: RegExp;
+  domains: string[];
+}> = [
+  { keywords: /통계|인구|출생|사망|고용|실업|물가|gdp|성장률|수출|수입|무역|경제지표|부채|재정/i,  domains: ["kostat.go.kr", "bok.or.kr", "moef.go.kr", "kdi.re.kr", "index.go.kr"] },
+  { keywords: /법|법률|법원|판결|헌법|국회|조례|규정|처벌|형사|민사|소송|법령/i,               domains: ["law.go.kr", "moleg.go.kr", "court.go.kr", "assembly.go.kr"] },
+  { keywords: /백신|감염|코로나|바이러스|질병|보건|의료|암|당뇨|고혈압|약물|임상|치료/i,         domains: ["kdca.go.kr", "mohw.go.kr", "who.int", "pubmed.ncbi.nlm.nih.gov"] },
+  { keywords: /역사|전쟁|독립|조선|일제|고려|삼국|임진|항일|해방|분단|6·25|한국전쟁/i,         domains: ["encykorea.aks.ac.kr", "museum.go.kr", "history.go.kr"] },
+  { keywords: /환경|기후|탄소|온실|미세먼지|대기|수질|토양|에너지|원전|재생에너지/i,            domains: ["me.go.kr", "nier.go.kr", "data.kma.go.kr", "iea.org"] },
+  { keywords: /교육|대학|입시|수능|학교|학생|교사|학력|학비/i,                              domains: ["moe.go.kr", "kedi.re.kr", "neis.go.kr"] },
+  { keywords: /부동산|아파트|주택|전세|월세|청약|분양|토지/i,                               domains: ["molit.go.kr", "reb.or.kr", "r-one.co.kr"] },
+  { keywords: /금리|환율|주가|코스피|코스닥|달러|엔화|유로|한국은행|기준금리/i,                 domains: ["bok.or.kr", "krx.co.kr", "fss.or.kr"] },
+];
+
+function getTopicDomains(query: string): string[] {
+  for (const rule of DOMAIN_RULES) {
+    if (rule.keywords.test(query)) return rule.domains;
+  }
+  return [];
+}
+
 /** 주장 유형별 권위 출처 우선 검색 */
 export async function searchEvidenceForClaimsTyped(
   claims: Array<{ query: string; claimType: ClaimType }>,
+  options?: { searchDepth?: "basic" | "advanced"; maxPerClaim?: number },
 ): Promise<Record<number, SearchEvidence[]>> {
+  const depth = options?.searchDepth ?? "advanced";
+  const max = options?.maxPerClaim ?? 5;
+
   const results = await Promise.allSettled(
-    claims.slice(0, 3).map(({ query, claimType }) =>
-      searchEvidence(query).then(r => rankSearchResults(r, claimType)),
-    ),
+    claims.slice(0, 5).map(({ query, claimType }) => {
+      // 주장 유형별 기본 도메인 + 키워드 기반 도메인 합산
+      const typeDomains = CLAIM_TYPE_DOMAINS[claimType] ?? [];
+      const topicDomains = getTopicDomains(query);
+      const includeDomains = [...new Set([...topicDomains, ...typeDomains])].slice(0, 8);
+
+      return searchEvidence(query, { includeDomains, searchDepth: depth, maxResults: max })
+        .then(r => rankSearchResults(r, claimType));
+    }),
   );
   const out: Record<number, SearchEvidence[]> = {};
   results.forEach((r, i) => {

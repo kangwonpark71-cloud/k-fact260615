@@ -117,9 +117,20 @@ export const QuickCheckSchema = z.object({
   risk_flags: z.array(z.string().max(50)).max(4),
 });
 
+/* ── Naver 팩트체크 참고 기사 ── */
+
+export type NaverFactCheckItem = {
+  title: string;
+  link: string;
+  description: string;
+  pub_date: string;
+  publisher?: string;
+};
+
 export type QuickCheckResult = z.infer<typeof QuickCheckSchema> & {
   fake_probability: number;
   style_signals: string[];
+  naver_factchecks?: NaverFactCheckItem[];
 };
 
 /* ── Simplified 스키마 ── */

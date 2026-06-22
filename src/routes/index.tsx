@@ -300,15 +300,12 @@ function Home() {
       <SiteHeader />
       <BottomNav />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 pb-36 sm:pb-32">
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 pb-36 sm:pb-32">
         {/* Hero */}
         <HeroSection />
 
-        {/* 메인 2열 레이아웃: 좌=입력폼, 우=실시간 뉴스 */}
-        <div className="grid md:grid-cols-[1fr_320px] xl:grid-cols-[1fr_420px] gap-6 items-start">
-        {/* 좌측: 입력 폼 영역 */}
-        <div className="order-1">
-
+        {/* 입력 폼 영역 (중앙 정렬) */}
+        <div className="relative">
 
         {/* 분석 로딩 오버레이 */}
         {loading && (
@@ -761,14 +758,16 @@ function Home() {
           </div>
         </form>
 
-        </div>{/* 좌측 끝 */}
+        </div>{/* 입력 폼 영역 끝 */}
 
-        {/* 우측: 실시간 뉴스 패널 */}
-        <div className="order-2 xl:sticky xl:top-24">
-          <TrendingNews onAnalyze={handleAnalyzeFromTrending} />
+        {/* 실시간 팩트체크 이슈 (중앙, 폼 아래) */}
+        <div className="mt-6">
+          <TrendingNews
+            onAnalyze={handleAnalyzeFromTrending}
+            listMaxHeight="480px"
+            listMinHeight="240px"
+          />
         </div>
-
-        </div>{/* grid 끝 */}
 
         {/* Features */}
         <section className="grid sm:grid-cols-3 gap-4 mt-12 sm:mt-16">

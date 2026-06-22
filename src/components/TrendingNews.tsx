@@ -12,6 +12,8 @@ import { fetchTrendingNews, refreshTrendingNews, type TrendingItem, type SourceT
 
 interface Props {
   onAnalyze: (url: string) => Promise<void>;
+  listMaxHeight?: string;
+  listMinHeight?: string;
 }
 
 const SOURCE_META: Record<SourceType, { label: string; color: string; bg: string; Icon: LucideIcon }> = {
@@ -47,7 +49,7 @@ function timeAgo(pubDate: string): string {
   return `${Math.floor(diffH / 24)}일 전`;
 }
 
-export function TrendingNews({ onAnalyze }: Props) {
+export function TrendingNews({ onAnalyze, listMaxHeight, listMinHeight }: Props) {
   const [filter, setFilter] = useState<SourceType | "all">("all");
   const [refreshKey, setRefreshKey] = useState(0);
   const [mobileExpanded, setMobileExpanded] = useState(true);
@@ -139,7 +141,7 @@ export function TrendingNews({ onAnalyze }: Props) {
       </div>
 
       {/* 뉴스 리스트 */}
-      <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(100vh - 280px)", minHeight: "400px" }}>
+      <div className="flex-1 overflow-y-auto" style={{ maxHeight: listMaxHeight ?? "calc(100vh - 280px)", minHeight: listMinHeight ?? "400px" }}>
         {isLoading && (
           <div className="flex flex-col items-center justify-center py-16 gap-3">
             <div className="w-6 h-6 border-2 border-accent/40 border-t-accent rounded-full animate-spin" />
