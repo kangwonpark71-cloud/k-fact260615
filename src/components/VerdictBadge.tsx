@@ -1,46 +1,49 @@
 import { CheckCircle2, AlertTriangle, HelpCircle, XCircle, MinusCircle } from "lucide-react";
 
-type Verdict = "사실" | "부분 사실" | "근거 부족" | "반대 근거 우세";
+import type { Verdict } from "@/lib/verdict";
 
-const META: Record<Verdict, {
-  Icon: typeof CheckCircle2;
-  text: string;
-  bg: string;
-  border: string;
-  ring: string;
-  dot: string;
-}> = {
-  "사실": {
+const META: Record<
+  Verdict,
+  {
+    Icon: typeof CheckCircle2;
+    text: string;
+    bg: string;
+    border: string;
+    ring: string;
+    dot: string;
+  }
+> = {
+  사실: {
     Icon: CheckCircle2,
-    text:   "text-emerald-600 dark:text-emerald-400",
-    bg:     "bg-emerald-50 dark:bg-emerald-400/10",
+    text: "text-emerald-600 dark:text-emerald-400",
+    bg: "bg-emerald-50 dark:bg-emerald-400/10",
     border: "border-emerald-300/60 dark:border-emerald-400/30",
-    ring:   "ring-emerald-400/20",
-    dot:    "bg-emerald-400",
+    ring: "ring-emerald-400/20",
+    dot: "bg-emerald-400",
   },
   "부분 사실": {
     Icon: MinusCircle,
-    text:   "text-amber-600 dark:text-amber-400",
-    bg:     "bg-amber-50 dark:bg-amber-400/10",
+    text: "text-amber-600 dark:text-amber-400",
+    bg: "bg-amber-50 dark:bg-amber-400/10",
     border: "border-amber-300/60 dark:border-amber-400/30",
-    ring:   "ring-amber-400/20",
-    dot:    "bg-amber-400",
+    ring: "ring-amber-400/20",
+    dot: "bg-amber-400",
   },
   "근거 부족": {
     Icon: HelpCircle,
-    text:   "text-orange-600 dark:text-orange-400",
-    bg:     "bg-orange-50 dark:bg-orange-400/10",
+    text: "text-orange-600 dark:text-orange-400",
+    bg: "bg-orange-50 dark:bg-orange-400/10",
     border: "border-orange-300/60 dark:border-orange-400/30",
-    ring:   "ring-orange-400/20",
-    dot:    "bg-orange-400",
+    ring: "ring-orange-400/20",
+    dot: "bg-orange-400",
   },
   "반대 근거 우세": {
     Icon: XCircle,
-    text:   "text-red-600 dark:text-red-400",
-    bg:     "bg-red-50 dark:bg-red-400/10",
+    text: "text-red-600 dark:text-red-400",
+    bg: "bg-red-50 dark:bg-red-400/10",
     border: "border-red-300/60 dark:border-red-400/30",
-    ring:   "ring-red-400/20",
-    dot:    "bg-red-400",
+    ring: "ring-red-400/20",
+    dot: "bg-red-400",
   },
 };
 
@@ -82,13 +85,17 @@ export function VerdictBadge({ verdict, size = "md", confidence, showDot }: Verd
         ${m.bg} ${m.text} ${m.border} ${m.ring} ${sizeClass}`}
     >
       {showDot ? (
-        <span className={`shrink-0 rounded-full ${m.dot} ${size === "sm" ? "w-1.5 h-1.5" : "w-2 h-2"}`} />
+        <span
+          className={`shrink-0 rounded-full ${m.dot} ${size === "sm" ? "w-1.5 h-1.5" : "w-2 h-2"}`}
+        />
       ) : (
         <Icon className={`shrink-0 ${iconSz}`} />
       )}
       {normalized}
       {confLabel && (
-        <span className={`ml-0.5 opacity-70 font-mono tabular-nums ${size === "sm" ? "text-[9px]" : "text-[10px]"}`}>
+        <span
+          className={`ml-0.5 opacity-70 font-mono tabular-nums ${size === "sm" ? "text-[9px]" : "text-[10px]"}`}
+        >
           {confLabel}
         </span>
       )}

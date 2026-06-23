@@ -4,7 +4,10 @@ import {
   buildStyleAnalysis,
   styleAnalysisToPromptBlock,
   rankSearchResults,
+  formatEvidenceBlock,
+  buildReviewedSources,
 } from "./pipeline.server";
+import { scoreSourceReliability } from "./source-reliability";
 
 // getEnv를 테스트용으로 mock
 import * as runtime from "./runtime-env.server";
@@ -15,7 +18,8 @@ beforeAll(() => {
 
 describe("extractStyleMetrics", () => {
   it("일반적인 문장에서 모든 지표를 반환한다", () => {
-    const text = "어제 서울의 기온이 30도까지 올랐습니다. 기상청에 따르면 이는 역대 6월 중 최고 기록이라고 밝혔습니다.";
+    const text =
+      "어제 서울의 기온이 30도까지 올랐습니다. 기상청에 따르면 이는 역대 6월 중 최고 기록이라고 밝혔습니다.";
     const m = extractStyleMetrics(text);
     expect(m).toHaveProperty("avgSentenceLength");
     expect(m).toHaveProperty("lexicalDiversity");
@@ -35,13 +39,15 @@ describe("extractStyleMetrics", () => {
   });
 
   it("과장 표현이 많은 텍스트에서 exaggerationScore가 높다", () => {
-    const text = "이건 항상 그래왔다. 절대 변하지 않는다. 모든 사람이 다 안다. 결코 사실이 아니다. 100% 확실하다.";
+    const text =
+      "이건 항상 그래왔다. 절대 변하지 않는다. 모든 사람이 다 안다. 결코 사실이 아니다. 100% 확실하다.";
     const m = extractStyleMetrics(text);
     expect(m.exaggerationScore).toBeGreaterThan(0.2);
   });
 
   it("출처 인용이 있으면 attributionScore가 0보다 크다", () => {
-    const text = "통계청에 따르면 물가상승률이 2.3%라고 발표했습니다. 기획재정부에 의하면 내년 예산이 증가했다고 밝혔습니다.";
+    const text =
+      "통계청에 따르면 물가상승률이 2.3%라고 발표했습니다. 기획재정부에 의하면 내년 예산이 증가했다고 밝혔습니다.";
     const m = extractStyleMetrics(text);
     expect(m.attributionScore).toBeGreaterThan(0);
   });
@@ -53,7 +59,8 @@ describe("extractStyleMetrics", () => {
   });
 
   it("수치 표현이 있으면 numericalDensity가 0보다 크다", () => {
-    const text = "GDP 성장률이 3.2%를 기록했습니다. 25만 명이 참여했고, 총 1조 5천억 원의 예산이 투입되었습니다.";
+    const text =
+      "GDP 성장률이 3.2%를 기록했습니다. 25만 명이 참여했고, 총 1조 5천억 원의 예산이 투입되었습니다.";
     const m = extractStyleMetrics(text);
     expect(m.numericalDensity).toBeGreaterThan(0);
   });
@@ -68,8 +75,10 @@ describe("extractStyleMetrics", () => {
   });
 
   it("매우 긴 텍스트에서도 안정적으로 동작한다", () => {
-    const sentences = Array.from({ length: 100 }, (_, i) =>
-      `이것은 ${i + 1}번째 테스트 문장입니다. 기상청에 따르면 오늘 날씨는 맑을 예정이라고 합니다.`
+    const sentences = Array.from(
+      { length: 100 },
+      (_, i) =>
+        `이것은 ${i + 1}번째 테스트 문장입니다. 기상청에 따르면 오늘 날씨는 맑을 예정이라고 합니다.`,
     );
     const text = sentences.join(" ");
     const m = extractStyleMetrics(text);
@@ -80,14 +89,16 @@ describe("extractStyleMetrics", () => {
 
 describe("buildStyleAnalysis", () => {
   it("감정적이고 과장된 텍스트에서 높은 fakeProbability와 신호를 반환한다", () => {
-    const text = "이건 정말 충격적인 사건입니다!!! 절대 용납할 수 없습니다!! 항상 그래왔고 모든 사람이 다 압니다!";
+    const text =
+      "이건 정말 충격적인 사건입니다!!! 절대 용납할 수 없습니다!! 항상 그래왔고 모든 사람이 다 압니다!";
     const result = buildStyleAnalysis(text);
     expect(result.fakeProbability).toBeGreaterThan(30);
     expect(result.signals.length).toBeGreaterThan(0);
   });
 
   it("중립적이고 출처가 명시된 텍스트에서 낮은 fakeProbability를 반환한다", () => {
-    const text = "통계청에 따르면 2024년 한국의 GDP 성장률은 2.2%를 기록했습니다. 기획재정부가 1월 15일 발표한 자료에 근거합니다.";
+    const text =
+      "통계청에 따르면 2024년 한국의 GDP 성장률은 2.2%를 기록했습니다. 기획재정부가 1월 15일 발표한 자료에 근거합니다.";
     const result = buildStyleAnalysis(text);
     expect(result.fakeProbability).toBeLessThan(40);
     expect(result.signals.length).toBe(0);
@@ -128,14 +139,18 @@ describe("styleAnalysisToPromptBlock", () => {
   });
 
   it("신호가 있을 때 신호 목록을 포함한다", () => {
-    const analysis = buildStyleAnalysis("정말 충격적입니다!!! 절대 이럴 수가!!! 모든 것이 거짓말입니다!!");
+    const analysis = buildStyleAnalysis(
+      "정말 충격적입니다!!! 절대 이럴 수가!!! 모든 것이 거짓말입니다!!",
+    );
     const block = styleAnalysisToPromptBlock(analysis);
     expect(block).toContain("감지된 신호");
     expect(block).toContain("•");
   });
 
   it("신호가 없을 때 '의심 신호 없음'을 포함한다", () => {
-    const analysis = buildStyleAnalysis("통계청 자료에 따르면 작년 수출액이 증가했습니다. 기획재정부에서는 이를 긍정적으로 평가했습니다.");
+    const analysis = buildStyleAnalysis(
+      "통계청 자료에 따르면 작년 수출액이 증가했습니다. 기획재정부에서는 이를 긍정적으로 평가했습니다.",
+    );
     const block = styleAnalysisToPromptBlock(analysis);
     expect(block).toContain("의심 신호 없음");
   });
@@ -162,5 +177,53 @@ describe("rankSearchResults", () => {
   it("빈 배열에서도 오류 없이 빈 배열을 반환한다", () => {
     const ranked = rankSearchResults([], "EMPIRICAL");
     expect(ranked).toEqual([]);
+  });
+});
+
+describe("source reliability evidence formatting", () => {
+  it("근거 블록에 출처 신뢰도 정보를 포함한다", () => {
+    const block = formatEvidenceBlock(["독도는 한국 영토다"], {
+      0: [
+        {
+          title: "외교부 독도 자료",
+          url: "https://mofa.go.kr/dokdo",
+          snippet: "대한민국 정부 공식 입장",
+          score: 0.8,
+          source_reliability: scoreSourceReliability({ url: "https://mofa.go.kr/dokdo" }),
+        },
+      ],
+    });
+
+    expect(block).toContain("출처 신뢰도");
+    expect(block).toContain("공식 기관");
+    expect(block).toContain("authoritative");
+  });
+
+  it("감사 로그용 검토 출처 목록을 중복 없이 만든다", () => {
+    const reviewed = buildReviewedSources({
+      0: [
+        {
+          title: "외교부 독도 자료",
+          url: "https://mofa.go.kr/dokdo",
+          snippet: "대한민국 정부 공식 입장",
+          score: 0.8,
+          source_reliability: scoreSourceReliability({ url: "https://mofa.go.kr/dokdo" }),
+        },
+        {
+          title: "중복 외교부 자료",
+          url: "https://mofa.go.kr/dokdo",
+          snippet: "중복",
+          score: 0.7,
+        },
+      ],
+    });
+
+    expect(reviewed).toHaveLength(1);
+    expect(reviewed[0]).toMatchObject({
+      url: "https://mofa.go.kr/dokdo",
+      title: "외교부 독도 자료",
+      reliability_tier: "authoritative",
+    });
+    expect(reviewed[0].reliability_score).toBeGreaterThanOrEqual(90);
   });
 });

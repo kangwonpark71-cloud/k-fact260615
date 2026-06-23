@@ -1,22 +1,15 @@
 import { z } from "zod";
+import type { Json } from "@/integrations/supabase/types";
 
 /* ── 판정 및 주장 유형 ── */
 
-export const VerdictEnum = z.enum([
-  "사실",
-  "부분 사실",
-  "근거 부족",
-  "반대 근거 우세",
-]);
+export const VerdictEnum = z.enum(["사실", "부분 사실", "근거 부족", "반대 근거 우세"]);
 
 export type Verdict = z.infer<typeof VerdictEnum>;
 
-export const ClaimTypeEnum = z.enum([
-  "EMPIRICAL",
-  "DISPUTED_TERRITORY",
-  "OPINION",
-  "DOMESTIC_LAW_FACT",
-]).default("EMPIRICAL");
+export const ClaimTypeEnum = z
+  .enum(["EMPIRICAL", "DISPUTED_TERRITORY", "OPINION", "DOMESTIC_LAW_FACT"])
+  .default("EMPIRICAL");
 
 export type ClaimType = z.infer<typeof ClaimTypeEnum>;
 
@@ -48,9 +41,7 @@ export const ClaimSchema = z.object({
   supporting_points: z.array(z.string()),
   counter_points: z.array(z.string()),
   unknowns: z.array(z.string()),
-  suggested_sources: z.array(
-    z.object({ name: z.string(), type: z.string() }),
-  ),
+  suggested_sources: z.array(z.object({ name: z.string(), type: z.string() })),
 });
 
 export type Claim = z.infer<typeof ClaimSchema>;
@@ -59,7 +50,7 @@ export type Phase1Claim = {
   claim: string;
   verdict: string;
   claim_type?: string;
-  [key: string]: unknown;
+  [key: string]: Json | undefined;
 };
 
 /* ── Analysis 스키마 ── */
@@ -83,7 +74,11 @@ export type AnalysisPayload = Record<string, unknown>;
 
 export const InputSchema = z
   .object({
-    url: z.string().url().optional().or(z.literal("").transform(() => undefined)),
+    url: z
+      .string()
+      .url()
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
     text: z.string().max(50_000, "본문은 최대 50,000자까지 입력할 수 있습니다.").default(""),
     sessionId: z.string().min(1),
   })
@@ -98,19 +93,21 @@ export type InputData = z.infer<typeof InputSchema>;
 
 export const QuickCheckSchema = z.object({
   summary: z.string().max(200),
-  highlights: z.array(
-    z.object({
-      claim: z.string().max(150),
-      subject: z.string().max(80).default(""),
-      predicate: z.string().max(80).default(""),
-      object: z.string().max(80).default(""),
-      verdict: VerdictEnum,
-      confidence: z.number().int().min(0).max(100),
-      brief: z.string().max(200),
-      supporting: z.string().max(150),
-      counter: z.string().max(150),
-    }),
-  ).max(5),
+  highlights: z
+    .array(
+      z.object({
+        claim: z.string().max(150),
+        subject: z.string().max(80).default(""),
+        predicate: z.string().max(80).default(""),
+        object: z.string().max(80).default(""),
+        verdict: VerdictEnum,
+        confidence: z.number().int().min(0).max(100),
+        brief: z.string().max(200),
+        supporting: z.string().max(150),
+        counter: z.string().max(150),
+      }),
+    )
+    .max(5),
   overall_verdict: VerdictEnum,
   overall_confidence: z.number().int().min(0).max(100),
   bias_type: z.string().max(40).default("중립"),

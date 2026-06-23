@@ -18,7 +18,9 @@ export const Route = createFileRoute("/auth")({
 function AuthPage() {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
-  const [mode, setMode] = useState<"signin" | "signup" | "check-email" | "forgot" | "forgot-sent">("signin");
+  const [mode, setMode] = useState<"signin" | "signup" | "check-email" | "forgot" | "forgot-sent">(
+    "signin",
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -96,7 +98,8 @@ function AuthPage() {
                 <div className="text-5xl mb-4">📨</div>
                 <h1 className="text-2xl font-bold mb-2">메일을 확인하세요</h1>
                 <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
-                  <strong className="text-foreground">{email}</strong>으로 비밀번호 재설정 링크를 보냈습니다.
+                  <strong className="text-foreground">{email}</strong>으로 비밀번호 재설정 링크를
+                  보냈습니다.
                 </p>
                 <button
                   type="button"
@@ -161,7 +164,8 @@ function AuthPage() {
             <div className="text-5xl mb-4">📬</div>
             <h1 className="text-2xl font-bold mb-2">이메일을 확인해 주세요</h1>
             <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
-              <strong className="text-foreground">{email}</strong>으로 인증 링크를 보냈습니다.<br />
+              <strong className="text-foreground">{email}</strong>으로 인증 링크를 보냈습니다.
+              <br />
               메일함을 확인한 후 링크를 클릭해 계정을 활성화하세요.
             </p>
             <p className="text-xs text-muted-foreground">
@@ -177,7 +181,9 @@ function AuthPage() {
             </p>
           </div>
           <p className="text-center text-xs text-muted-foreground mt-6">
-            <Link to="/" className="hover:text-foreground">홈으로 →</Link>
+            <Link to="/" className="hover:text-foreground">
+              홈으로 →
+            </Link>
           </p>
         </div>
       </div>
@@ -213,7 +219,9 @@ function AuthPage() {
           </button>
 
           <div className="flex items-center gap-3 my-4 text-xs text-muted-foreground">
-            <div className="flex-1 h-px bg-border" />또는<div className="flex-1 h-px bg-border" />
+            <div className="flex-1 h-px bg-border" />
+            또는
+            <div className="flex-1 h-px bg-border" />
           </div>
 
           <form onSubmit={submit} className="space-y-3">
@@ -269,7 +277,9 @@ function AuthPage() {
 
         <p className="text-center text-xs text-muted-foreground mt-6">
           로그인 없이도 분석은 가능합니다.{" "}
-          <Link to="/" className="hover:text-foreground">홈으로 →</Link>
+          <Link to="/" className="hover:text-foreground">
+            홈으로 →
+          </Link>
         </p>
       </div>
     </div>
@@ -279,22 +289,37 @@ function AuthPage() {
 function translateError(msg: string): string {
   if (/invalid login credentials/i.test(msg)) return "이메일 또는 비밀번호가 올바르지 않습니다.";
   if (/email.*invalid/i.test(msg)) return "유효하지 않은 이메일 주소입니다.";
-  if (/email rate limit/i.test(msg)) return "이메일 전송 한도를 초과했습니다. 잠시 후 다시 시도하세요.";
+  if (/email rate limit/i.test(msg))
+    return "이메일 전송 한도를 초과했습니다. 잠시 후 다시 시도하세요.";
   if (/user already registered/i.test(msg)) return "이미 가입된 이메일입니다.";
   if (/password should be at least/i.test(msg)) return "비밀번호는 최소 6자 이상이어야 합니다.";
-  if (/email not confirmed/i.test(msg)) return "이메일 인증이 완료되지 않았습니다. 메일함을 확인해 주세요.";
+  if (/email not confirmed/i.test(msg))
+    return "이메일 인증이 완료되지 않았습니다. 메일함을 확인해 주세요.";
   if (/signup disabled/i.test(msg)) return "현재 회원가입이 비활성화되어 있습니다.";
-  if (/over.*request.*limit/i.test(msg)) return "요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.";
+  if (/over.*request.*limit/i.test(msg))
+    return "요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.";
   return msg;
 }
 
 function GoogleIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24">
-      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.56c2.08-1.92 3.28-4.74 3.28-8.1z" />
-      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.77c-.99.66-2.25 1.06-3.72 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" />
-      <path fill="#FBBC05" d="M5.84 14.1A6.6 6.6 0 0 1 5.48 12c0-.73.13-1.44.36-2.1V7.07H2.18a11 11 0 0 0 0 9.86l3.66-2.83z" />
-      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.83C6.71 7.3 9.14 5.38 12 5.38z" />
+      <path
+        fill="#4285F4"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.56c2.08-1.92 3.28-4.74 3.28-8.1z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.56-2.77c-.99.66-2.25 1.06-3.72 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.84 14.1A6.6 6.6 0 0 1 5.48 12c0-.73.13-1.44.36-2.1V7.07H2.18a11 11 0 0 0 0 9.86l3.66-2.83z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.83C6.71 7.3 9.14 5.38 12 5.38z"
+      />
     </svg>
   );
 }

@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as StatsRouteImport } from './routes/stats'
 import { Route as LiveRouteImport } from './routes/live'
 import { Route as HistoryRouteImport } from './routes/history'
 import { Route as AuthRouteImport } from './routes/auth'
@@ -16,7 +17,13 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShareTokenRouteImport } from './routes/share.$token'
 import { Route as AnalysisIdRouteImport } from './routes/analysis.$id'
+import { Route as CompareId1Id2RouteImport } from './routes/compare.$id1.$id2'
 
+const StatsRoute = StatsRouteImport.update({
+  id: '/stats',
+  path: '/stats',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LiveRoute = LiveRouteImport.update({
   id: '/live',
   path: '/live',
@@ -52,6 +59,11 @@ const AnalysisIdRoute = AnalysisIdRouteImport.update({
   path: '/analysis/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CompareId1Id2Route = CompareId1Id2RouteImport.update({
+  id: '/compare/$id1/$id2',
+  path: '/compare/$id1/$id2',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -59,8 +71,10 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
+  '/stats': typeof StatsRoute
   '/analysis/$id': typeof AnalysisIdRoute
   '/share/$token': typeof ShareTokenRoute
+  '/compare/$id1/$id2': typeof CompareId1Id2Route
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -68,8 +82,10 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
+  '/stats': typeof StatsRoute
   '/analysis/$id': typeof AnalysisIdRoute
   '/share/$token': typeof ShareTokenRoute
+  '/compare/$id1/$id2': typeof CompareId1Id2Route
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -78,8 +94,10 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/history': typeof HistoryRoute
   '/live': typeof LiveRoute
+  '/stats': typeof StatsRoute
   '/analysis/$id': typeof AnalysisIdRoute
   '/share/$token': typeof ShareTokenRoute
+  '/compare/$id1/$id2': typeof CompareId1Id2Route
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -89,8 +107,10 @@ export interface FileRouteTypes {
     | '/auth'
     | '/history'
     | '/live'
+    | '/stats'
     | '/analysis/$id'
     | '/share/$token'
+    | '/compare/$id1/$id2'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -98,8 +118,10 @@ export interface FileRouteTypes {
     | '/auth'
     | '/history'
     | '/live'
+    | '/stats'
     | '/analysis/$id'
     | '/share/$token'
+    | '/compare/$id1/$id2'
   id:
     | '__root__'
     | '/'
@@ -107,8 +129,10 @@ export interface FileRouteTypes {
     | '/auth'
     | '/history'
     | '/live'
+    | '/stats'
     | '/analysis/$id'
     | '/share/$token'
+    | '/compare/$id1/$id2'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -117,12 +141,21 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   HistoryRoute: typeof HistoryRoute
   LiveRoute: typeof LiveRoute
+  StatsRoute: typeof StatsRoute
   AnalysisIdRoute: typeof AnalysisIdRoute
   ShareTokenRoute: typeof ShareTokenRoute
+  CompareId1Id2Route: typeof CompareId1Id2Route
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/stats': {
+      id: '/stats'
+      path: '/stats'
+      fullPath: '/stats'
+      preLoaderRoute: typeof StatsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/live': {
       id: '/live'
       path: '/live'
@@ -172,6 +205,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AnalysisIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/compare/$id1/$id2': {
+      id: '/compare/$id1/$id2'
+      path: '/compare/$id1/$id2'
+      fullPath: '/compare/$id1/$id2'
+      preLoaderRoute: typeof CompareId1Id2RouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -181,8 +221,10 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   HistoryRoute: HistoryRoute,
   LiveRoute: LiveRoute,
+  StatsRoute: StatsRoute,
   AnalysisIdRoute: AnalysisIdRoute,
   ShareTokenRoute: ShareTokenRoute,
+  CompareId1Id2Route: CompareId1Id2Route,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

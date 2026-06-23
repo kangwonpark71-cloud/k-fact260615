@@ -52,7 +52,9 @@ function extractPublisher(url: string): string {
       if (host.includes(domain)) return name;
     }
     return host.split(".")[0];
-  } catch { return "네이버 뉴스"; }
+  } catch {
+    return "네이버 뉴스";
+  }
 }
 
 function buildQuery(text: string): string {
@@ -61,7 +63,10 @@ function buildQuery(text: string): string {
     .replace(/[^\w\s가-힣]/g, " ")
     .replace(/\b(이|가|은|는|을|를|의|에|에서|로|으로|와|과|이다|입니다|합니다|했다|된다)\b/g, " ")
     .trim();
-  const words = cleaned.split(/\s+/).filter(w => w.length >= 2).slice(0, 5);
+  const words = cleaned
+    .split(/\s+/)
+    .filter((w) => w.length >= 2)
+    .slice(0, 5);
   return `팩트체크 ${words.join(" ")}`.slice(0, 100);
 }
 
@@ -72,7 +77,7 @@ function buildQuery(text: string): string {
 export async function fetchNaverFactChecks(query: string): Promise<NaverFactCheckItem[]> {
   if (query.length < 10) return [];
 
-  const clientId     = getEnv("NAVER_CLIENT_ID");
+  const clientId = getEnv("NAVER_CLIENT_ID");
   const clientSecret = getEnv("NAVER_CLIENT_SECRET");
   if (!clientId || !clientSecret) return [];
 
@@ -80,45 +85,47 @@ export async function fetchNaverFactChecks(query: string): Promise<NaverFactChec
     const searchQuery = buildQuery(query);
     const params = new URLSearchParams({ query: searchQuery, display: "8", sort: "date" });
 
-    const res = await fetch(
-      `https://openapi.naver.com/v1/search/news.json?${params}`,
-      {
-        headers: {
-          "X-Naver-Client-Id": clientId,
-          "X-Naver-Client-Secret": clientSecret,
-        },
-        signal: AbortSignal.timeout(4500),
+    const res = await fetch(`https://openapi.naver.com/v1/search/news.json?${params}`, {
+      headers: {
+        "X-Naver-Client-Id": clientId,
+        "X-Naver-Client-Secret": clientSecret,
       },
-    );
+      signal: AbortSignal.timeout(4500),
+    });
     if (!res.ok) return [];
 
-    const json = await res.json() as { items?: NaverNewsAPIItem[] };
+    const json = (await res.json()) as { items?: NaverNewsAPIItem[] };
 
     return (json.items ?? [])
-      .filter(item => {
+      .filter((item) => {
         const t = stripHtml(item.title).toLowerCase();
         const d = stripHtml(item.description).toLowerCase();
         return (
-          t.includes("팩트체크") || t.includes("사실확인") || t.includes("팩트") ||
-          d.includes("팩트체크") || d.includes("사실확인")
+          t.includes("팩트체크") ||
+          t.includes("사실확인") ||
+          t.includes("팩트") ||
+          d.includes("팩트체크") ||
+          d.includes("사실확인")
         );
       })
       .slice(0, 3)
-      .map(item => ({
-        title:       stripHtml(item.title).slice(0, 120),
-        link:        item.link || item.originallink,
+      .map((item) => ({
+        title: stripHtml(item.title).slice(0, 120),
+        link: item.link || item.originallink,
         description: stripHtml(item.description).slice(0, 200),
-        pub_date:    item.pubDate,
-        publisher:   extractPublisher(item.link || item.originallink),
+        pub_date: item.pubDate,
+        publisher: extractPublisher(item.link || item.originallink),
       }));
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 /** AI 프롬프트에 삽입할 블록 생성 */
 export function formatNaverBlockForPrompt(items: NaverFactCheckItem[]): string {
   if (!items.length) return "";
-  const lines = items.map((item, i) =>
-    `${i + 1}. [${item.publisher}] ${item.title}\n   ${item.description}`,
+  const lines = items.map(
+    (item, i) => `${i + 1}. [${item.publisher}] ${item.title}\n   ${item.description}`,
   );
   return `\n[네이버 뉴스 팩트체크 관련 기사 — 판정 참고]\n${lines.join("\n")}\n`;
 }

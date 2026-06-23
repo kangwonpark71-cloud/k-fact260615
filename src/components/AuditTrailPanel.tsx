@@ -1,12 +1,37 @@
 import { useState } from "react";
 import {
-  ChevronDown, ChevronUp, Search, Globe, Cpu,
-  Scale, AlertTriangle, CheckCircle2, Lock, ShieldOff, Shield,
-  Clock, BarChart2, FileSearch, Brain, Layers, Activity,
-  TrendingUp, TrendingDown, Zap, AlertOctagon,
+  ChevronDown,
+  ChevronUp,
+  Search,
+  Globe,
+  Cpu,
+  Scale,
+  AlertTriangle,
+  CheckCircle2,
+  Lock,
+  ShieldOff,
+  Shield,
+  Clock,
+  BarChart2,
+  FileSearch,
+  Brain,
+  Layers,
+  Activity,
+  TrendingUp,
+  TrendingDown,
+  Zap,
+  AlertOctagon,
+  RefreshCw,
 } from "lucide-react";
 
-import { type PropagandaTechnique, type StyleClassification, type ExternalFactCheck } from "@/lib/factcheck.types";
+import {
+  type PropagandaTechnique,
+  type StyleClassification,
+  type ExternalFactCheck,
+} from "@/lib/factcheck.types";
+import type { VerdictTimeline as VerdictTimelineData } from "@/lib/analyses/reverify-helpers";
+import { AuditSourceList, type ReviewedAuditSource } from "./AuditSourceList";
+import { VerdictTimeline } from "./VerdictTimeline";
 
 export type { PropagandaTechnique, StyleClassification, ExternalFactCheck };
 
@@ -21,7 +46,7 @@ export type AuditLog = {
     model: string;
     completed_at: string;
     search_queries: string[];
-    sources_reviewed: Array<{ url: string; title?: string }>;
+    sources_reviewed: ReviewedAuditSource[];
     evidence_count: number;
   };
   weights?: {
@@ -29,6 +54,7 @@ export type AuditLog = {
     source_transparency_pct: number;
     context_completeness_pct: number;
   };
+  verdict_timeline?: VerdictTimelineData;
 };
 
 type IntegrityStatus = "valid" | "invalid" | "unsigned" | "checking";
@@ -40,9 +66,35 @@ interface Props {
   externalChecks?: ExternalFactCheck[];
   onLoadExternal?: () => void;
   externalLoading?: boolean;
+  onReverify?: () => void;
+  reverifyLoading?: boolean;
+  reverifyError?: string | null;
+  overallVerdict?: string;
+  overallConfidence?: number;
+  createdAt?: string;
 }
 
-function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+function formatAuditTime(value: string | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("ko-KR", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function Section({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className="space-y-2">
       <h4 className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-widest">
@@ -84,43 +136,81 @@ function IntegrityBadge({ status }: { status: IntegrityStatus }) {
 }
 
 /* ── 신뢰도 바 ── */
-function ScoreBar({ label, value, color, inverse = false }: { label: string; value: number; color: string; inverse?: boolean }) {
-  const display = inverse ? (100 - value) : value;
+function ScoreBar({
+  label,
+  value,
+  color,
+  inverse = false,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  inverse?: boolean;
+}) {
+  const display = inverse ? 100 - value : value;
   const barColor = inverse
-    ? (value >= 70 ? "bg-destructive" : value >= 40 ? "bg-yellow-500" : "bg-verdict-true")
-    : (value >= 70 ? "bg-verdict-true" : value >= 40 ? "bg-yellow-500" : "bg-destructive");
+    ? value >= 70
+      ? "bg-destructive"
+      : value >= 40
+        ? "bg-yellow-500"
+        : "bg-verdict-true"
+    : value >= 70
+      ? "bg-verdict-true"
+      : value >= 40
+        ? "bg-yellow-500"
+        : "bg-destructive";
   return (
     <div className="flex items-center gap-2 text-xs">
       <span className="w-28 shrink-0 text-muted-foreground">{label}</span>
       <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
-        <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${value}%` }} />
+        <div
+          className={`h-full ${barColor} rounded-full transition-all`}
+          style={{ width: `${value}%` }}
+        />
       </div>
-      <span className={`w-7 text-right font-mono text-[10px] ${display >= 70 ? color : "text-muted-foreground"}`}>{value}</span>
+      <span
+        className={`w-7 text-right font-mono text-[10px] ${display >= 70 ? color : "text-muted-foreground"}`}
+      >
+        {value}
+      </span>
     </div>
   );
 }
 
 /* ── 스타일 카테고리 배지 ── */
 const STYLE_CAT_COLORS: Record<string, string> = {
-  "사실보도":       "bg-verdict-true/15 text-verdict-true border-verdict-true/40",
-  "학술/공식문서":  "bg-verdict-true/15 text-verdict-true border-verdict-true/40",
-  "의견/칼럼":      "bg-verdict-partial/15 text-verdict-partial border-verdict-partial/40",
-  "과장/클릭베이트":"bg-yellow-500/15 text-yellow-500 border-yellow-500/40",
-  "여론조작/선동":  "bg-destructive/15 text-destructive border-destructive/40",
-  "허위정보":       "bg-destructive/15 text-destructive border-destructive/40",
+  사실보도: "bg-verdict-true/15 text-verdict-true border-verdict-true/40",
+  "학술/공식문서": "bg-verdict-true/15 text-verdict-true border-verdict-true/40",
+  "의견/칼럼": "bg-verdict-partial/15 text-verdict-partial border-verdict-partial/40",
+  "과장/클릭베이트": "bg-yellow-500/15 text-yellow-500 border-yellow-500/40",
+  "여론조작/선동": "bg-destructive/15 text-destructive border-destructive/40",
+  허위정보: "bg-destructive/15 text-destructive border-destructive/40",
 };
 
 function StyleClassificationPanel({ sc }: { sc: StyleClassification }) {
   const [showTech, setShowTech] = useState(false);
-  const catColor = STYLE_CAT_COLORS[sc.style_category] ?? "bg-muted text-muted-foreground border-border";
-  const credColor = sc.credibility_score >= 70 ? "text-verdict-true" : sc.credibility_score >= 40 ? "text-yellow-500" : "text-destructive";
-  const fpColor   = sc.fake_probability  >= 70 ? "text-destructive"  : sc.fake_probability  >= 40 ? "text-yellow-500" : "text-verdict-true";
+  const catColor =
+    STYLE_CAT_COLORS[sc.style_category] ?? "bg-muted text-muted-foreground border-border";
+  const credColor =
+    sc.credibility_score >= 70
+      ? "text-verdict-true"
+      : sc.credibility_score >= 40
+        ? "text-yellow-500"
+        : "text-destructive";
+  const fpColor =
+    sc.fake_probability >= 70
+      ? "text-destructive"
+      : sc.fake_probability >= 40
+        ? "text-yellow-500"
+        : "text-verdict-true";
 
   return (
     <div className="space-y-4">
       {/* 요약 헤더 */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${catColor}`}>
+        <span
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${catColor}`}
+        >
           <Layers className="w-3 h-3" /> {sc.style_category}
         </span>
         <span className="text-xs text-muted-foreground border border-border/40 px-2 py-0.5 rounded-full">
@@ -139,11 +229,32 @@ function StyleClassificationPanel({ sc }: { sc: StyleClassification }) {
           <Activity className="w-3 h-3" /> 언어학적 지표 (LIWC 기반)
         </p>
         <div className="space-y-1.5">
-          <ScoreBar label="어휘 풍부도" value={sc.linguistic_features?.vocabulary_richness ?? 50}   color="text-verdict-true" />
-          <ScoreBar label="논증 일관성" value={sc.linguistic_features?.argument_coherence    ?? 50} color="text-verdict-true" />
-          <ScoreBar label="출처 귀속"   value={sc.linguistic_features?.source_attribution    ?? 50} color="text-verdict-true" />
-          <ScoreBar label="문장 복잡도" value={sc.linguistic_features?.sentence_complexity   ?? 50} color="text-muted-foreground" />
-          <ScoreBar label="감정어 밀도" value={sc.linguistic_features?.emotional_density     ?? 50} color="text-yellow-500" inverse />
+          <ScoreBar
+            label="어휘 풍부도"
+            value={sc.linguistic_features?.vocabulary_richness ?? 50}
+            color="text-verdict-true"
+          />
+          <ScoreBar
+            label="논증 일관성"
+            value={sc.linguistic_features?.argument_coherence ?? 50}
+            color="text-verdict-true"
+          />
+          <ScoreBar
+            label="출처 귀속"
+            value={sc.linguistic_features?.source_attribution ?? 50}
+            color="text-verdict-true"
+          />
+          <ScoreBar
+            label="문장 복잡도"
+            value={sc.linguistic_features?.sentence_complexity ?? 50}
+            color="text-muted-foreground"
+          />
+          <ScoreBar
+            label="감정어 밀도"
+            value={sc.linguistic_features?.emotional_density ?? 50}
+            color="text-yellow-500"
+            inverse
+          />
         </div>
       </div>
 
@@ -153,10 +264,30 @@ function StyleClassificationPanel({ sc }: { sc: StyleClassification }) {
           <AlertOctagon className="w-3 h-3" /> 기만 리스크 (NELA-GT 기반)
         </p>
         <div className="space-y-1.5">
-          <ScoreBar label="감정 조작"   value={sc.deception_risk.emotional_manipulation} color="text-destructive" inverse />
-          <ScoreBar label="허위 긴박감" value={sc.deception_risk.urgency_framing}        color="text-destructive" inverse />
-          <ScoreBar label="미검증 통계" value={sc.deception_risk.unverified_statistics}  color="text-destructive" inverse />
-          <ScoreBar label="분열 언어"   value={sc.deception_risk.polarizing_language}    color="text-destructive" inverse />
+          <ScoreBar
+            label="감정 조작"
+            value={sc.deception_risk.emotional_manipulation}
+            color="text-destructive"
+            inverse
+          />
+          <ScoreBar
+            label="허위 긴박감"
+            value={sc.deception_risk.urgency_framing}
+            color="text-destructive"
+            inverse
+          />
+          <ScoreBar
+            label="미검증 통계"
+            value={sc.deception_risk.unverified_statistics}
+            color="text-destructive"
+            inverse
+          />
+          <ScoreBar
+            label="분열 언어"
+            value={sc.deception_risk.polarizing_language}
+            color="text-destructive"
+            inverse
+          />
         </div>
       </div>
 
@@ -165,7 +296,7 @@ function StyleClassificationPanel({ sc }: { sc: StyleClassification }) {
         <div>
           <button
             type="button"
-            onClick={() => setShowTech(v => !v)}
+            onClick={() => setShowTech((v) => !v)}
             className="flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground/80 uppercase tracking-widest hover:text-foreground transition-colors"
           >
             <Zap className="w-3 h-3" />
@@ -175,9 +306,16 @@ function StyleClassificationPanel({ sc }: { sc: StyleClassification }) {
           {showTech && (
             <div className="mt-2 space-y-1.5">
               {sc.propaganda_techniques.map((t, i) => (
-                <div key={i} className="rounded-lg border border-destructive/20 bg-destructive/5 px-2.5 py-1.5">
+                <div
+                  key={i}
+                  className="rounded-lg border border-destructive/20 bg-destructive/5 px-2.5 py-1.5"
+                >
                   <p className="text-xs font-semibold text-destructive">{t.name}</p>
-                  {t.evidence && <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{t.evidence}</p>}
+                  {t.evidence && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                      {t.evidence}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
@@ -195,7 +333,20 @@ function StyleClassificationPanel({ sc }: { sc: StyleClassification }) {
   );
 }
 
-export function AuditTrailPanel({ auditLog, integrity, styleClassification, externalChecks, onLoadExternal, externalLoading }: Props) {
+export function AuditTrailPanel({
+  auditLog,
+  integrity,
+  styleClassification,
+  externalChecks,
+  onLoadExternal,
+  externalLoading,
+  onReverify,
+  reverifyLoading = false,
+  reverifyError = null,
+  overallVerdict,
+  overallConfidence,
+  createdAt,
+}: Props) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -203,7 +354,7 @@ export function AuditTrailPanel({ auditLog, integrity, styleClassification, exte
       {/* 헤더 토글 */}
       <button
         type="button"
-        onClick={() => setOpen(v => !v)}
+        onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-surface-2/50 transition-colors"
       >
         <span className="flex items-center gap-2">
@@ -211,17 +362,21 @@ export function AuditTrailPanel({ auditLog, integrity, styleClassification, exte
           판단 과정 보기
           <IntegrityBadge status={integrity} />
         </span>
-        {open
-          ? <ChevronUp className="w-4 h-4 shrink-0" />
-          : <ChevronDown className="w-4 h-4 shrink-0" />}
+        {open ? (
+          <ChevronUp className="w-4 h-4 shrink-0" />
+        ) : (
+          <ChevronDown className="w-4 h-4 shrink-0" />
+        )}
       </button>
 
       {open && (
         <div className="border-t border-border/50 px-4 py-4 space-y-5 bg-background/30">
-
           {/* ── 트랜스포머 문체 분류 ── */}
           {styleClassification && (
-            <Section title="AI 문체 분류 (트랜스포머 기반)" icon={<Brain className="w-3.5 h-3.5" />}>
+            <Section
+              title="AI 문체 분류 (트랜스포머 기반)"
+              icon={<Brain className="w-3.5 h-3.5" />}
+            >
               <StyleClassificationPanel sc={styleClassification} />
             </Section>
           )}
@@ -230,9 +385,21 @@ export function AuditTrailPanel({ auditLog, integrity, styleClassification, exte
           <Section title="판정 가중치 기준" icon={<Scale className="w-3.5 h-3.5" />}>
             <div className="space-y-1.5">
               {[
-                { label: "사실 일치도", pct: auditLog?.weights?.fact_match_pct ?? 50, color: "bg-primary" },
-                { label: "출처 투명성", pct: auditLog?.weights?.source_transparency_pct ?? 30, color: "bg-accent" },
-                { label: "맥락 완전성", pct: auditLog?.weights?.context_completeness_pct ?? 20, color: "bg-muted-foreground/50" },
+                {
+                  label: "사실 일치도",
+                  pct: auditLog?.weights?.fact_match_pct ?? 50,
+                  color: "bg-primary",
+                },
+                {
+                  label: "출처 투명성",
+                  pct: auditLog?.weights?.source_transparency_pct ?? 30,
+                  color: "bg-accent",
+                },
+                {
+                  label: "맥락 완전성",
+                  pct: auditLog?.weights?.context_completeness_pct ?? 20,
+                  color: "bg-muted-foreground/50",
+                },
               ].map(({ label, pct, color }) => (
                 <div key={label} className="flex items-center gap-2 text-xs">
                   <span className="w-24 text-muted-foreground shrink-0">{label}</span>
@@ -256,7 +423,9 @@ export function AuditTrailPanel({ auditLog, integrity, styleClassification, exte
                 {auditLog.phase1.fake_probability > 0 && (
                   <div className="flex gap-2">
                     <span className="text-muted-foreground shrink-0">가짜 가능성 지수</span>
-                    <span className={`font-semibold ${auditLog.phase1.fake_probability >= 60 ? "text-destructive" : auditLog.phase1.fake_probability >= 30 ? "text-yellow-500" : "text-verdict-true"}`}>
+                    <span
+                      className={`font-semibold ${auditLog.phase1.fake_probability >= 60 ? "text-destructive" : auditLog.phase1.fake_probability >= 30 ? "text-yellow-500" : "text-verdict-true"}`}
+                    >
                       {auditLog.phase1.fake_probability}%
                     </span>
                   </div>
@@ -266,7 +435,10 @@ export function AuditTrailPanel({ auditLog, integrity, styleClassification, exte
                     <span className="text-muted-foreground shrink-0 leading-5">탐지된 신호</span>
                     <div className="flex flex-wrap gap-1">
                       {auditLog.phase1.style_signals.map((s, i) => (
-                        <span key={i} className="px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 text-[10px] border border-yellow-500/20">
+                        <span
+                          key={i}
+                          className="px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 text-[10px] border border-yellow-500/20"
+                        >
                           {s}
                         </span>
                       ))}
@@ -279,15 +451,28 @@ export function AuditTrailPanel({ auditLog, integrity, styleClassification, exte
 
           {/* ── 2단계 AI 분析 ── */}
           {auditLog?.phase2 && (
-            <Section title="2단계 분析 (Tavily 검색 기반)" icon={<Search className="w-3.5 h-3.5" />}>
+            <Section
+              title="2단계 분析 (Tavily 검색 기반)"
+              icon={<Search className="w-3.5 h-3.5" />}
+            >
               <div className="text-xs space-y-2 text-muted-foreground">
                 <div className="flex gap-2">
                   <span className="text-muted-foreground shrink-0">사용 모델</span>
                   <span className="font-mono">{auditLog.phase2.model}</span>
                 </div>
+                {formatAuditTime(auditLog.phase2.completed_at) && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground shrink-0">최근 심층 검증</span>
+                    <span className="font-medium text-foreground/80">
+                      {formatAuditTime(auditLog.phase2.completed_at)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <span className="text-muted-foreground shrink-0">검색 증거 수</span>
-                  <span className="font-semibold text-foreground/80">{auditLog.phase2.evidence_count}건</span>
+                  <span className="font-semibold text-foreground/80">
+                    {auditLog.phase2.evidence_count}건
+                  </span>
                 </div>
                 {auditLog.phase2.search_queries.length > 0 && (
                   <div className="space-y-1">
@@ -304,23 +489,46 @@ export function AuditTrailPanel({ auditLog, integrity, styleClassification, exte
                 )}
                 {auditLog.phase2.sources_reviewed.length > 0 && (
                   <div className="space-y-1">
-                    <p className="text-muted-foreground">검토한 출처 ({auditLog.phase2.sources_reviewed.length}건)</p>
-                    <div className="space-y-0.5 max-h-36 overflow-y-auto">
-                      {auditLog.phase2.sources_reviewed.map((s, i) => (
-                        <a
-                          key={i}
-                          href={s.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 text-primary/70 hover:text-primary hover:underline truncate"
-                        >
-                          <Globe className="w-3 h-3 shrink-0" />
-                          <span className="truncate">{s.url}</span>
-                        </a>
-                      ))}
-                    </div>
+                    <p className="text-muted-foreground">
+                      검토한 출처 ({auditLog.phase2.sources_reviewed.length}건)
+                    </p>
+                    <AuditSourceList sources={auditLog.phase2.sources_reviewed} />
                   </div>
                 )}
+                {onReverify && (
+                  <div className="pt-2 mt-2 border-t border-border/40 space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        저장된 원문과 URL로 심층 검색을 다시 실행합니다.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={onReverify}
+                        disabled={reverifyLoading}
+                        className="inline-flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-primary/30 bg-primary/10 text-primary text-[11px] font-semibold hover:bg-primary/15 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${reverifyLoading ? "animate-spin" : ""}`} />
+                        {reverifyLoading ? "재검증 중…" : "출처 기준으로 다시 검증"}
+                      </button>
+                    </div>
+                    {reverifyError && (
+                      <p
+                        role="alert"
+                        className="text-[11px] leading-relaxed text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-2.5 py-2"
+                      >
+                        {reverifyError}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <VerdictTimeline
+                  entries={auditLog.verdict_timeline?.entries ?? []}
+                  fallback={
+                    overallVerdict && typeof overallConfidence === "number"
+                      ? { overallVerdict, overallConfidence, createdAt }
+                      : undefined
+                  }
+                />
               </div>
             </Section>
           )}
@@ -330,10 +538,15 @@ export function AuditTrailPanel({ auditLog, integrity, styleClassification, exte
             {externalChecks && externalChecks.length > 0 ? (
               <div className="space-y-2">
                 {externalChecks.map((ec, i) => (
-                  <div key={i} className="rounded-lg border border-border/50 p-2.5 space-y-1 text-xs">
+                  <div
+                    key={i}
+                    className="rounded-lg border border-border/50 p-2.5 space-y-1 text-xs"
+                  >
                     <p className="text-foreground/80 font-medium leading-snug">{ec.claim_text}</p>
                     <div className="flex items-center gap-2 text-muted-foreground flex-wrap">
-                      <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-semibold">{ec.rating}</span>
+                      <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-semibold">
+                        {ec.rating}
+                      </span>
                       <span>{ec.publisher}</span>
                       {ec.claimant && <span>· 주장자: {ec.claimant}</span>}
                     </div>
@@ -360,11 +573,19 @@ export function AuditTrailPanel({ auditLog, integrity, styleClassification, exte
                   disabled={externalLoading}
                   className="flex items-center gap-1.5 text-xs text-primary hover:underline disabled:opacity-50"
                 >
-                  {externalLoading
-                    ? <><BarChart2 className="w-3 h-3 animate-pulse" /> 확인 중…</>
-                    : <><Globe className="w-3 h-3" /> Google Fact Check 교차 확인하기</>}
+                  {externalLoading ? (
+                    <>
+                      <BarChart2 className="w-3 h-3 animate-pulse" /> 확인 중…
+                    </>
+                  ) : (
+                    <>
+                      <Globe className="w-3 h-3" /> Google Fact Check 교차 확인하기
+                    </>
+                  )}
                 </button>
-                <span className="text-[10px] text-muted-foreground">(SNU 팩트체크·Google FC Tools)</span>
+                <span className="text-[10px] text-muted-foreground">
+                  (SNU 팩트체크·Google FC Tools)
+                </span>
               </div>
             )}
           </Section>

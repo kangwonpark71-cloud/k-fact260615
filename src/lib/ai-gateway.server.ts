@@ -20,4 +20,3 @@ export function createModelInstance(provider: SupportedProvider, apiKey: string)
       return createGoogleGenerativeAI({ apiKey })(MODELS.gemini);
   }
 }
-

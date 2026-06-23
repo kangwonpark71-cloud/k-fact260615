@@ -40,17 +40,19 @@ export async function fetchGoogleFactChecks(query: string): Promise<ExternalFact
       { signal: AbortSignal.timeout(6000) },
     );
     if (!res.ok) return [];
-    const json = await res.json() as { claims?: GFCClaim[] };
+    const json = (await res.json()) as { claims?: GFCClaim[] };
     return (json.claims ?? [])
       .slice(0, 5)
-      .map(c => ({
-        claim_text:  c.text ?? "",
-        claimant:    c.claimant ?? "",
-        rating:      c.claimReview?.[0]?.textualRating ?? "",
-        publisher:   c.claimReview?.[0]?.publisher?.name ?? "",
-        review_url:  c.claimReview?.[0]?.url ?? "",
+      .map((c) => ({
+        claim_text: c.text ?? "",
+        claimant: c.claimant ?? "",
+        rating: c.claimReview?.[0]?.textualRating ?? "",
+        publisher: c.claimReview?.[0]?.publisher?.name ?? "",
+        review_url: c.claimReview?.[0]?.url ?? "",
         review_date: c.claimReview?.[0]?.reviewDate,
       }))
-      .filter(r => r.claim_text && r.rating);
-  } catch { return []; }
+      .filter((r) => r.claim_text && r.rating);
+  } catch {
+    return [];
+  }
 }
