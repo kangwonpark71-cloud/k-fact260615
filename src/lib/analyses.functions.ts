@@ -5,7 +5,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 
 import { createModelInstance } from "./ai-gateway.server";
-import { getEnv } from "./runtime-env.server";
+import { getEnv, getCfCtx } from "./runtime-env.server";
 import { signAnalysisResult } from "./integrity.server";
 import { fetchGoogleFactChecks } from "./external-factcheck.server";
 import {
@@ -780,6 +780,7 @@ async function generateWithFallback<T extends z.ZodType>(params: {
   temperature?: number;
   cfHint?: "analysis" | "quick";
   _modelRef?: ModelRef;
+  cfMaxMs?: number;  // CF AI 모델별 타임아웃 한도 (기본: 18000ms)
 }): Promise<z.infer<T>> {
   const { keys, dbError } = await getAllActiveKeys();
   const cfAIBinding = getCfAIBindingOrNull();
@@ -807,6 +808,7 @@ async function generateWithFallback<T extends z.ZodType>(params: {
       return object;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[AI fallback] provider=${entry.provider} error: ${msg.slice(0, 200)}`);
       errors.push(`[${entry.provider}] ${msg.slice(0, 120)}`);
       continue;
     }
@@ -814,13 +816,14 @@ async function generateWithFallback<T extends z.ZodType>(params: {
 
   // 최종 폴백: CF Workers AI
   if (cfAIBinding) {
-    const cfModels = [
-      "@cf/meta/llama-3.2-3b-instruct",
-      "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    const maxCf = params.cfMaxMs ?? 18000;
+    const cfModels: Array<{ model: string; timeout: number }> = [
+      { model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", timeout: maxCf },
+      { model: "@cf/meta/llama-3.2-3b-instruct", timeout: Math.min(maxCf, 15000) },
     ];
     const cfSystem = params.system + CF_JSON_HINT;
 
-    for (const cfModel of cfModels) {
+    for (const { model: cfModel, timeout: cfTimeout } of cfModels) {
       try {
         const cfResult: unknown = await Promise.race([
           (cfAIBinding as any).run(cfModel, {
@@ -832,7 +835,7 @@ async function generateWithFallback<T extends z.ZodType>(params: {
             max_tokens: 2000,
           }),
           new Promise<never>((_, rej) =>
-            setTimeout(() => rej(new Error(`CF AI 타임아웃: ${cfModel}`)), 18000)
+            setTimeout(() => rej(new Error(`CF AI 타임아웃: ${cfModel}`)), cfTimeout)
           ),
         ]);
 
@@ -841,10 +844,16 @@ async function generateWithFallback<T extends z.ZodType>(params: {
             ? cfResult
             : typeof (cfResult as any)?.response === "string"
               ? (cfResult as any).response
-              : JSON.stringify(cfResult);
+              : typeof (cfResult as any)?.choices?.[0]?.message?.content === "string"
+                ? (cfResult as any).choices[0].message.content
+                : JSON.stringify(cfResult);
 
+        console.log(`[CF AI] model=${cfModel.split("/").pop()} raw=${raw.slice(0, 500)}`);
         if (params._modelRef) params._modelRef.model = `cf:${cfModel.split("/").pop()}`;
-        return parseCFResponse(raw, params.cfHint ?? "analysis") as z.infer<T>;
+        const parsed = parseCFResponse(raw, params.cfHint ?? "analysis") as z.infer<T>;
+        const parsedAny = parsed as Record<string, unknown>;
+        console.log(`[CF AI parsed] summary="${String(parsedAny?.summary ?? "").slice(0,60)}" claims=${Array.isArray(parsedAny?.claims) ? parsedAny.claims.length : "?"}`);
+        return parsed;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         errors.push(`[cf:${cfModel.split("/").pop()}] ${msg.slice(0, 100)}`);
@@ -863,6 +872,7 @@ async function generateWithFallback<T extends z.ZodType>(params: {
 async function analyzeStyleWithLLM(
   text: string,
   modelRef?: ModelRef,
+  cfMaxMs?: number,
 ): Promise<StyleClassification | null> {
   try {
     const result = await generateWithFallback({
@@ -872,6 +882,7 @@ async function analyzeStyleWithLLM(
       temperature: 0.1,
       cfHint: "analysis",
       _modelRef: modelRef,
+      cfMaxMs,
     });
     return result;
   } catch {
@@ -915,6 +926,7 @@ async function processAnalysisPhase1(
 ${isolateUserContent(bodyText.slice(0, 7000))}`;
 
   // Phase 1 LLM + 트랜스포머 문체 분류기 병렬 실행 (추가 지연 없음)
+  // CF AI 12s: provider failures(~7s) + CF(12s) = ~19s → CF Workers 30s 제한 내 응답 보장
   const [parsed, styleClassification] = await Promise.all([
     generateWithFallback({
       schema: AnalysisSchema,
@@ -922,8 +934,9 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
       prompt: phase1Prompt,
       cfHint: "analysis",
       _modelRef: p1ModelRef,
+      cfMaxMs: 12000,
     }),
-    analyzeStyleWithLLM(bodyText, styleModelRef),
+    analyzeStyleWithLLM(bodyText, styleModelRef, 12000),
   ]);
 
   // LLM 분류 결과 우선, 실패 시 정규식 결과 사용
@@ -975,7 +988,8 @@ async function processAnalysisPhase2(
   phase1Model: string = "unknown",
   phase1StyleClassification?: StyleClassification,
 ): Promise<AnalysisPayload> {
-  const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const hasDB = (getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? "").startsWith("eyJ");
+  console.log(`[phase2 START] id=${analysisId} hasDB=${hasDB} claims=${phase1Claims.length}`);
   try {
     // Phase 1 트랜스포머 분류 결과 재사용 — 재실행 없음
     const quickStyle = buildStyleAnalysis(bodyText);
@@ -1067,7 +1081,9 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
       prompt,
       cfHint: "analysis",
       _modelRef: p2ModelRef,
+      cfMaxMs: 28000,
     });
+    console.log(`[phase2 AI] model=${p2ModelRef.model} summary=${parsed.summary.slice(0,50)} claims=${parsed.claims.length}`);
 
     // ── Phase 2.5: 근거 부족 클레임 전용 심층 재검색 ──────────────────────
     const weakClaims = parsed.claims.filter(c => c.verdict === "근거 부족");
@@ -1118,6 +1134,7 @@ ${isolateUserContent(bodyText.slice(0, 3000))}`;
             prompt: phase25Prompt,
             cfHint: "analysis",
             _modelRef: phase25ModelRef,
+            cfMaxMs: 28000,
           });
 
           // Phase 2 결과에서 근거 부족 항목을 Phase 2.5 결과로 교체
@@ -1197,15 +1214,24 @@ ${isolateUserContent(bodyText.slice(0, 3000))}`;
       integrity_hash: integrityHash ?? null,
     };
 
+    // KV에는 항상 전체 payload(audit_log, integrity_hash 포함) 저장
+    await kvPut(analysisId, completedPayload);
+
     if (hasDB) {
+      // DB에는 스키마에 존재하는 컬럼만 업데이트 (audit_log, integrity_hash 제외)
+      const { audit_log: _al, integrity_hash: _ih, ...dbPayload } = completedPayload;
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { error: updateErr } = await supabaseAdmin
         .from("analyses")
-        .update(completedPayload)
+        .update(dbPayload)
         .eq("id", analysisId);
-      if (updateErr) await kvPut(analysisId, completedPayload);
+      if (updateErr) {
+        console.error("[phase2 DB UPDATE ERROR]", updateErr.message);
+      } else {
+        console.log("[phase2 DONE] id="+analysisId+" DB+KV updated OK");
+      }
     } else {
-      await kvPut(analysisId, completedPayload);
+      console.log("[phase2 DONE] id="+analysisId+" KV only updated");
     }
     return completedPayload;
   } catch (err) {
@@ -1249,7 +1275,7 @@ export const analyzeContent = createServerFn({ method: "POST" })
       return { id: prevAnalysisId, cached: true, pending: false };
     }
 
-    const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
+    const hasDB = (getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? "").startsWith("eyJ");
     let analysisId: string;
 
     if (hasDB) {
@@ -1305,9 +1331,10 @@ export const getAnalysis = createServerFn({ method: "GET" })
   // @ts-expect-error TanStack Start ValidateSerializableMapped doesn't accept dynamic KV types
   .handler(async ({ data }) => {
     const userId = await getOptionalUserId();
-    const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
+    const hasDB = (getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? "").startsWith("eyJ");
 
     const kvRow = await kvGet(data.id);
+    console.log(`[getAnalysis] id=${data.id} kvRow=${kvRow ? String(kvRow.status) : "null"} hasDB=${hasDB}`);
     if (kvRow) {
       const isPublicResult = kvRow.status === "phase1_complete" || kvRow.status === "completed";
       const ownedByUser = !!(userId && kvRow.user_id === userId);
@@ -1362,16 +1389,40 @@ export const continueAnalysis = createServerFn({ method: "POST" })
     const userId = await getOptionalUserId();
 
     const kvRow = await kvGet(data.id);
-    if (kvRow) {
-      const ownedByUser = !!(userId && kvRow.user_id === userId);
-      const ownedBySession = !kvRow.user_id && kvRow.session_id === data.sessionId;
-      if (!ownedByUser && !ownedBySession) throw new Error("이 분석을 볼 권한이 없습니다.");
+
+    // KV에 없으면 DB에서 Phase 1 결과 조회
+    let dbRow: Record<string, unknown> | null = null;
+    const hasDB2 = (getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? "").startsWith("eyJ");
+    if (!kvRow && hasDB2) {
+      try {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { data: row } = await supabaseAdmin
+          .from("analyses")
+          .select("*")
+          .eq("id", data.id)
+          .maybeSingle();
+        dbRow = row as Record<string, unknown> | null;
+        console.log("[continueAnalysis] KV miss, DB:", dbRow ? String(dbRow.status) : "null");
+      } catch (e) {
+        console.error("[continueAnalysis] DB fallback error:", e instanceof Error ? e.message : e);
+      }
     }
 
-    const bodyText = (kvRow?.input_text as string | undefined) ?? data.text;
-    const sourceUrl = (kvRow?.source_url as string | null | undefined) ?? data.sourceUrl;
+    const sourceRow = kvRow ?? dbRow;
 
-    const claimsData = (kvRow?.claims as Record<string, unknown> | null) ?? {};
+    if (sourceRow) {
+      const ownedByUser = !!(userId && sourceRow.user_id === userId);
+      const ownedBySession = !sourceRow.user_id && sourceRow.session_id === data.sessionId;
+      if (!ownedByUser && !ownedBySession) throw new Error("이 분석을 볼 권한이 없습니다.");
+      if (sourceRow.status === "completed") {
+        console.log("[continueAnalysis] already completed, returning");
+        return sourceRow as unknown as AnalysisPayload;
+      }
+    }
+
+    const bodyText = (sourceRow?.input_text as string | undefined) ?? data.text;
+    const sourceUrl = (sourceRow?.source_url as string | null | undefined) ?? data.sourceUrl;
+    const claimsData = (sourceRow?.claims as Record<string, unknown> | null) ?? {};
     const phase1Claims: Phase1Claim[] = Array.isArray(claimsData.items)
       ? (claimsData.items as Phase1Claim[])
       : [];
@@ -1380,17 +1431,30 @@ export const continueAnalysis = createServerFn({ method: "POST" })
       throw new Error("분석할 본문이 없습니다.");
     }
 
-    const phase1Model = (kvRow?._phase1_model as string | undefined) ?? "unknown";
+    const phase1Model = (sourceRow?._phase1_model as string | undefined) ?? "unknown";
     const phase1StyleClassification = claimsData.style_classification as StyleClassification | undefined;
-    const result = await processAnalysisPhase2(
-      data.id,
-      bodyText,
-      sourceUrl ?? undefined,
-      phase1Claims,
-      phase1Model,
-      phase1StyleClassification,
+
+    console.log(`[continueAnalysis] id=${data.id} claims=${phase1Claims.length} bodyLen=${bodyText.length}`);
+
+    const ctx = getCfCtx();
+    console.log(`[continueAnalysis] ctx=${!!ctx} waitUntil=${!!ctx?.waitUntil}`);
+
+    if (ctx?.waitUntil) {
+      // Cloudflare Workers: waitUntil 백그라운드 실행 → wall clock 30초 제한 우회
+      ctx.waitUntil(
+        processAnalysisPhase2(
+          data.id, bodyText, sourceUrl ?? undefined,
+          phase1Claims, phase1Model, phase1StyleClassification,
+        ).catch(e => console.error("[phase2 bg error]", e instanceof Error ? e.message : e)),
+      );
+      return (sourceRow ?? { id: data.id, status: "phase1_complete" }) as unknown as AnalysisPayload;
+    }
+
+    // 로컈/비 CF 환경: 동기 실행
+    return processAnalysisPhase2(
+      data.id, bodyText, sourceUrl ?? undefined,
+      phase1Claims, phase1Model, phase1StyleClassification,
     );
-    return result;
   });
 
 export const listAnalyses = createServerFn({ method: "POST" })
@@ -1609,7 +1673,7 @@ export const getAuditLog = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const userId = await getOptionalUserId();
-    const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
+    const hasDB = (getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? "").startsWith("eyJ");
     if (!hasDB) return null;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: row } = await supabaseAdmin
@@ -1631,7 +1695,7 @@ export const verifyIntegrity = createServerFn({ method: "POST" })
     z.object({ id: z.string().uuid(), sessionId: z.string().min(1) }).parse(input),
   )
   .handler(async ({ data }) => {
-    const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
+    const hasDB = (getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? "").startsWith("eyJ");
     if (!hasDB) return { status: "unsigned" as const };
     const userId = await getOptionalUserId();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -1695,7 +1759,7 @@ export const createShareLink = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const userId = await getOptionalUserId();
-    const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
+    const hasDB = (getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? "").startsWith("eyJ");
     let analysis: Record<string, unknown> | null = null;
 
     if (hasDB) {
@@ -1754,7 +1818,7 @@ export const getSharedAnalysis = createServerFn({ method: "GET" })
     if (!shareData) throw new Error("유효하지 않거나 만료된 공유 링크입니다.");
     const analysisId = shareData.analysisId as string;
 
-    const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
+    const hasDB = (getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? "").startsWith("eyJ");
     if (hasDB) {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { data: row } = await supabaseAdmin

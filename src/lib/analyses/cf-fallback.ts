@@ -81,7 +81,7 @@ function cfClaim(c: unknown) {
     claim: cfS(o.claim ?? o.주장 ?? o.content ?? o.text ?? "본문 내 주요 주장", 200),
     claim_type: claimType,
     judgment_basis: cfJB(o.judgment_basis ?? o.judgmentBasis ?? o.basis, claimType),
-    verdict: claimType === "OPINION" ? "근거 부족" as Verdict : cfV(o.verdict ?? o.판정 ?? o.result ?? o.rating),
+    verdict: claimType === "OPINION" ? "근거 부족" as Verdict : cfV(o.verdict ?? o.판정 ?? o.result ?? o.rating ?? o.stage1_result),
     confidence: cfN(o.confidence ?? o.신뢰도 ?? o.score ?? o.certainty),
     reasoning: cfS(o.reasoning ?? o.reason ?? o.이유 ?? o.explanation ?? o.analysis ?? "", 500),
     supporting_points: cfA(o.supporting_points ?? o.supportingPoints ?? o.support ?? o.지지 ?? o.evidence),
@@ -100,12 +100,49 @@ export function buildAnalysisFromCF(obj: Record<string, unknown>) {
       : [];
   }
   const claims = (raw as unknown[]).slice(0, 7).map(cfClaim).filter(c => c.claim.length > 0);
+
+  // Flat single-claim format: { verdict, claim_type, reasoning, ... } → treat root as a claim
+  if (claims.length === 0 && (root.verdict ?? obj.verdict)) {
+    const flatClaim = cfClaim(root);
+    if (flatClaim.claim === "본문 내 주요 주장") {
+      const stages = root.stages ?? root.stage2 ?? root.signals;
+      if (Array.isArray(stages) && stages.length > 0) {
+        const first = stages[0];
+        const stageText = typeof first === "string"
+          ? first
+          : cfS((first as Record<string, unknown>)?.result ?? (first as Record<string, unknown>)?.claim ?? "", 200);
+        if (stageText) flatClaim.claim = stageText;
+      }
+    }
+    claims.push(flatClaim);
+  }
   if (claims.length === 0) claims.push(cfClaim(null));
+
+  const overallVerdict = cfV(
+    root.overall_verdict ?? obj.overall_verdict ?? root.verdict ?? obj.verdict,
+  );
+  const overallConf = cfN(
+    root.overall_confidence ?? obj.overall_confidence ?? root.confidence ?? obj.confidence,
+  );
+
+  let summary = cfS(root.summary ?? obj.summary ?? "", 500);
+  if (!summary) {
+    const first = claims[0];
+    if (first.reasoning) {
+      summary = first.reasoning.slice(0, 200);
+    } else if (first.claim !== "본문 내 주요 주장") {
+      summary = `분석 결과: ${overallVerdict}. ${first.claim.slice(0, 100)}`;
+    } else {
+      const confLabel = overallConf >= 70 ? "높은 확신" : overallConf >= 50 ? "중간 확신" : "낮은 확신";
+      summary = `AI 분석 결과: ${overallVerdict} (${confLabel}, ${overallConf}%)`;
+    }
+  }
+
   return {
     title: cfS(root.title ?? obj.title ?? "분석 결과", 20),
-    summary: cfS(root.summary ?? obj.summary ?? "", 500),
-    overall_verdict: cfV(root.overall_verdict ?? obj.overall_verdict),
-    overall_confidence: cfN(root.overall_confidence ?? obj.overall_confidence),
+    summary,
+    overall_verdict: overallVerdict,
+    overall_confidence: overallConf,
     claims,
   };
 }
@@ -141,9 +178,36 @@ export function buildQuickFromCF(obj: Record<string, unknown>) {
 }
 
 export function parseCFResponse(raw: string, hint: "analysis" | "quick"): unknown {
+  // CF AI가 OpenAI-style JSON 문자열로 반환하는 경우: {"choices":[{"message":{"content":"..."}}]}
+  const firstBrace = raw.trimStart().startsWith("{");
+  if (firstBrace) {
+    try {
+      const wrapper = JSON.parse(raw) as Record<string, unknown>;
+      const content = (wrapper?.choices as any)?.[0]?.message?.content;
+      if (typeof content === "string") raw = content;
+    } catch { /* not JSON wrapper */ }
+  }
+
   let s = raw.replace(/^```(?:json)?\s*/im, "").replace(/\s*```\s*$/im, "").trim();
-  const st = s.indexOf("{");
-  if (st > 0) s = s.slice(st);
+
+  // Top-level array: [{ claim, verdict, ... }, ...] → wrap as { claims: [...] }
+  const arrStart = s.indexOf("[");
+  const objStart = s.indexOf("{");
+  if (arrStart !== -1 && (objStart === -1 || arrStart < objStart)) {
+    const arrEnd = s.lastIndexOf("]");
+    if (arrEnd !== -1) {
+      try {
+        const arr = JSON.parse(s.slice(arrStart, arrEnd + 1)) as unknown[];
+        if (Array.isArray(arr) && arr.length > 0) {
+          return hint === "analysis"
+            ? buildAnalysisFromCF({ claims: arr })
+            : buildQuickFromCF({ highlights: arr });
+        }
+      } catch { /* fall through to object parsing */ }
+    }
+  }
+
+  if (objStart > 0) s = s.slice(objStart);
   const en = s.lastIndexOf("}");
   if (en !== -1) s = s.slice(0, en + 1);
   try {
