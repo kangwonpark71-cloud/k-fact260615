@@ -96,53 +96,53 @@ const VERDICT_META: Record<
 /* ═══════════════════════════════════════════════════════
    Hero 애니메이션 — 롤링 타이틀
    ═══════════════════════════════════════════════════════ */
-const HERO_PHASE1 = "[인공지능/언어] 올인원 Pass! 인공지능 언어 마스터 1기";
-const HERO_PHASE2 = "프로젝트- 팩트체크AI";
+const PHASES = [
+  { text: "[인공지능/언어] 올인원 Pass! 인공지능 언어 마스터 1기", variant: "default" as const },
+  { text: "팩트체크AI", variant: "impact" as const },
+  { text: '"사실"보다 "자극"에 더 쉽게 반응함', variant: "natural" as const },
+  { text: '"진짜처럼 보이는 거짓"', variant: "default" as const },
+];
+
 const CHAR_MS = 45;
+const IMPACT_CHAR_MS = 28;
 
 function RollingHeroText() {
-  const [phase, setPhase] = useState<1 | 2>(1);
-  const phase1Len = HERO_PHASE1.length;
-  const phase1RevealEnd = (phase1Len - 1) * CHAR_MS + 500;
-  const phase1FadeStart = phase1RevealEnd + 3000;
-  const phase1Total = phase1FadeStart + 500;
-  const phase2Len = HERO_PHASE2.length;
-  const phase2RevealEnd = (phase2Len - 1) * CHAR_MS + 500;
-  const phase2PulseStart = phase2RevealEnd + 600;
+  const [phase, setPhase] = useState(0);
+
+  const { text, variant } = PHASES[phase];
+  const len = text.length;
+  const charMs = variant === "impact" ? IMPACT_CHAR_MS : CHAR_MS;
+  const revealEnd = (len - 1) * charMs + 500;
+  const fadeStart = revealEnd + 3000;
+  const total = fadeStart + 500;
 
   useEffect(() => {
-    const t = setTimeout(() => setPhase(2), phase1Total);
+    const t = setTimeout(() => setPhase((p) => (p + 1) % PHASES.length), total);
     return () => clearTimeout(t);
-  }, [phase1Total]);
+  }, [total]);
+
+  const blurInName =
+    variant === "impact" ? "char-blur-in-impact" :
+    variant === "natural" ? "char-blur-in-natural" :
+    "char-blur-in";
+
+  const animDuration = variant === "impact" ? "0.45s" : "0.5s";
 
   return (
     <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold leading-[1.12] mb-0 select-none min-h-[1.2em]">
-      <span className="inline-block" aria-label={phase === 1 ? HERO_PHASE1 : HERO_PHASE2}>
-        {phase === 1
-          ? [...HERO_PHASE1].map((ch, i) => (
-              <span
-                key={i}
-                className="char-anim inline-block will-change-transform"
-                style={{
-                  opacity: 0,
-                  animation: `char-blur-in 0.5s cubic-bezier(0.22,1,0.36,1) ${i * CHAR_MS}ms both, char-blur-out 0.4s ease-in ${phase1FadeStart}ms both`,
-                }}
-              >
-                {ch === " " ? "\u00A0" : ch}
-              </span>
-            ))
-          : [...HERO_PHASE2].map((ch, i) => (
-              <span
-                key={i}
-                className="char-anim inline-block will-change-transform"
-                style={{
-                  opacity: 0,
-                  animation: `char-blur-in 0.5s cubic-bezier(0.22,1,0.36,1) ${i * CHAR_MS}ms both, char-pulse 2.4s ease-in-out ${phase2PulseStart + i * 90}ms infinite`,
-                }}
-              >
-                {ch === " " ? "\u00A0" : ch}
-              </span>
-            ))}
+      <span className="inline-block" key={phase} aria-label={text}>
+        {[...text].map((ch, i) => (
+          <span
+            key={i}
+            className="char-anim inline-block will-change-transform"
+            style={{
+              opacity: 0,
+              animation: `${blurInName} ${animDuration} cubic-bezier(0.22,1,0.36,1) ${i * charMs}ms both, char-blur-out 0.4s ease-in ${fadeStart}ms both`,
+            }}
+          >
+            {ch === " " ? "\u00A0" : ch}
+          </span>
+        ))}
       </span>
     </h1>
   );

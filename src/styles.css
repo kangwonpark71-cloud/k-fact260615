@@ -626,15 +626,21 @@
   }
 }
 
+@keyframes char-blur-in-impact {
+  from { opacity: 0; transform: translateY(0.4em) scale(0.6); filter: blur(6px); }
+  60%  { opacity: 1; transform: translateY(-0.08em) scale(1.12); filter: blur(0); }
+  to   { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+@keyframes char-blur-in-natural {
+  from { opacity: 0; transform: translateY(0.25em); filter: blur(3px); }
+  70%  { opacity: 0.7; transform: translateY(-0.04em); filter: blur(1px); }
+  to   { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
 @keyframes char-pulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(1.35);
-    opacity: 0.85;
-  }
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.35); opacity: 0.85; }
 }
 
 @media (prefers-reduced-motion: reduce) {
