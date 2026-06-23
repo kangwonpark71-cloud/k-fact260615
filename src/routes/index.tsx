@@ -97,7 +97,7 @@ const VERDICT_META: Record<
    Hero 애니메이션 — 롤링 타이틀
    ═══════════════════════════════════════════════════════ */
 const PHASES = [
-  { text: "[인공지능/언어] 올인원 Pass! 인공지능 언어 마스터 1기", variant: "default" as const },
+  { text: "올인원 Pass! 인공지능 언어 마스터 1기", variant: "default" as const },
   { text: "팩트체크AI", variant: "impact" as const },
   { text: '"사실"보다 "자극"에 더 쉽게 반응함', variant: "natural" as const },
   { text: '"진짜처럼 보이는 거짓"', variant: "default" as const },
