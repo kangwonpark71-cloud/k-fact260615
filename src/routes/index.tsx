@@ -35,7 +35,7 @@ import { fetchYouTubeInfo, isYouTubeUrl, type YouTubeInfo } from "@/lib/youtube.
 import { getSessionId } from "@/lib/session";
 import { SiteHeader, BottomNav } from "@/components/SiteHeader";
 import { VoiceInput } from "@/components/VoiceInput";
-import { TrendingNews } from "@/components/TrendingNews";
+import { TrendingNews, type AnalyzeSourceMeta } from "@/components/TrendingNews";
 import { AnalysisLoadingOverlay } from "@/components/AnalysisLoadingOverlay";
 
 export const Route = createFileRoute("/")({
@@ -94,42 +94,57 @@ const VERDICT_META: Record<
 };
 
 /* ═══════════════════════════════════════════════════════
-   Hero 애니메이션 상수
+   Hero 애니메이션 — 롤링 타이틀
    ═══════════════════════════════════════════════════════ */
-const HERO_LINE1 = "판정하지 않습니다.";
-const HERO_LINE2 = "근거를 구조화합니다.";
-const CHAR_MS = 42; // 글자 당 딜레이 ms
-const L1_START = 160; // 첫 줄 시작
-const L2_START = L1_START + HERO_LINE1.length * CHAR_MS + 180;
-const DESC_START = L2_START + HERO_LINE2.length * CHAR_MS + 230;
+const HERO_PHASE1 = "[인공지능/언어] 올인원 Pass! 인공지능 언어 마스터 1기";
+const HERO_PHASE2 = "프로젝트- 팩트체크AI";
+const CHAR_MS = 45;
 
-/* ── 글자별 블러 등장 ── */
-function RevealChars({
-  text,
-  startMs,
-  className,
-  extraClass,
-}: {
-  text: string;
-  startMs: number;
-  className?: string;
-  extraClass?: string;
-}) {
+function RollingHeroText() {
+  const [phase, setPhase] = useState<1 | 2>(1);
+  const phase1Len = HERO_PHASE1.length;
+  const phase1RevealEnd = (phase1Len - 1) * CHAR_MS + 500;
+  const phase1FadeStart = phase1RevealEnd + 3000;
+  const phase1Total = phase1FadeStart + 500;
+  const phase2Len = HERO_PHASE2.length;
+  const phase2RevealEnd = (phase2Len - 1) * CHAR_MS + 500;
+  const phase2PulseStart = phase2RevealEnd + 600;
+
+  useEffect(() => {
+    const t = setTimeout(() => setPhase(2), phase1Total);
+    return () => clearTimeout(t);
+  }, [phase1Total]);
+
   return (
-    <span className={className} aria-label={text}>
-      {[...text].map((ch, i) => (
-        <span
-          key={i}
-          className={`char-anim inline-block will-change-transform ${extraClass ?? ""}`}
-          style={{
-            opacity: 0,
-            animation: `char-blur-in 0.48s cubic-bezier(0.22, 1, 0.36, 1) ${startMs + i * CHAR_MS}ms both`,
-          }}
-        >
-          {ch === " " ? " " : ch}
-        </span>
-      ))}
-    </span>
+    <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold leading-[1.12] mb-0 select-none min-h-[1.2em]">
+      <span className="inline-block" aria-label={phase === 1 ? HERO_PHASE1 : HERO_PHASE2}>
+        {phase === 1
+          ? [...HERO_PHASE1].map((ch, i) => (
+              <span
+                key={i}
+                className="char-anim inline-block will-change-transform"
+                style={{
+                  opacity: 0,
+                  animation: `char-blur-in 0.5s cubic-bezier(0.22,1,0.36,1) ${i * CHAR_MS}ms both, char-blur-out 0.4s ease-in ${phase1FadeStart}ms both`,
+                }}
+              >
+                {ch === " " ? "\u00A0" : ch}
+              </span>
+            ))
+          : [...HERO_PHASE2].map((ch, i) => (
+              <span
+                key={i}
+                className="char-anim inline-block will-change-transform"
+                style={{
+                  opacity: 0,
+                  animation: `char-blur-in 0.5s cubic-bezier(0.22,1,0.36,1) ${i * CHAR_MS}ms both, char-pulse 2.4s ease-in-out ${phase2PulseStart + i * 90}ms infinite`,
+                }}
+              >
+                {ch === " " ? "\u00A0" : ch}
+              </span>
+            ))}
+      </span>
+    </h1>
   );
 }
 
@@ -139,7 +154,6 @@ function RevealChars({
 function HeroSection() {
   return (
     <section className="text-center mb-5 sm:mb-7 py-2 sm:py-4">
-      {/* 배지 */}
       <div
         className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/8 border border-primary/20 mb-3 sm:mb-4"
         style={{
@@ -150,12 +164,7 @@ function HeroSection() {
         <Sparkles className="w-3.5 h-3.5 text-primary" />
         <span className="text-xs font-medium text-primary">AI 사실검증 보조</span>
       </div>
-
-      {/* 메인 헤드라인 */}
-      <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold leading-[1.12] mb-0 select-none">
-        <RevealChars text={HERO_LINE1} startMs={L1_START} className="block" />
-        <RevealChars text={HERO_LINE2} startMs={L2_START} className="block hero-shimmer" />
-      </h1>
+      <RollingHeroText />
     </section>
   );
 }
@@ -359,7 +368,7 @@ function Home() {
   );
 
   // 트렌딩 뉴스 클릭 → URL 세팅 후 즉시 분석 제출
-  const handleAnalyzeFromTrending = async (trendUrl: string): Promise<void> => {
+  const handleAnalyzeFromTrending = async (trendUrl: string, sourceMeta?: AnalyzeSourceMeta): Promise<void> => {
     setUrl(trendUrl);
     setMode("url");
     setText("");
@@ -371,7 +380,7 @@ function Home() {
     try {
       const sessionId = getSessionId();
       const res = parseAnalyzeResponse(
-        await analyze({ data: { url: trendUrl, text: "", sessionId } }),
+        await analyze({ data: { url: trendUrl, text: "", sessionId, source_name: sourceMeta?.sourceName, source_type: sourceMeta?.sourceType } }),
       );
       if (res.analysisResult) {
         try {

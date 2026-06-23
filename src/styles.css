@@ -612,6 +612,31 @@
   }
 }
 
+/* ── Rolling Hero Text Animations ── */
+@keyframes char-blur-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-0.3em) scale(0.85);
+    filter: blur(4px);
+  }
+}
+
+@keyframes char-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.85;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .char-anim,
   .hero-shimmer,

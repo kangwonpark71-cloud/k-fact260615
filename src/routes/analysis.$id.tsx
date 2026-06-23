@@ -29,6 +29,7 @@ import {
   ChevronRight,
   BarChart3,
   Star,
+  Shield,
 } from "lucide-react";
 
 import {
@@ -754,6 +755,31 @@ function AnalysisPage() {
     "",
   );
 
+  const inputText = (dataRow.input_text as string | undefined) ?? "";
+  const sourceUrl = (dataRow.source_url as string | null | undefined) ?? undefined;
+  const isUrlInput = !!sourceUrl;
+  const sourceKeywords = isUrlInput
+    ? []
+    : extractKeywords(inputText).slice(0, 5);
+
+  function firstKeySentences(t: string, maxLen: number): string {
+    const sentences = t
+      .replace(/\n+/g, ". ")
+      .split(/[.!?。]\s*/)
+      .map((s) => s.trim())
+      .filter((s) => s.length >= 10);
+    let result = "";
+    for (const s of sentences) {
+      if ((result + s).length > maxLen) break;
+      if (result) result += ". ";
+      result += s;
+    }
+    return result.length > 0 ? result.slice(0, maxLen) + (result.length >= maxLen ? "…" : ".") : t.slice(0, maxLen);
+  }
+  const sourceDescription = isUrlInput
+    ? ((dataRow.title as string | undefined) ?? "")
+    : firstKeySentences(inputText, 50);
+
   // 구 형식(배열) + 신 형식(파이프라인 메타 객체) 모두 처리
   // dataRow is declared above
   const rawClaims = dataRow.claims as unknown;
@@ -893,6 +919,29 @@ function AnalysisPage() {
                   <span className="text-sm text-muted-foreground">
                     신뢰도 <strong className="text-foreground">{overallConfidence}%</strong>
                   </span>
+                  {sourceDescription && (
+                    <span className="inline-flex items-center gap-1 text-sm text-muted-foreground/70 ml-2 border-l border-border/30 pl-3 leading-tight">
+                      {isUrlInput ? (
+                        <span className="truncate max-w-[300px] sm:max-w-[400px]">{sourceDescription}</span>
+                      ) : (
+                        <>
+                          <span className="truncate max-w-[200px]">{sourceDescription}</span>
+                          {sourceKeywords.length > 0 && (
+                            <span className="hidden sm:inline-flex items-center gap-1 ml-1">
+                              {sourceKeywords.map((kw) => (
+                                <span
+                                  key={kw}
+                                  className="text-[11px] px-1.5 py-0.5 rounded-full bg-surface-2/50 text-muted-foreground border border-border/30"
+                                >
+                                  {kw}
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </span>
+                  )}
                 </div>
                 <AiThought
                   verdict={overallVerdict}
@@ -918,6 +967,12 @@ function AnalysisPage() {
 
             {/* 원문 링크 + 공유 */}
             <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border/30">
+              {(dataRow.source_name as string | null | undefined) && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Shield className="w-3.5 h-3.5 text-rose-400" />
+                  팩트체크 출처: <strong className="text-foreground">{dataRow.source_name as string}</strong>
+                </span>
+              )}
               {(dataRow.source_url as string | null | undefined) && (
                 <a
                   href={dataRow.source_url as string}

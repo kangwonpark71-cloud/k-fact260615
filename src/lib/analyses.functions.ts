@@ -1072,6 +1072,8 @@ async function processAnalysisPhase1(
   analysisId: string,
   inputText: string,
   sourceUrl: string | undefined,
+  sourceName: string | null,
+  sourceType: string | null,
   meta: { sessionId: string; userId: string | null },
 ): Promise<AnalysisPayload> {
   const bodyText = await fetchUrlBody(sourceUrl ?? "", inputText);
@@ -1082,6 +1084,10 @@ async function processAnalysisPhase1(
 
   const p1ModelRef: ModelRef = { model: "unknown" };
   const styleModelRef: ModelRef = { model: "unknown" };
+
+  const factcheckSourceBlock = sourceName
+    ? `\n• 이 기사는 팩트체크 매체 "${sourceName}"에서 발행한 기사입니다. 팩트체크 기관이 이미 검증한 내용임을 고려하여 분석하세요.`
+    : "";
 
   const phase1Prompt = `${styleBlock}
 
@@ -1102,7 +1108,7 @@ async function processAnalysisPhase1(
       ? `
 • 원본 URL: ${sourceUrl}`
       : ""
-  }
+  }${factcheckSourceBlock}
 
 ${isolateUserContent(bodyText.slice(0, 7000))}`;
 
@@ -1140,6 +1146,8 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
     session_id: meta.sessionId,
     user_id: meta.userId,
     source_url: sourceUrl ?? null,
+    source_name: sourceName,
+    source_type: sourceType,
     input_text: bodyText.slice(0, 8000),
     title: parsed.title,
     summary: parsed.summary,
@@ -1243,6 +1251,10 @@ async function processAnalysisPhase2(
         : "";
 
     const p2ModelRef: ModelRef = { model: "unknown" };
+    const p2SourceName = previousStoredPayload?.source_name ? String(previousStoredPayload.source_name) : null;
+    const factcheckSourceBlock = p2SourceName
+      ? `\n• 이 기사는 팩트체크 매체 "${p2SourceName}"에서 발행한 기사입니다. 팩트체크 기관이 이미 검증한 내용임을 고려하여 분석하세요.`
+      : "";
     const prompt = `${styleBlock}
 ${phase1Ref}
 ${evidenceBlock}${publicDataBlock}
@@ -1272,7 +1284,7 @@ ${publicDataBlock ? "• 공공 통계 데이터가 제공된 경우 수치 관�
         ? `
 • 원본 URL: ${sourceUrl}`
         : ""
-    }
+    }${factcheckSourceBlock}
 
 ${isolateUserContent(bodyText.slice(0, 7000))}`;
 
@@ -1421,6 +1433,8 @@ ${isolateUserContent(bodyText.slice(0, 3000))}`;
       status: "completed",
       input_text: bodyText.slice(0, 8000),
       source_url: sourceUrl ?? null,
+      source_name: p2SourceName,
+      source_type: previousStoredPayload?.source_type ? String(previousStoredPayload.source_type) : null,
       title: parsed.title,
       summary: parsed.summary,
       overall_verdict: p2Verdict,
@@ -1439,9 +1453,11 @@ ${isolateUserContent(bodyText.slice(0, 3000))}`;
       integrity_hash: integrityHash ?? null,
     };
 
+    const { source_name: _sn, source_type: _st, ...dbPayload } = completedPayload;
+
     if (hasDB) {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      await supabaseAdmin.from("analyses").update(completedPayload).eq("id", analysisId);
+      await supabaseAdmin.from("analyses").update(dbPayload as any).eq("id", analysisId);
       await kvPut(analysisId, completedPayload);
     } else {
       await kvPut(analysisId, completedPayload);
@@ -1475,6 +1491,8 @@ export const analyzeContent = createServerFn({ method: "POST" })
     await checkRateLimit(data.sessionId, userId);
 
     const sourceUrl = data.url;
+    const sourceName = data.source_name ?? null;
+    const sourceType = data.source_type ?? null;
     if (sourceUrl) validatePublicUrl(sourceUrl);
 
     if (sourceUrl) {
@@ -1537,6 +1555,8 @@ export const analyzeContent = createServerFn({ method: "POST" })
         session_id: data.sessionId,
         user_id: userId,
         source_url: sourceUrl ?? null,
+        source_name: sourceName,
+        source_type: sourceType,
         input_text: data.text.slice(0, 8000),
         created_at: new Date().toISOString(),
         title: null,
@@ -1550,7 +1570,7 @@ export const analyzeContent = createServerFn({ method: "POST" })
     // 텍스트 해시 캐시 저장 (7일 TTL)
     await kvPutRaw(`texthash:${RULES_VER}:${textHash}`, { analysisId }, 604800);
 
-    const analysisResult = await processAnalysisPhase1(analysisId, data.text, sourceUrl, {
+    const analysisResult = await processAnalysisPhase1(analysisId, data.text, sourceUrl, sourceName, sourceType, {
       sessionId: data.sessionId,
       userId,
     });

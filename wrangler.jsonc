@@ -23,9 +23,9 @@
     },
   ],
   "vars": {
-    "SUPABASE_URL": "https://YOUR_PROJECT_REF.supabase.co",
-    "SUPABASE_PUBLISHABLE_KEY": "YOUR_SUPABASE_PUBLISHABLE_KEY",
-    "ADMIN_EMAIL": "admin@example.com",
+    "SUPABASE_URL": "https://lynexsaojkhxzkkhdjvs.supabase.co",
+    "SUPABASE_PUBLISHABLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5bmV4c2FvamtoeHpra2hkanZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMjA5NjIsImV4cCI6MjA5Njc5Njk2Mn0.rsxCtnMez6xawTOn8BOhu218AAtLSi_1vucfT2Wq9T8",
+    "ADMIN_EMAIL": "kangwonpark71@gmail.com",
     "CF_GATEWAY_ID": "YOUR_CF_GATEWAY_ID",
   },
 }

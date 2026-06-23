@@ -81,6 +81,8 @@ export const InputSchema = z
       .or(z.literal("").transform(() => undefined)),
     text: z.string().max(50_000, "본문은 최대 50,000자까지 입력할 수 있습니다.").default(""),
     sessionId: z.string().min(1),
+    source_name: z.string().max(100).optional(),
+    source_type: z.string().max(30).optional(),
   })
   .refine((d) => d.url || d.text.length >= 30, {
     message: "본문은 최소 30자 이상이어야 합니다.",

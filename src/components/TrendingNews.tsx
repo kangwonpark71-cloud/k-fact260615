@@ -26,8 +26,13 @@ import {
   type SourceType,
 } from "@/lib/news.functions";
 
+export interface AnalyzeSourceMeta {
+  sourceName?: string;
+  sourceType?: string;
+}
+
 interface Props {
-  onAnalyze: (url: string) => Promise<void>;
+  onAnalyze: (url: string, sourceMeta?: AnalyzeSourceMeta) => Promise<void>;
   listMaxHeight?: string;
   listMinHeight?: string;
 }
@@ -120,7 +125,7 @@ export function TrendingNews({ onAnalyze, listMaxHeight, listMinHeight }: Props)
     if (analyzingId) return;
     setAnalyzingId(item.id);
     try {
-      await onAnalyze(item.link);
+      await onAnalyze(item.link, { sourceName: item.source, sourceType: item.sourceType });
     } finally {
       setAnalyzingId(null);
     }
