@@ -1,6 +1,7 @@
 ﻿import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import {
   ArrowRight,
@@ -33,6 +34,7 @@ import {
 } from "@/lib/analyses.functions";
 import { fetchYouTubeInfo, isYouTubeUrl, type YouTubeInfo } from "@/lib/youtube.functions";
 import { getSessionId } from "@/lib/session";
+import { getHeroPhases, type HeroPhase } from "@/lib/hero.functions";
 import { SiteHeader, BottomNav } from "@/components/SiteHeader";
 import { VoiceInput } from "@/components/VoiceInput";
 import { TrendingNews, type AnalyzeSourceMeta } from "@/components/TrendingNews";
@@ -93,23 +95,25 @@ const VERDICT_META: Record<
   },
 };
 
-/* ═══════════════════════════════════════════════════════
-   Hero 애니메이션 — 롤링 타이틀
-   ═══════════════════════════════════════════════════════ */
-const PHASES = [
-  { text: "올인원 Pass! 인공지능 언어 마스터 1기", variant: "default" as const },
-  { text: "팩트체크AI", variant: "impact" as const },
-  { text: '"사실"보다 "자극"에 더 쉽게 반응함', variant: "natural" as const },
-  { text: '"진짜처럼 보이는 거짓"', variant: "default" as const },
-];
-
 const CHAR_MS = 45;
 const IMPACT_CHAR_MS = 28;
+const DEFAULT_PHASES: HeroPhase[] = [
+  { text: "올인원 Pass! 인공지능 언어 마스터 1기", variant: "default" },
+  { text: "팩트체크AI", variant: "impact" },
+  { text: '"사실"보다 "자극"에 더 쉽게 반응함', variant: "natural" },
+  { text: '"진짜처럼 보이는 거짓"', variant: "default" },
+];
 
 function RollingHeroText() {
   const [phase, setPhase] = useState(0);
+  const getPhases = useServerFn(getHeroPhases);
+  const { data: phases = DEFAULT_PHASES } = useQuery({
+    queryKey: ["hero-phases"],
+    queryFn: () => getPhases(),
+    staleTime: 300_000,
+  });
 
-  const { text, variant } = PHASES[phase];
+  const { text, variant } = phases[phase] ?? phases[0];
   const len = text.length;
   const charMs = variant === "impact" ? IMPACT_CHAR_MS : CHAR_MS;
   const revealEnd = (len - 1) * charMs + 500;
@@ -117,9 +121,9 @@ function RollingHeroText() {
   const total = fadeStart + 500;
 
   useEffect(() => {
-    const t = setTimeout(() => setPhase((p) => (p + 1) % PHASES.length), total);
+    const t = setTimeout(() => setPhase((p) => (p + 1) % phases.length), total);
     return () => clearTimeout(t);
-  }, [total]);
+  }, [total, phases.length]);
 
   const blurInName =
     variant === "impact" ? "char-blur-in-impact" :

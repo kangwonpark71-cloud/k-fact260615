@@ -25,6 +25,7 @@ import {
   Key,
   Plus,
   Power,
+  TextSelect,
 } from "lucide-react";
 
 import { useAuth } from "@/lib/auth";
@@ -40,6 +41,11 @@ import {
   deleteApiKey,
   toggleApiKey,
   checkIsAdmin,
+  listHeroPhases,
+  addHeroPhase,
+  updateHeroPhase,
+  deleteHeroPhase,
+  type HeroPhaseRow,
 } from "@/lib/admin.functions";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -65,7 +71,7 @@ const VERDICT_TEXT: Record<string, string> = {
   미확인: "text-orange-400",
 };
 
-type Tab = "overview" | "analyses" | "users" | "apikeys";
+type Tab = "overview" | "analyses" | "users" | "apikeys" | "hero";
 
 function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -82,6 +88,8 @@ function AdminPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [userSearch, setUserSearch] = useState("");
   const [addKeyOpen, setAddKeyOpen] = useState(false);
+  const [addHeroOpen, setAddHeroOpen] = useState(false);
+  const [editingHero, setEditingHero] = useState<HeroPhaseRow | null>(null);
   const PAGE_SIZE = 20;
 
   const { data: isAdmin = false, isLoading: adminCheckLoading } = useQuery({
@@ -173,6 +181,36 @@ function AdminPage() {
     },
   });
 
+  const { data: heroPhases, isLoading: heroPhasesLoading } = useQuery({
+    queryKey: ["admin", "hero"],
+    queryFn: () => listHeroPhases(),
+    enabled: !!user && isAdmin && tab === "hero",
+    staleTime: 30_000,
+  });
+
+  const addHeroMut = useMutation({
+    mutationFn: (input: { text: string; variant: "default" | "impact" | "natural"; sort_order: number }) =>
+      addHeroPhase({ data: input }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "hero"] });
+    },
+  });
+
+  const updateHeroMut = useMutation({
+    mutationFn: (input: { id: number; text?: string; variant?: "default" | "impact" | "natural"; sort_order?: number; is_active?: boolean }) =>
+      updateHeroPhase({ data: input }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "hero"] });
+    },
+  });
+
+  const deleteHeroMut = useMutation({
+    mutationFn: (id: number) => deleteHeroPhase({ data: { id } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "hero"] });
+    },
+  });
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -255,6 +293,7 @@ function AdminPage() {
               ["analyses", "분석 목록"],
               ["users", "사용자 관리"],
               ["apikeys", "API 키"],
+              ["hero", "히어로 텍스트"],
             ] as [Tab, string][]
           ).map(([t, label]) => (
             <button
@@ -863,7 +902,152 @@ function AdminPage() {
             </div>
           </div>
         )}
+
+        {/* ── 히어로 텍스트 관리 탭 ── */}
+        {tab === "hero" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold">히어로 롤링 텍스트 관리</h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  메인 페이지 상단에 롤링 애니메이션으로 표시될 텍스트를 관리합니다.
+                </p>
+              </div>
+              <button
+                onClick={() => setAddHeroOpen(true)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-primary to-accent text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity shadow-[var(--shadow-glow)]"
+              >
+                <Plus className="w-4 h-4" />페이즈 추가
+              </button>
+            </div>
+
+            <div className="glass rounded-2xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-muted-foreground text-xs">
+                    <th className="text-left px-4 py-3 font-medium">순서</th>
+                    <th className="text-left px-4 py-3 font-medium">텍스트</th>
+                    <th className="text-left px-4 py-3 font-medium">변형</th>
+                    <th className="text-left px-4 py-3 font-medium">상태</th>
+                    <th className="text-left px-4 py-3 font-medium hidden md:table-cell">생성일</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {heroPhasesLoading ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-12">
+                        <RefreshCw className="w-5 h-5 animate-spin mx-auto text-muted-foreground" />
+                      </td>
+                    </tr>
+                  ) : (heroPhases ?? []).length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-12">
+                        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                          <TextSelect className="w-8 h-8 opacity-30" />
+                          <p className="text-sm">등록된 페이즈가 없습니다.</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    (heroPhases ?? []).map((phase) => (
+                      <tr
+                        key={phase.id}
+                        className="border-b border-border/50 hover:bg-surface/40 transition-colors"
+                      >
+                        <td className="px-4 py-3">
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {phase.sort_order}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 max-w-[320px]">
+                          <span className="font-medium truncate block">{phase.text}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                              phase.variant === "impact"
+                                ? "bg-primary/10 text-primary border-primary/30"
+                                : phase.variant === "natural"
+                                  ? "bg-emerald-400/10 text-emerald-400 border-emerald-400/30"
+                                  : "bg-surface-2 text-muted-foreground border-border"
+                            }`}
+                          >
+                            {phase.variant === "impact"
+                              ? "임팩트"
+                              : phase.variant === "natural"
+                                ? "내추럴"
+                                : "기본"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() =>
+                              updateHeroMut.mutate({ id: phase.id, is_active: !phase.is_active })
+                            }
+                            disabled={updateHeroMut.isPending}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors disabled:opacity-50 ${
+                              phase.is_active
+                                ? "bg-emerald-400/10 text-emerald-400 border border-emerald-400/30 hover:bg-emerald-400/20"
+                                : "bg-border/30 text-muted-foreground border border-border hover:bg-surface-2"
+                            }`}
+                          >
+                            <Power className="w-3 h-3" />
+                            {phase.is_active ? "활성" : "비활성"}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 hidden md:table-cell text-xs text-muted-foreground whitespace-nowrap">
+                          {new Date(phase.created_at).toLocaleDateString("ko-KR")}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => setEditingHero(phase)}
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors"
+                              title="수정"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm(`"${phase.text}" 페이즈를 삭제할까요?`))
+                                  deleteHeroMut.mutate(phase.id);
+                              }}
+                              disabled={deleteHeroMut.isPending}
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                              title="삭제"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </main>
+
+      {/* 히어로 페이즈 추가/수정 모달 */}
+      {(addHeroOpen || editingHero) && (
+        <HeroPhaseModal
+          phase={editingHero}
+          onClose={() => {
+            setAddHeroOpen(false);
+            setEditingHero(null);
+          }}
+          onSuccess={() => {
+            setAddHeroOpen(false);
+            setEditingHero(null);
+            qc.invalidateQueries({ queryKey: ["admin", "hero"] });
+          }}
+        />
+      )}
 
       {/* API 키 추가 모달 */}
       {addKeyOpen && (
@@ -1181,6 +1365,124 @@ function ProviderBadge({ provider }: { provider: string }) {
     >
       {meta.label}
     </span>
+  );
+}
+
+function HeroPhaseModal({
+  phase,
+  onClose,
+  onSuccess,
+}: {
+  phase: HeroPhaseRow | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [text, setText] = useState(phase?.text ?? "");
+  const [variant, setVariant] = useState<"default" | "impact" | "natural">(phase?.variant ?? "default");
+  const [sortOrder, setSortOrder] = useState(phase?.sort_order ?? 0);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr(null);
+    setLoading(true);
+    try {
+      if (phase) {
+        await updateHeroPhase({ data: { id: phase.id, text, variant, sort_order: sortOrder } });
+      } else {
+        await addHeroPhase({ data: { text, variant, sort_order: sortOrder } });
+      }
+      onSuccess();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "저장 실패");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md glass rounded-2xl p-6 shadow-2xl">
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-2">
+            <TextSelect className="w-4 h-4 text-primary" />
+            <h2 className="text-lg font-semibold">{phase ? "페이즈 수정" : "페이즈 추가"}</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-surface-2 text-muted-foreground transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">텍스트</label>
+            <input
+              type="text"
+              required
+              placeholder="예: 새로운 히어로 문구"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              maxLength={200}
+              className="w-full px-3 py-2.5 rounded-lg bg-background/40 border border-border outline-none focus:border-primary text-sm"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">변형 스타일</label>
+            <select
+              value={variant}
+              onChange={(e) => setVariant(e.target.value as typeof variant)}
+              className="w-full px-3 py-2.5 rounded-lg bg-background/40 border border-border outline-none focus:border-primary text-sm"
+            >
+              <option value="default">기본</option>
+              <option value="impact">임팩트 (빠른 표시)</option>
+              <option value="natural">내추럴</option>
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">표시 순서</label>
+            <input
+              type="number"
+              required
+              min={0}
+              value={sortOrder}
+              onChange={(e) => setSortOrder(Number(e.target.value))}
+              className="w-full px-3 py-2.5 rounded-lg bg-background/40 border border-border outline-none focus:border-primary text-sm"
+            />
+          </div>
+
+          {err && (
+            <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2.5">
+              <X className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              {err}
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors"
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-gradient-to-r from-primary to-accent text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {loading ? "저장 중…" : "저장하기"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 

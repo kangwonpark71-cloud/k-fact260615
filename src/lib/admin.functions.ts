@@ -341,3 +341,86 @@ export const checkIsAdmin = createServerFn({ method: "GET" }).handler(async () =
     return false;
   }
 });
+
+// ── 히어로 페이즈 (히어로 롤링 텍스트) ──
+
+export type HeroPhaseRow = {
+  id: number;
+  text: string;
+  variant: "default" | "impact" | "natural";
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export const listHeroPhases = createServerFn({ method: "GET" }).handler(async () => {
+  await requireAdmin();
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await supabaseAdmin
+    .from("hero_phases")
+    .select("*")
+    .order("sort_order", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as HeroPhaseRow[];
+});
+
+export const addHeroPhase = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    z
+      .object({
+        text: z.string().min(1).max(200),
+        variant: z.enum(["default", "impact", "natural"]),
+        sort_order: z.number().int().min(0),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("hero_phases").insert({
+      text: data.text,
+      variant: data.variant,
+      sort_order: data.sort_order,
+    });
+    if (error) throw new Error("페이즈 등록 실패: " + error.message);
+    return { success: true };
+  });
+
+export const updateHeroPhase = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    z
+      .object({
+        id: z.number(),
+        text: z.string().min(1).max(200).optional(),
+        variant: z.enum(["default", "impact", "natural"]).optional(),
+        sort_order: z.number().int().min(0).optional(),
+        is_active: z.boolean().optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (data.text !== undefined) updates.text = data.text;
+    if (data.variant !== undefined) updates.variant = data.variant;
+    if (data.sort_order !== undefined) updates.sort_order = data.sort_order;
+    if (data.is_active !== undefined) updates.is_active = data.is_active;
+    const { error } = await supabaseAdmin
+      .from("hero_phases")
+      .update(updates)
+      .eq("id", data.id);
+    if (error) throw new Error("페이즈 업데이트 실패: " + error.message);
+    return { success: true };
+  });
+
+export const deleteHeroPhase = createServerFn({ method: "POST" })
+  .validator((input: unknown) => z.object({ id: z.number() }).parse(input))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("hero_phases").delete().eq("id", data.id);
+    if (error) throw new Error("삭제 실패: " + error.message);
+    return { deleted: true };
+  });
