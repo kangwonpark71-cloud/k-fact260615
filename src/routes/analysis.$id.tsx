@@ -95,11 +95,6 @@ const THOUGHT_FALLBACK: Record<string, string[]> = {
     "사실 기반이지만 해석 방향이 편향됐을 수 있어요",
     "원래 정보에서 중요한 맥락이 생략된 것 같아요",
   ],
-  "근거 부족": [
-    "공개 자료만으로 판단하기 어려운 내용이에요 — 1차 출처 확인 권장",
-    "비공개 정보나 내부 데이터가 관련됐을 수 있어요",
-    "주장의 핵심을 뒷받침할 공인 데이터가 찾아지지 않았어요",
-  ],
   "반대 근거 우세": [
     "공인 출처 정보와 배치되는 내용이 포함됐어요 ⚠️",
     "사실 관계를 왜곡하거나 과장한 표현이 감지됐어요",
@@ -127,6 +122,62 @@ function extractFirstSentence(text: string, minLen = 12, maxLen = 72): string | 
 function quoteSnip(text: string, max = 46): string {
   const t = text.replace(/\s+/g, " ").trim();
   return `"${t.length > max ? t.slice(0, max - 1) + "…" : t}"`;
+}
+
+/* ── 근거 부족 전용 동적 인사이트 ── 핵심 단어·문장을 실제 클레임에서 추출 */
+function buildWeakInsights(claims: Claim[]): string[] {
+  const SKIP_W = new Set([
+    "이","가","은","는","을","를","의","에","으로","로","도","과","와",
+    "보다","그리고","하지만","따라서","그래서","위해","통해","대한",
+    "있다","없다","됐다","했다","이다","이며","것","수","한","그","이런","저런",
+  ]);
+  const kw = (text: string) =>
+    text.replace(/[。.!?,;:""''「」『』【】\[\]()]/g, " ")
+      .split(/\s+/).map(w => w.trim())
+      .filter(w => w.length >= 2 && !SKIP_W.has(w))
+      .slice(0, 6);
+
+  const real    = claims.filter(c => c.claim.length >= 10 && c.claim !== "본문 내 주요 주장");
+  const unknowns = claims.flatMap(c => c.unknowns ?? []).filter(u => u.length >= 5 && u.length <= 52);
+  const reasons  = claims.map(c => extractFirstSentence(c.reasoning, 12, 60)).filter((s): s is string => !!s);
+  const uniqueKw = [...new Set(real.flatMap(c => kw(c.claim)))].slice(0, 6);
+
+  const out: string[] = [];
+
+  /* ① 미확인 사항 or 핵심 키워드 */
+  if (unknowns[0]) {
+    out.push(trim68(`"${unknowns[0]}" — 이 내용의 공식 근거를 찾지 못했습니다`));
+  } else if (uniqueKw.length >= 2) {
+    out.push(trim68(`'${uniqueKw[0]}·${uniqueKw[1]}' 관련 공개 검증 자료가 확인되지 않았습니다`));
+  } else if (uniqueKw.length === 1) {
+    out.push(trim68(`'${uniqueKw[0]}' — 공개 자료만으로 검증하기 어려운 주장입니다`));
+  } else {
+    out.push("공개 자료만으로 판단하기 어려운 내용이에요 — 1차 출처 직접 확인 권장");
+  }
+
+  /* ② reasoning 첫 문장 or 핵심 주장 직접 인용 */
+  if (reasons[0]) {
+    out.push(trim68(`💡 ${reasons[0]}`));
+  } else if (real[0]) {
+    out.push(trim68(`"${snip(real[0].claim, 28)}" — 추천 출처에서 직접 확인이 필요합니다`));
+  } else {
+    out.push("비공개 정보나 내부 데이터가 관련됐을 수 있어요");
+  }
+
+  /* ③ 두 번째 미확인·추론 or 키워드 조합 */
+  if (unknowns[1]) {
+    out.push(trim68(`"${unknowns[1]}" — 주장의 핵심 근거를 공개 출처에서 확인하세요`));
+  } else if (reasons[1]) {
+    out.push(trim68(`💡 ${reasons[1]}`));
+  } else if (uniqueKw.length >= 3) {
+    out.push(trim68(`'${uniqueKw.slice(0, 3).join("·")}' — 핵심 용어별 출처를 직접 검색해 보세요`));
+  } else if (real[1]) {
+    out.push(trim68(`"${snip(real[1].claim, 26)}" — 주장의 핵심을 뒷받침할 공인 데이터가 필요합니다`));
+  } else {
+    out.push("주장의 핵심을 뒷받침할 공인 데이터가 찾아지지 않았어요");
+  }
+
+  return out;
 }
 
 function generateAiThoughts(claims: Claim[], verdict: string, confidence: number): string[] {
@@ -266,8 +317,14 @@ function generateAiThoughts(claims: Claim[], verdict: string, confidence: number
     }
   }
 
-  /* ── 최소 3개 보장 ── */
-  const fallback = THOUGHT_FALLBACK[verdict] ?? THOUGHT_FALLBACK["근거 부족"];
+  /* ── 최소 3개 보장 — "근거 부족"은 실제 클레임 키워드 기반 동적 인사이트 사용 ── */
+  const fallback = verdict === "근거 부족"
+    ? buildWeakInsights(claims)
+    : (THOUGHT_FALLBACK[verdict] ?? [
+        "공개 자료만으로 판단하기 어려운 내용이에요 — 1차 출처 직접 확인 권장",
+        "비공개 정보나 내부 데이터가 관련됐을 수 있어요",
+        "주장의 핵심을 뒷받침할 공인 데이터가 찾아지지 않았어요",
+      ]);
   for (const t of fallback) {
     if (thoughts.length >= 5) break;
     if (!thoughts.includes(t)) thoughts.push(t);
