@@ -87,8 +87,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "팩트체크 AI" },
       { name: "twitter:description", content: "근거 중심 사실검증 보조 AI 웹서비스" },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b7ca7851-633d-4253-b7a5-328512759eee/id-preview-e03c8eff--d465ca01-abd5-4629-80e0-824f19b7741d.lovable.app-1781227535334.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b7ca7851-633d-4253-b7a5-328512759eee/id-preview-e03c8eff--d465ca01-abd5-4629-80e0-824f19b7741d.lovable.app-1781227535334.png" },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b7ca7851-633d-4253-b7a5-328512759eee/id-preview-e03c8eff--d465ca01-abd5-4629-80e0-824f19b7741d.lovable.app-1781227535334.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/b7ca7851-633d-4253-b7a5-328512759eee/id-preview-e03c8eff--d465ca01-abd5-4629-80e0-824f19b7741d.lovable.app-1781227535334.png",
+      },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },

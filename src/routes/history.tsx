@@ -1,11 +1,24 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState, useMemo } from "react";
-import { Inbox, Trash2, Search, X, Loader2, AlertTriangle, ExternalLink, Clock } from "lucide-react";
+import {
+  Inbox,
+  Trash2,
+  Search,
+  X,
+  Loader2,
+  AlertTriangle,
+  ExternalLink,
+  Clock,
+  BarChart3,
+  CheckSquare,
+  Star,
+} from "lucide-react";
 
 import { listAnalyses, deleteAnalysis } from "@/lib/analyses.functions";
 import { getSessionId } from "@/lib/session";
+import { useBookmarks } from "@/lib/use-bookmarks";
 import { SiteHeader } from "@/components/SiteHeader";
 import { VerdictBadge } from "@/components/VerdictBadge";
 
@@ -19,27 +32,30 @@ export const Route = createFileRoute("/history")({
   component: HistoryPage,
 });
 
-type Verdict = "사실" | "부분 사실" | "근거 부족" | "반대 근거 우세";
-const VERDICTS: Verdict[] = ["사실", "부분 사실", "근거 부족", "반대 근거 우세"];
+import type { Verdict } from "@/lib/verdict";
+import { VERDICTS } from "@/lib/verdict";
 
 const VERDICT_COLOR: Record<string, string> = {
-  "사실":           "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 data-[active=true]:bg-emerald-500 data-[active=true]:text-white data-[active=true]:border-emerald-500",
-  "부분 사실":      "bg-blue-500/10 text-blue-400 border-blue-500/30 data-[active=true]:bg-blue-500 data-[active=true]:text-white data-[active=true]:border-blue-500",
-  "근거 부족":      "bg-yellow-500/10 text-yellow-400 border-yellow-500/30 data-[active=true]:bg-yellow-500 data-[active=true]:text-white data-[active=true]:border-yellow-500",
-  "반대 근거 우세": "bg-red-500/10 text-red-400 border-red-500/30 data-[active=true]:bg-red-500 data-[active=true]:text-white data-[active=true]:border-red-500",
+  사실: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 data-[active=true]:bg-emerald-500 data-[active=true]:text-white data-[active=true]:border-emerald-500",
+  "부분 사실":
+    "bg-blue-500/10 text-blue-400 border-blue-500/30 data-[active=true]:bg-blue-500 data-[active=true]:text-white data-[active=true]:border-blue-500",
+  "근거 부족":
+    "bg-yellow-500/10 text-yellow-400 border-yellow-500/30 data-[active=true]:bg-yellow-500 data-[active=true]:text-white data-[active=true]:border-yellow-500",
+  "반대 근거 우세":
+    "bg-red-500/10 text-red-400 border-red-500/30 data-[active=true]:bg-red-500 data-[active=true]:text-white data-[active=true]:border-red-500",
 };
 
 const VERDICT_BORDER: Record<string, string> = {
-  "사실":           "border-l-emerald-500",
-  "부분 사실":      "border-l-blue-500",
-  "근거 부족":      "border-l-yellow-500",
+  사실: "border-l-emerald-500",
+  "부분 사실": "border-l-blue-500",
+  "근거 부족": "border-l-yellow-500",
   "반대 근거 우세": "border-l-red-500",
 };
 
 const VERDICT_CONF_COLOR: Record<string, string> = {
-  "사실":           "bg-emerald-500",
-  "부분 사실":      "bg-blue-500",
-  "근거 부족":      "bg-yellow-500",
+  사실: "bg-emerald-500",
+  "부분 사실": "bg-blue-500",
+  "근거 부족": "bg-yellow-500",
   "반대 근거 우세": "bg-red-500",
 };
 
@@ -71,6 +87,7 @@ function SkeletonCard() {
 }
 
 function HistoryPage() {
+  const navigate = useNavigate();
   const fetchList = useServerFn(listAnalyses);
   const doDelete = useServerFn(deleteAnalysis);
   const queryClient = useQueryClient();
@@ -78,8 +95,14 @@ function HistoryPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [keyword, setKeyword] = useState("");
   const [activeVerdict, setActiveVerdict] = useState<Verdict | null>(null);
+  const [compareMode, setCompareMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bookmarkFilter, setBookmarkFilter] = useState(false);
+  const { bookmarkedIds, toggle, isBookmarked } = useBookmarks();
 
-  useEffect(() => { setSessionId(getSessionId()); }, []);
+  useEffect(() => {
+    setSessionId(getSessionId());
+  }, []);
 
   const { data, isLoading } = useQuery({
     queryKey: ["analyses", sessionId],
@@ -91,6 +114,7 @@ function HistoryPage() {
     if (!data) return [];
     return data.filter((row) => {
       if (activeVerdict && row.overall_verdict !== activeVerdict) return false;
+      if (bookmarkFilter && !bookmarkedIds.includes(row.id)) return false;
       if (keyword.trim()) {
         const kw = keyword.trim().toLowerCase();
         const title = (row.title ?? "").toLowerCase();
@@ -99,7 +123,7 @@ function HistoryPage() {
       }
       return true;
     });
-  }, [data, activeVerdict, keyword]);
+  }, [data, activeVerdict, keyword, bookmarkFilter, bookmarkedIds]);
 
   // 판정별 건수 집계
   const verdictCounts = useMemo(() => {
@@ -129,16 +153,48 @@ function HistoryPage() {
     <div className="min-h-screen pb-[calc(4rem+env(safe-area-inset-bottom,0px))] sm:pb-0">
       <SiteHeader />
       <main className="max-w-3xl mx-auto px-4 sm:px-6 py-10">
-
         {/* 헤더 */}
         <div className="mb-8">
           <div className="flex items-end justify-between gap-4 mb-1">
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">분석 히스토리</h1>
             {total > 0 && (
-              <span className="text-sm text-muted-foreground tabular-nums mb-0.5">총 {total}건</span>
+              <span className="text-sm text-muted-foreground tabular-nums mb-0.5">
+                총 {total}건
+              </span>
             )}
           </div>
-          <p className="text-sm text-muted-foreground">이 브라우저에서 수행한 팩트체크 기록입니다.</p>
+          <p className="text-sm text-muted-foreground">
+            이 브라우저에서 수행한 팩트체크 기록입니다.
+          </p>
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setCompareMode((v) => !v);
+                setSelectedIds([]);
+              }}
+              data-active={compareMode}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:border-primary border-border/50 text-muted-foreground hover:bg-surface-2"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              분석 비교
+            </button>
+            {compareMode && selectedIds.length >= 2 && (
+              <button
+                type="button"
+                onClick={() => {
+                  navigate({
+                    to: "/compare/$id1/$id2",
+                    params: { id1: selectedIds[0], id2: selectedIds[1] },
+                  });
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                선택 {selectedIds.length}건 비교하기
+              </button>
+            )}
+          </div>
 
           {/* 판정별 통계 바 */}
           {total > 0 && (
@@ -148,7 +204,7 @@ function HistoryPage() {
                 if (count === 0) return null;
                 const pct = Math.round((count / total) * 100);
                 const colorMap: Record<string, string> = {
-                  "사실": "bg-emerald-500",
+                  사실: "bg-emerald-500",
                   "부분 사실": "bg-blue-500",
                   "근거 부족": "bg-yellow-500",
                   "반대 근거 우세": "bg-red-500",
@@ -172,11 +228,20 @@ function HistoryPage() {
                 if (count === 0) return null;
                 return (
                   <span key={v} className="text-[11px] text-muted-foreground/60">
-                    <span className={`font-semibold ${
-                      v === "사실" ? "text-emerald-500" :
-                      v === "부분 사실" ? "text-blue-500" :
-                      v === "근거 부족" ? "text-yellow-500" : "text-red-500"
-                    }`}>{count}</span> {v}
+                    <span
+                      className={`font-semibold ${
+                        v === "사실"
+                          ? "text-emerald-500"
+                          : v === "부분 사실"
+                            ? "text-blue-500"
+                            : v === "근거 부족"
+                              ? "text-yellow-500"
+                              : "text-red-500"
+                      }`}
+                    >
+                      {count}
+                    </span>{" "}
+                    {v}
                   </span>
                 );
               })}
@@ -197,8 +262,10 @@ function HistoryPage() {
                 className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-surface-2 border border-border/50 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
               />
               {keyword && (
-                <button onClick={() => setKeyword("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <button
+                  onClick={() => setKeyword("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
                   <X className="w-4 h-4" />
                 </button>
               )}
@@ -212,7 +279,9 @@ function HistoryPage() {
                   className={`px-3 py-1 rounded-full text-xs font-medium border transition-all duration-200 ${VERDICT_COLOR[v]}`}
                 >
                   {v}
-                  {verdictCounts[v] ? <span className="ml-1 opacity-70">{verdictCounts[v]}</span> : null}
+                  {verdictCounts[v] ? (
+                    <span className="ml-1 opacity-70">{verdictCounts[v]}</span>
+                  ) : null}
                 </button>
               ))}
               {activeVerdict && (
@@ -223,6 +292,27 @@ function HistoryPage() {
                   전체
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => setBookmarkFilter((v) => !v)}
+                data-active={bookmarkFilter}
+                className={[
+                  "px-3 py-1 rounded-full text-xs font-medium border transition-all border-border/50 text-muted-foreground hover:bg-surface-2",
+                  bookmarkFilter && "bg-yellow-500 text-white border-yellow-500",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                <Star
+                  className={
+                    "w-3 h-3 inline -mt-0.5 mr-1 " + (bookmarkFilter ? "fill-current" : "")
+                  }
+                />
+                즐겨찾기
+                {bookmarkedIds.length > 0 && (
+                  <span className="ml-1 opacity-70">{bookmarkedIds.length}</span>
+                )}
+              </button>
             </div>
           </div>
         )}
@@ -230,7 +320,9 @@ function HistoryPage() {
         {/* 로딩 스켈레톤 */}
         {isLoading && (
           <div className="space-y-2">
-            {[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
+            {[...Array(4)].map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
           </div>
         )}
 
@@ -239,7 +331,10 @@ function HistoryPage() {
           <div className="rounded-2xl border border-border/40 bg-surface p-14 text-center">
             <Inbox className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
             <p className="text-sm text-muted-foreground mb-5">아직 분석 기록이 없습니다.</p>
-            <Link to="/" className="inline-block px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity">
+            <Link
+              to="/"
+              className="inline-block px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+            >
               첫 분석 시작하기
             </Link>
           </div>
@@ -260,27 +355,74 @@ function HistoryPage() {
             const confColor = VERDICT_CONF_COLOR[verdict] ?? "bg-muted-foreground";
             const conf = row.overall_confidence ?? 0;
             const isDone = row.status !== "pending" && row.status !== "failed";
+            const summary = typeof row.summary === "string" ? row.summary : "";
+            const isSelected = selectedIds.includes(row.id);
             let hostname = "";
             if (row.source_url) {
-              try { hostname = new URL(row.source_url).hostname.replace("www.", ""); } catch { hostname = row.source_url; }
+              try {
+                hostname = new URL(row.source_url).hostname.replace("www.", "");
+              } catch {
+                hostname = row.source_url;
+              }
             }
+
+            const handleSelect = (e: React.MouseEvent) => {
+              if (!compareMode) return;
+              e.preventDefault();
+              e.stopPropagation();
+              setSelectedIds((prev) => {
+                if (prev.includes(row.id)) return prev.filter((id) => id !== row.id);
+                if (prev.length >= 2) return prev;
+                return [...prev, row.id];
+              });
+            };
 
             return (
               <div key={row.id} className="relative group">
                 <Link
                   to="/analysis/$id"
                   params={{ id: row.id }}
-                  className={`flex items-start gap-3 sm:gap-4 rounded-xl border border-border/40 border-l-4 ${borderColor} bg-surface px-4 py-4 pr-11 hover:bg-surface-2/60 hover:shadow-sm transition-all duration-150`}
+                  onClick={
+                    compareMode
+                      ? (e) => {
+                          e.preventDefault();
+                        }
+                      : undefined
+                  }
+                  className={`flex items-start gap-3 sm:gap-4 rounded-xl border border-border/40 border-l-4 ${borderColor} bg-surface px-4 py-4 pr-11 transition-all duration-150 ${
+                    compareMode
+                      ? isSelected
+                        ? "ring-2 ring-primary shadow-md"
+                        : "cursor-default opacity-70 hover:opacity-100"
+                      : "hover:bg-surface-2/60 hover:shadow-sm"
+                  }`}
                   style={{ animationDelay: `${idx * 30}ms` }}
                 >
+                  {compareMode && (
+                    <div className="shrink-0 pt-0.5" onClick={handleSelect}>
+                      <div
+                        className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                          isSelected
+                            ? "bg-primary border-primary text-primary-foreground"
+                            : "border-border/50 hover:border-primary/50"
+                        }`}
+                      >
+                        {isSelected && <CheckSquare className="w-3.5 h-3.5" />}
+                      </div>
+                    </div>
+                  )}
+
                   {/* 본문 */}
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0" onClick={compareMode ? handleSelect : undefined}>
                     <p className="font-medium text-sm leading-snug text-foreground group-hover:text-primary transition-colors line-clamp-2">
+                      {isBookmarked(row.id) && (
+                        <Star className="w-3 h-3 inline -mt-0.5 mr-1 text-yellow-400 fill-current shrink-0" />
+                      )}
                       {row.title ?? (row.status === "pending" ? "분석 중…" : "(제목 없음)")}
                     </p>
-                    {(row as Record<string, unknown>).summary && row.status !== "pending" && (
+                    {summary && row.status !== "pending" && (
                       <p className="text-[11px] text-foreground/55 mt-0.5 line-clamp-1 leading-relaxed">
-                        {(row as Record<string, unknown>).summary as string}
+                        {summary}
                       </p>
                     )}
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -313,7 +455,9 @@ function HistoryPage() {
                         {isDone && (
                           <div className="w-20">
                             <div className="flex justify-between items-center mb-0.5">
-                              <span className="text-[10px] text-muted-foreground/50 tabular-nums">{conf}%</span>
+                              <span className="text-[10px] text-muted-foreground/50 tabular-nums">
+                                {conf}%
+                              </span>
                             </div>
                             <div className="h-1 w-full bg-border/30 rounded-full overflow-hidden">
                               <div
@@ -329,17 +473,21 @@ function HistoryPage() {
                 </Link>
 
                 {/* 삭제 버튼 */}
-                <button
-                  type="button"
-                  onClick={(e) => handleDelete(e, row.id)}
-                  disabled={deletingId === row.id}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2 rounded-lg text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-all duration-150 sm:opacity-0 sm:group-hover:opacity-100 disabled:opacity-30"
-                  aria-label="삭제"
-                >
-                  {deletingId === row.id
-                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : <Trash2 className="w-3.5 h-3.5" />}
-                </button>
+                {!compareMode && (
+                  <button
+                    type="button"
+                    onClick={(e) => handleDelete(e, row.id)}
+                    disabled={deletingId === row.id}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2 rounded-lg text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-all duration-150 sm:opacity-0 sm:group-hover:opacity-100 disabled:opacity-30"
+                    aria-label="삭제"
+                  >
+                    {deletingId === row.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                )}
               </div>
             );
           })}

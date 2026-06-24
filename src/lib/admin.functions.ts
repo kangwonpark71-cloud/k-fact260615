@@ -26,27 +26,35 @@ export const getAdminStats = createServerFn({ method: "GET" }).handler(async () 
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   const now = new Date();
-  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
   const weekAgo = new Date(Date.now() - 7 * 86400000);
   const monthAgo = new Date(Date.now() - 30 * 86400000);
 
-  const [totalRes, todayRes, weekRes, monthRes, summaryRes, recentRes] =
-    await Promise.all([
-      supabaseAdmin.from("analyses").select("id", { count: "exact", head: true }),
-      supabaseAdmin.from("analyses").select("id", { count: "exact", head: true })
-        .gte("created_at", todayStart.toISOString()),
-      supabaseAdmin.from("analyses").select("id", { count: "exact", head: true })
-        .gte("created_at", weekAgo.toISOString()),
-      supabaseAdmin.from("analyses").select("id", { count: "exact", head: true })
-        .gte("created_at", monthAgo.toISOString()),
-      // DB 집계 RPC: verdict 분포·평균신뢰도·고유 사용자/세션을 한 번에
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (supabaseAdmin as any).rpc("get_admin_stats_summary"),
-      // 최근 30일 created_at (일별 + 시간별 차트용)
-      supabaseAdmin.from("analyses").select("created_at")
-        .gte("created_at", monthAgo.toISOString())
-        .order("created_at", { ascending: true }),
-    ]);
+  const [totalRes, todayRes, weekRes, monthRes, summaryRes, recentRes] = await Promise.all([
+    supabaseAdmin.from("analyses").select("id", { count: "exact", head: true }),
+    supabaseAdmin
+      .from("analyses")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", todayStart.toISOString()),
+    supabaseAdmin
+      .from("analyses")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", weekAgo.toISOString()),
+    supabaseAdmin
+      .from("analyses")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", monthAgo.toISOString()),
+    // DB 집계 RPC: verdict 분포·평균신뢰도·고유 사용자/세션을 한 번에
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabaseAdmin as any).rpc("get_admin_stats_summary"),
+    // 최근 30일 created_at (일별 + 시간별 차트용)
+    supabaseAdmin
+      .from("analyses")
+      .select("created_at")
+      .gte("created_at", monthAgo.toISOString())
+      .order("created_at", { ascending: true }),
+  ]);
 
   type StatsSummary = {
     verdict_counts: Record<string, number>;
@@ -96,17 +104,76 @@ export const getAdminStats = createServerFn({ method: "GET" }).handler(async () 
   };
 });
 
+// ── 출처 신뢰도 통계 ──
+export const getAdminSourceStats = createServerFn({ method: "GET" }).handler(async () => {
+  await requireAdmin();
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+
+  try {
+    const { data } = await supabaseAdmin
+      .from("analyses")
+      .select("audit_log")
+      .eq("status", "completed")
+      .gte("created_at", monthAgo)
+      .not("audit_log", "is", null)
+      .limit(200);
+
+    const tierCounts: Record<string, number> = {
+      authoritative: 0,
+      established: 0,
+      standard: 0,
+      weak: 0,
+      unknown: 0,
+    };
+    let totalSources = 0;
+    let scoredCount = 0;
+
+    for (const row of data ?? []) {
+      const log = row.audit_log as Record<string, unknown> | null;
+      const sources = (log?.phase2 as Record<string, unknown> | null)?.sources_reviewed as
+        | Array<Record<string, unknown>>
+        | undefined;
+      if (!sources) continue;
+      for (const src of sources) {
+        totalSources++;
+        const tier = src.reliability_tier as string | undefined;
+        if (tier && tier in tierCounts) {
+          tierCounts[tier]++;
+          scoredCount++;
+        }
+      }
+    }
+
+    return {
+      tierCounts,
+      totalSources,
+      scoredCount,
+      unscoredCount: totalSources - scoredCount,
+    };
+  } catch {
+    return {
+      tierCounts: { authoritative: 0, established: 0, standard: 0, weak: 0, unknown: 0 },
+      totalSources: 0,
+      scoredCount: 0,
+      unscoredCount: 0,
+    };
+  }
+});
+
 // ── 전체 분석 목록 (페이지네이션 + 필터) ──
 export const getAdminAnalyses = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
-    z.object({
-      page: z.number().int().min(0).default(0),
-      pageSize: z.number().int().min(1).max(100).default(20),
-      verdict: z.string().optional(),
-      search: z.string().optional(),
-      userType: z.enum(["all", "user", "anon"]).default("all"),
-      userId: z.string().uuid().optional(),
-    }).parse(input),
+  .validator((input: unknown) =>
+    z
+      .object({
+        page: z.number().int().min(0).default(0),
+        pageSize: z.number().int().min(1).max(100).default(20),
+        verdict: z.string().optional(),
+        search: z.string().optional(),
+        userType: z.enum(["all", "user", "anon"]).default("all"),
+        userId: z.string().uuid().optional(),
+      })
+      .parse(input),
   )
   .handler(async ({ data }) => {
     await requireAdmin();
@@ -134,19 +201,22 @@ export const getAdminAnalyses = createServerFn({ method: "POST" })
 
 // ── 분석 상세 (모달용) ──
 export const adminGetAnalysisDetail = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .validator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data }) => {
     await requireAdmin();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: row, error } = await supabaseAdmin
-      .from("analyses").select("*").eq("id", data.id).single();
+      .from("analyses")
+      .select("*")
+      .eq("id", data.id)
+      .single();
     if (error) throw new Error(error.message);
     return row;
   });
 
 // ── 관리자 강제 삭제 ──
 export const adminDeleteAnalysis = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .validator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data }) => {
     await requireAdmin();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -169,12 +239,14 @@ export const listApiKeys = createServerFn({ method: "GET" }).handler(async () =>
 
 // ── API 키 등록 ──
 export const addApiKey = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
-    z.object({
-      name: z.string().min(1, "이름을 입력하세요.").max(50),
-      provider: z.enum(["gemini", "openai", "anthropic"]),
-      key_value: z.string().min(10, "키 값이 너무 짧습니다."),
-    }).parse(input),
+  .validator((input: unknown) =>
+    z
+      .object({
+        name: z.string().min(1, "이름을 입력하세요.").max(50),
+        provider: z.enum(["gemini", "openai", "anthropic"]),
+        key_value: z.string().min(10, "키 값이 너무 짧습니다."),
+      })
+      .parse(input),
   )
   .handler(async ({ data }) => {
     await requireAdmin();
@@ -193,7 +265,7 @@ export const addApiKey = createServerFn({ method: "POST" })
 
 // ── API 키 삭제 ──
 export const deleteApiKey = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .validator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data }) => {
     await requireAdmin();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -204,7 +276,7 @@ export const deleteApiKey = createServerFn({ method: "POST" })
 
 // ── API 키 활성/비활성 토글 ──
 export const toggleApiKey = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ id: z.string().uuid(), is_active: z.boolean() }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -226,17 +298,24 @@ export const getAdminUsers = createServerFn({ method: "GET" }).handler(async () 
   const [authRes, countRes, lastRes] = await Promise.all([
     supabaseAdmin.auth.admin.listUsers({ perPage: 1000 }),
     supabaseAdmin.from("analyses").select("user_id").not("user_id", "is", null),
-    supabaseAdmin.from("analyses")
+    supabaseAdmin
+      .from("analyses")
       .select("user_id, created_at")
       .not("user_id", "is", null)
       .order("created_at", { ascending: false }),
   ]);
 
   const countMap: Record<string, number> = {};
-  for (const r of countRes.data ?? []) { const uid = r.user_id ?? ""; if (uid) countMap[uid] = (countMap[uid] ?? 0) + 1; }
+  for (const r of countRes.data ?? []) {
+    const uid = r.user_id ?? "";
+    if (uid) countMap[uid] = (countMap[uid] ?? 0) + 1;
+  }
 
   const lastMap: Record<string, string> = {};
-  for (const r of lastRes.data ?? []) { const uid = r.user_id ?? ""; if (uid && !lastMap[uid]) lastMap[uid] = r.created_at as string; }
+  for (const r of lastRes.data ?? []) {
+    const uid = r.user_id ?? "";
+    if (uid && !lastMap[uid]) lastMap[uid] = r.created_at as string;
+  }
 
   return (authRes.data?.users ?? [])
     .sort((a, b) => (countMap[b.id] ?? 0) - (countMap[a.id] ?? 0))

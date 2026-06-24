@@ -6,7 +6,7 @@ import { getEnv } from "./runtime-env.server";
 
 const ENC_PREFIX = "enc:";
 
-function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
+function hexToBytes(hex: string): Uint8Array {
   const buf = new ArrayBuffer(hex.length / 2);
   const view = new Uint8Array(buf);
   for (let i = 0; i < hex.length; i += 2) {
@@ -15,8 +15,10 @@ function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
   return view;
 }
 
-function bytesToHex(bytes: Uint8Array<ArrayBuffer> | Uint8Array): string {
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function toArrayBuffer(input: string): ArrayBuffer {
@@ -27,7 +29,10 @@ function toArrayBuffer(input: string): ArrayBuffer {
 }
 
 async function importAesKey(keyHex: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey("raw", hexToBytes(keyHex), "AES-GCM", false, ["encrypt", "decrypt"]);
+  return crypto.subtle.importKey("raw", hexToBytes(keyHex), "AES-GCM", false, [
+    "encrypt",
+    "decrypt",
+  ]);
 }
 
 export async function encryptSecret(plaintext: string): Promise<string> {
@@ -50,7 +55,11 @@ export async function decryptSecret(stored: string): Promise<string> {
     const colon = rest.indexOf(":");
     const iv = hexToBytes(rest.slice(0, colon));
     const ct = hexToBytes(rest.slice(colon + 1));
-    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, await importAesKey(keyHex), ct);
+    const plain = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv },
+      await importAesKey(keyHex),
+      ct,
+    );
     return new TextDecoder().decode(plain);
   } catch {
     return stored;

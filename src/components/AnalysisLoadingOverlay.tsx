@@ -3,34 +3,34 @@ import { Search, Brain, Zap, FileCheck, ShieldCheck, Clock, Target, Activity } f
 
 // ── 분석 단계 ──
 const PHASES = [
-  { Icon: Search,     label: "텍스트 스캔",     detail: "검증 가능한 사실 주장을 식별합니다" },
-  { Icon: Brain,      label: "주장 추출",       detail: "수치·날짜·인물·법령을 각각 분리합니다" },
-  { Icon: Target,     label: "논리 검증",       detail: "인과 관계와 근거 일관성을 교차 검토합니다" },
-  { Icon: Activity,   label: "신뢰도 계산",     detail: "각 주장의 근거 강도를 수치화합니다" },
-  { Icon: Zap,        label: "Tavily 검색",     detail: "실시간 뉴스·공식 자료로 재검증합니다" },
-  { Icon: FileCheck,  label: "판정 확정",       detail: "최종 팩트체크 보고서를 작성합니다" },
-  { Icon: ShieldCheck,label: "무결성 서명",     detail: "결과 위변조 방지 서명을 적용합니다" },
+  { Icon: Search, label: "텍스트 스캔", detail: "검증 가능한 사실 주장을 식별합니다" },
+  { Icon: Brain, label: "주장 추출", detail: "수치·날짜·인물·법령을 각각 분리합니다" },
+  { Icon: Target, label: "논리 검증", detail: "인과 관계와 근거 일관성을 교차 검토합니다" },
+  { Icon: Activity, label: "신뢰도 계산", detail: "각 주장의 근거 강도를 수치화합니다" },
+  { Icon: Zap, label: "Tavily 검색", detail: "실시간 뉴스·공식 자료로 재검증합니다" },
+  { Icon: FileCheck, label: "판정 확정", detail: "최종 팩트체크 보고서를 작성합니다" },
+  { Icon: ShieldCheck, label: "무결성 서명", detail: "결과 위변조 방지 서명을 적용합니다" },
 ];
 const PHASE_MS = [2800, 3200, 3800, 3500, 5000, 4200, 2500];
 const TOTAL_MS = PHASE_MS.reduce((a, b) => a + b, 0);
 
 // ── 판정 슬롯 ──
 const SLOT = [
-  { label: "스캔 중…",   color: "oklch(0.65 0.01 255)" },
-  { label: "사실 확인",  color: "oklch(0.62 0.18 160)" },
-  { label: "교차 검증",  color: "oklch(0.65 0.12 250)" },
-  { label: "부분 사실?", color: "oklch(0.72 0.17 80)"  },
-  { label: "근거 탐색",  color: "oklch(0.65 0.01 255)" },
-  { label: "반박 검토",  color: "oklch(0.65 0.18 25)"  },
-  { label: "출처 확인",  color: "oklch(0.68 0.10 200)" },
-  { label: "논리 분석",  color: "oklch(0.68 0.05 240)" },
+  { label: "스캔 중…", color: "oklch(0.65 0.01 255)" },
+  { label: "사실 확인", color: "oklch(0.62 0.18 160)" },
+  { label: "교차 검증", color: "oklch(0.65 0.12 250)" },
+  { label: "부분 사실?", color: "oklch(0.72 0.17 80)" },
+  { label: "근거 탐색", color: "oklch(0.65 0.01 255)" },
+  { label: "반박 검토", color: "oklch(0.65 0.18 25)" },
+  { label: "출처 확인", color: "oklch(0.68 0.10 200)" },
+  { label: "논리 분석", color: "oklch(0.68 0.05 240)" },
 ];
 
 function toSentences(text: string): string[] {
   return text
     .split(/(?<=[.!?。\n])\s*/)
-    .map(s => s.trim())
-    .filter(s => s.length > 12)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 12)
     .slice(0, 15);
 }
 
@@ -40,7 +40,7 @@ function toClaims(text: string, url?: string): string[] {
   }
   return toSentences(text)
     .slice(0, 5)
-    .map(s => (s.length > 34 ? s.slice(0, 34) + "…" : s));
+    .map((s) => (s.length > 34 ? s.slice(0, 34) + "…" : s));
 }
 
 // ── 슬롯머신 칩 ──
@@ -50,9 +50,17 @@ function ClaimChip({ label, delay }: { label: string; delay: number }) {
   const [verdict, setVerdict] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const VERDICTS = ["사실", "부분 사실", "근거 부족", "사실", "반대 근거 우세", "부분 사실", "사실"];
+  const VERDICTS = [
+    "사실",
+    "부분 사실",
+    "근거 부족",
+    "사실",
+    "반대 근거 우세",
+    "부분 사실",
+    "사실",
+  ];
   const VCOLORS: Record<string, string> = {
-    "사실": "text-emerald-400 border-emerald-400/30 bg-emerald-400/8",
+    사실: "text-emerald-400 border-emerald-400/30 bg-emerald-400/8",
     "부분 사실": "text-amber-400 border-amber-400/30 bg-amber-400/8",
     "근거 부족": "text-orange-400 border-orange-400/30 bg-orange-400/8",
     "반대 근거 우세": "text-red-400 border-red-400/30 bg-red-400/8",
@@ -64,7 +72,7 @@ function ClaimChip({ label, delay }: { label: string; delay: number }) {
       const max = 10 + Math.floor(Math.random() * 8);
       let ms = 80;
       const cycle = () => {
-        setIdx(p => (p + 1) % SLOT.length);
+        setIdx((p) => (p + 1) % SLOT.length);
         count++;
         if (count > max - 4) ms = Math.min(500, ms * 1.7);
         if (count < max) timerRef.current = setTimeout(cycle, ms);
@@ -76,7 +84,7 @@ function ClaimChip({ label, delay }: { label: string; delay: number }) {
       cycle();
     }, delay);
     return () => clearTimeout(timerRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [delay]);
 
   const v = SLOT[idx];
@@ -116,19 +124,29 @@ function ConfidenceSpectrum({ elapsed }: { elapsed: number }) {
   });
 
   const getColor = (v: number) =>
-    v >= 70 ? "bg-emerald-400/70"
-    : v >= 50 ? "bg-amber-400/70"
-    : v >= 35 ? "bg-orange-400/70"
-    : "bg-red-400/60";
+    v >= 70
+      ? "bg-emerald-400/70"
+      : v >= 50
+        ? "bg-amber-400/70"
+        : v >= 35
+          ? "bg-orange-400/70"
+          : "bg-red-400/60";
 
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2 justify-between">
-        <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">신뢰도 스펙트럼</span>
+        <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-widest">
+          신뢰도 스펙트럼
+        </span>
         <div className="flex items-center gap-3">
-          {[["70+", "bg-emerald-400/70", "사실"], ["50+", "bg-amber-400/70", "부분"], ["<35", "bg-red-400/60", "반박"]].map(([v, c, l]) => (
+          {[
+            ["70+", "bg-emerald-400/70", "사실"],
+            ["50+", "bg-amber-400/70", "부분"],
+            ["<35", "bg-red-400/60", "반박"],
+          ].map(([v, c, l]) => (
             <span key={v} className="flex items-center gap-1 text-[9px] text-muted-foreground/50">
-              <span className={`w-2 h-2 rounded-sm ${c}`} />{l}
+              <span className={`w-2 h-2 rounded-sm ${c}`} />
+              {l}
             </span>
           ))}
         </div>
@@ -206,7 +224,7 @@ export function AnalysisLoadingOverlay({ text, url }: Props) {
     const interval = setInterval(() => {
       setSentVisible(false);
       setTimeout(() => {
-        setSentIdx(p => (p + 1) % sentences.length);
+        setSentIdx((p) => (p + 1) % sentences.length);
         setSentVisible(true);
       }, 380);
     }, 2600);
@@ -219,12 +237,14 @@ export function AnalysisLoadingOverlay({ text, url }: Props) {
 
   return (
     <div className="glass rounded-2xl p-5 sm:p-6 shadow-[var(--shadow-card)] space-y-4">
-
       {/* ── 헤더: 단계 + 타이머 ── */}
       <div className="space-y-3">
         <div className="flex items-center gap-3">
           <div className="relative shrink-0">
-            <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" style={{ animationDuration: "1.8s" }} />
+            <div
+              className="absolute inset-0 rounded-full bg-primary/20 animate-ping"
+              style={{ animationDuration: "1.8s" }}
+            />
             <div className="relative w-9 h-9 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center">
               <PhaseIcon className="w-4 h-4 text-primary" />
             </div>
@@ -236,7 +256,9 @@ export function AnalysisLoadingOverlay({ text, url }: Props) {
                 {phaseIdx + 1}/{PHASES.length}
               </span>
             </div>
-            <p className="text-[11px] text-muted-foreground/70 mt-0.5 leading-snug">{phase.detail}</p>
+            <p className="text-[11px] text-muted-foreground/70 mt-0.5 leading-snug">
+              {phase.detail}
+            </p>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
             <Clock className="w-3.5 h-3.5" />
@@ -268,9 +290,11 @@ export function AnalysisLoadingOverlay({ text, url }: Props) {
             <div
               key={i}
               className={`h-1 rounded-full transition-all duration-500 ${
-                i < phaseIdx ? "bg-primary flex-1"
-                : i === phaseIdx ? "bg-primary/70 flex-[2] animate-pulse"
-                : "bg-border/50 flex-1"
+                i < phaseIdx
+                  ? "bg-primary flex-1"
+                  : i === phaseIdx
+                    ? "bg-primary/70 flex-[2] animate-pulse"
+                    : "bg-border/50 flex-1"
               }`}
             />
           ))}
@@ -333,7 +357,10 @@ export function AnalysisLoadingOverlay({ text, url }: Props) {
       {/* ── 금지사항 품질 보증 배지 ── */}
       <div className="flex flex-wrap gap-1.5 pt-1 border-t border-border/25">
         {["근거 기반 판정", "논리적 추론", "중복 주장 제거", "출처 귀속 검증"].map((label) => (
-          <span key={label} className="text-[10px] px-2 py-0.5 rounded-full border border-primary/20 text-primary/70 bg-primary/5 font-medium">
+          <span
+            key={label}
+            className="text-[10px] px-2 py-0.5 rounded-full border border-primary/20 text-primary/70 bg-primary/5 font-medium"
+          >
             ✓ {label}
           </span>
         ))}

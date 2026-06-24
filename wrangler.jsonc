@@ -5,27 +5,27 @@
   "main": "dist/server/server.js",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
-    "directory": "./dist/client"
+    "directory": "./dist/client",
   },
   "placement": {
-    "mode": "smart"
+    "mode": "smart",
   },
   "ai": {
-    "binding": "AI"
+    "binding": "AI",
   },
   "observability": {
-    "enabled": true
+    "enabled": true,
   },
   "kv_namespaces": [
     {
       "binding": "NEWS_CACHE",
-      "id": "d30c26f8ef2645f19456f01759690780"
-    }
+      "id": "d30c26f8ef2645f19456f01759690780",
+    },
   ],
   "vars": {
     "SUPABASE_URL": "https://lynexsaojkhxzkkhdjvs.supabase.co",
     "SUPABASE_PUBLISHABLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx5bmV4c2FvamtoeHpra2hkanZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMjA5NjIsImV4cCI6MjA5Njc5Njk2Mn0.rsxCtnMez6xawTOn8BOhu218AAtLSi_1vucfT2Wq9T8",
     "ADMIN_EMAIL": "kangwonpark71@gmail.com",
-    "CF_GATEWAY_ID": "k-fact-gemini"
-  }
+    "CF_GATEWAY_ID": "YOUR_CF_GATEWAY_ID",
+  },
 }

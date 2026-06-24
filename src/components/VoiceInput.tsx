@@ -1,7 +1,22 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Mic, Square, MicOff } from "lucide-react";
 
+import {
+  collectSpeechText,
+  getSpeechRecognitionConstructor,
+  type BrowserSpeechRecognition,
+} from "@/lib/web-speech";
+
 const BARS = 36;
+
+function tryStartRecognition(recognition: BrowserSpeechRecognition): boolean {
+  try {
+    recognition.start();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 interface VoiceInputProps {
   value: string;
@@ -11,30 +26,37 @@ interface VoiceInputProps {
   onSentenceComplete?: (text: string) => void;
 }
 
-export function VoiceInput({ value, onChange, interimText, onInterimChange, onSentenceComplete }: VoiceInputProps) {
+export function VoiceInput({
+  value,
+  onChange,
+  interimText,
+  onInterimChange,
+  onSentenceComplete,
+}: VoiceInputProps) {
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState<boolean | null>(null);
   const [barHeights, setBarHeights] = useState<number[]>(Array(BARS).fill(3));
 
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const isListeningRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animFrameRef = useRef<number>(0);
   const valueRef = useRef(value);
 
-  useEffect(() => { valueRef.current = value; }, [value]);
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
 
   useEffect(() => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR = getSpeechRecognitionConstructor(window);
     setIsSupported(!!SR);
     return () => stopAudio();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const stopAudio = () => {
     cancelAnimationFrame(animFrameRef.current);
-    try { audioCtxRef.current?.close(); } catch {}
+    void audioCtxRef.current?.close().catch(() => undefined);
     audioCtxRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
@@ -66,11 +88,13 @@ export function VoiceInput({ value, onChange, interimText, onInterimChange, onSe
         animFrameRef.current = requestAnimationFrame(tick);
       };
       tick();
-    } catch { /* 시각화 없이 인식만 진행 */ }
+    } catch {
+      /* 시각화 없이 인식만 진행 */
+    }
   };
 
   const start = useCallback(() => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR = getSpeechRecognitionConstructor(window);
     if (!SR) return;
 
     const rec = new SR();
@@ -78,27 +102,21 @@ export function VoiceInput({ value, onChange, interimText, onInterimChange, onSe
     rec.continuous = true;
     rec.interimResults = true;
 
-    rec.onresult = (e: any) => {
-      let interim = "";
-      let final = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) final += t;
-        else interim += t;
-      }
-      if (final) {
+    rec.onresult = (e) => {
+      const { finalText, interimText } = collectSpeechText(e);
+      if (finalText) {
         const cur = valueRef.current;
         const sep = cur && !/\s$/.test(cur) ? " " : "";
-        onChange(cur + sep + final);
+        onChange(cur + sep + finalText);
         onInterimChange("");
-        const trimmed = final.trim();
+        const trimmed = finalText.trim();
         if (trimmed.length >= 15) onSentenceComplete?.(trimmed);
       } else {
-        onInterimChange(interim);
+        onInterimChange(interimText);
       }
     };
 
-    rec.onerror = (e: any) => {
+    rec.onerror = (e) => {
       if (e.error === "not-allowed") {
         alert("마이크 접근 권한이 필요합니다. 브라우저 설정에서 허용해 주세요.");
         isListeningRef.current = false;
@@ -112,16 +130,15 @@ export function VoiceInput({ value, onChange, interimText, onInterimChange, onSe
 
     rec.onend = () => {
       if (isListeningRef.current) {
-        try { rec.start(); } catch {}
+        tryStartRecognition(rec);
       }
     };
 
     recognitionRef.current = rec;
     isListeningRef.current = true;
     setIsListening(true);
-    rec.start();
+    tryStartRecognition(rec);
     startAudio();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onChange, onInterimChange, onSentenceComplete]);
 
   const stop = useCallback(() => {
@@ -139,7 +156,9 @@ export function VoiceInput({ value, onChange, interimText, onInterimChange, onSe
     return (
       <div className="flex flex-col items-center gap-3 py-10 text-center">
         <MicOff className="w-10 h-10 text-muted-foreground" />
-        <p className="text-base text-muted-foreground">이 브라우저는 음성 인식을 지원하지 않습니다.</p>
+        <p className="text-base text-muted-foreground">
+          이 브라우저는 음성 인식을 지원하지 않습니다.
+        </p>
         <p className="text-sm text-muted-foreground">Chrome 또는 Edge 앱을 사용해 주세요.</p>
       </div>
     );
@@ -168,7 +187,10 @@ export function VoiceInput({ value, onChange, interimText, onInterimChange, onSe
       <div className="relative flex items-center justify-center">
         {isListening && (
           <>
-            <span className="absolute inset-0 rounded-full bg-red-400/25 animate-ping" style={{ animationDuration: "1.4s" }} />
+            <span
+              className="absolute inset-0 rounded-full bg-red-400/25 animate-ping"
+              style={{ animationDuration: "1.4s" }}
+            />
             <span className="absolute inset-[-20px] rounded-full bg-red-400/8 animate-pulse" />
           </>
         )}
@@ -181,9 +203,11 @@ export function VoiceInput({ value, onChange, interimText, onInterimChange, onSe
               : "bg-gradient-to-br from-primary to-accent hover:scale-110 shadow-[var(--shadow-glow)]"
           }`}
         >
-          {isListening
-            ? <Square className="w-8 h-8 sm:w-7 sm:h-7 text-white fill-white" />
-            : <Mic className="w-9 h-9 sm:w-8 sm:h-8 text-white" />}
+          {isListening ? (
+            <Square className="w-8 h-8 sm:w-7 sm:h-7 text-white fill-white" />
+          ) : (
+            <Mic className="w-9 h-9 sm:w-8 sm:h-8 text-white" />
+          )}
         </button>
       </div>
 
@@ -194,16 +218,16 @@ export function VoiceInput({ value, onChange, interimText, onInterimChange, onSe
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse inline-block" />
             실시간 인식 중… 말씀하세요
           </span>
-        ) : "버튼을 눌러 음성 입력을 시작하세요"}
+        ) : (
+          "버튼을 눌러 음성 입력을 시작하세요"
+        )}
       </p>
 
       {/* 전사 텍스트 */}
       {(value || interimText) && (
         <div className="w-full bg-background/30 rounded-xl p-3 text-sm leading-relaxed border border-border/50 max-h-40 overflow-y-auto">
           <span className="text-foreground whitespace-pre-wrap">{value}</span>
-          {interimText && (
-            <span className="text-primary/60 italic"> {interimText}</span>
-          )}
+          {interimText && <span className="text-primary/60 italic"> {interimText}</span>}
           {isListening && (
             <span className="inline-block w-0.5 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
           )}
@@ -213,7 +237,10 @@ export function VoiceInput({ value, onChange, interimText, onInterimChange, onSe
       {value && (
         <button
           type="button"
-          onClick={() => { onChange(""); onInterimChange(""); }}
+          onClick={() => {
+            onChange("");
+            onInterimChange("");
+          }}
           className="text-xs text-muted-foreground hover:text-destructive transition-colors py-1 px-3"
         >
           전사 내용 지우기

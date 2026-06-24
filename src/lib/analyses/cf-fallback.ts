@@ -5,19 +5,26 @@ import type { Verdict } from "./types";
 const CF_VALID: Verdict[] = ["사실", "부분 사실", "근거 부족", "반대 근거 우세"];
 
 const CF_VMAP: Record<string, Verdict> = {
-  "사실이다": "사실", "사실임": "사실", "참": "사실",
-  "부분사실": "부분 사실", "부분적 사실": "부분 사실", "일부사실": "부분 사실",
-  "근거부족": "근거 부족", "증거부족": "근거 부족", "불충분": "근거 부족",
-  "반대근거우세": "반대 근거 우세", "거짓": "반대 근거 우세", "허위": "반대 근거 우세",
-  "불확실": "근거 부족", "확인불가": "근거 부족",
+  사실이다: "사실",
+  사실임: "사실",
+  참: "사실",
+  부분사실: "부분 사실",
+  "부분적 사실": "부분 사실",
+  일부사실: "부분 사실",
+  근거부족: "근거 부족",
+  증거부족: "근거 부족",
+  불충분: "근거 부족",
+  반대근거우세: "반대 근거 우세",
+  거짓: "반대 근거 우세",
+  허위: "반대 근거 우세",
+  불확실: "근거 부족",
+  확인불가: "근거 부족",
 };
 
 function cfV(v: unknown): Verdict {
   if (typeof v !== "string") return "근거 부족";
   const t = v.trim();
-  return (CF_VALID as readonly string[]).includes(t)
-    ? (t as Verdict)
-    : (CF_VMAP[t] ?? "근거 부족");
+  return (CF_VALID as readonly string[]).includes(t) ? (t as Verdict) : (CF_VMAP[t] ?? "근거 부족");
 }
 
 function cfS(v: unknown, max: number): string {
@@ -32,12 +39,12 @@ function cfN(v: unknown): number {
 
 function cfA(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
-  return v.slice(0, 5).map(s => cfS(s, 120));
+  return v.slice(0, 5).map((s) => cfS(s, 120));
 }
 
 function cfSrc(v: unknown): { name: string; type: string }[] {
   if (!Array.isArray(v)) return [];
-  return v.slice(0, 5).map(s => {
+  return v.slice(0, 5).map((s) => {
     if (typeof s === "string") return { name: s.slice(0, 50), type: "일반" };
     if (s && typeof s === "object") {
       const o = s as Record<string, unknown>;
@@ -52,10 +59,10 @@ function cfSrc(v: unknown): { name: string; type: string }[] {
 
 const CF_CLAIM_TYPES = ["EMPIRICAL", "DISPUTED_TERRITORY", "OPINION", "DOMESTIC_LAW_FACT", "ANACHRONISM"] as const;
 
-function cfCT(v: unknown): typeof CF_CLAIM_TYPES[number] {
+function cfCT(v: unknown): (typeof CF_CLAIM_TYPES)[number] {
   const s = typeof v === "string" ? v.trim().toUpperCase() : "";
   return (CF_CLAIM_TYPES as readonly string[]).includes(s)
-    ? (s as typeof CF_CLAIM_TYPES[number])
+    ? (s as (typeof CF_CLAIM_TYPES)[number])
     : "EMPIRICAL";
 }
 
@@ -68,10 +75,16 @@ function cfJB(v: unknown, claimType: string): string {
 
 function cfClaim(c: unknown) {
   const DEF = {
-    claim: "본문 내 주요 주장", claim_type: "EMPIRICAL" as typeof CF_CLAIM_TYPES[number],
-    judgment_basis: "팩트체크", verdict: "근거 부족" as Verdict, confidence: 50,
-    reasoning: "", supporting_points: [] as string[], counter_points: [] as string[],
-    unknowns: [] as string[], suggested_sources: [] as { name: string; type: string }[],
+    claim: "본문 내 주요 주장",
+    claim_type: "EMPIRICAL" as (typeof CF_CLAIM_TYPES)[number],
+    judgment_basis: "팩트체크",
+    verdict: "근거 부족" as Verdict,
+    confidence: 50,
+    reasoning: "",
+    supporting_points: [] as string[],
+    counter_points: [] as string[],
+    unknowns: [] as string[],
+    suggested_sources: [] as { name: string; type: string }[],
   };
   if (typeof c === "string") return { ...DEF, claim: c.slice(0, 200) };
   if (!c || typeof c !== "object") return DEF;
@@ -84,10 +97,14 @@ function cfClaim(c: unknown) {
     verdict: claimType === "OPINION" ? "근거 부족" as Verdict : cfV(o.verdict ?? o.판정 ?? o.result ?? o.rating ?? o.stage1_result),
     confidence: cfN(o.confidence ?? o.신뢰도 ?? o.score ?? o.certainty),
     reasoning: cfS(o.reasoning ?? o.reason ?? o.이유 ?? o.explanation ?? o.analysis ?? "", 500),
-    supporting_points: cfA(o.supporting_points ?? o.supportingPoints ?? o.support ?? o.지지 ?? o.evidence),
+    supporting_points: cfA(
+      o.supporting_points ?? o.supportingPoints ?? o.support ?? o.지지 ?? o.evidence,
+    ),
     counter_points: cfA(o.counter_points ?? o.counterPoints ?? o.counter ?? o.반박 ?? o.opposition),
     unknowns: cfA(o.unknowns ?? o.unknown ?? o.uncertain),
-    suggested_sources: cfSrc(o.suggested_sources ?? o.suggestedSources ?? o.sources ?? o.출처 ?? o.references),
+    suggested_sources: cfSrc(
+      o.suggested_sources ?? o.suggestedSources ?? o.sources ?? o.출처 ?? o.references,
+    ),
   };
 }
 
@@ -95,9 +112,7 @@ export function buildAnalysisFromCF(obj: Record<string, unknown>) {
   const root = (obj.analysis ?? obj.result ?? obj.data ?? obj) as Record<string, unknown>;
   let raw = root.claims ?? root.분석결과 ?? root.주장들 ?? root.items ?? [];
   if (!Array.isArray(raw)) {
-    raw = typeof raw === "object" && raw
-      ? Object.values(raw as Record<string, unknown>)
-      : [];
+    raw = typeof raw === "object" && raw ? Object.values(raw as Record<string, unknown>) : [];
   }
   const claims = (raw as unknown[]).slice(0, 7).map(cfClaim).filter(c => c.claim.length > 0);
 
@@ -150,12 +165,26 @@ export function buildAnalysisFromCF(obj: Record<string, unknown>) {
 export function buildQuickFromCF(obj: Record<string, unknown>) {
   let rawH = obj.highlights ?? obj.claims ?? obj.주장 ?? obj.items ?? [];
   if (!Array.isArray(rawH)) rawH = [];
-  const highlights = (rawH as unknown[]).slice(0, 3).map(h => {
+  const highlights = (rawH as unknown[]).slice(0, 3).map((h) => {
     if (typeof h === "string") {
-      return { claim: h.slice(0, 150), verdict: "근거 부족" as Verdict, confidence: 50, brief: "", supporting: "", counter: "" };
+      return {
+        claim: h.slice(0, 150),
+        verdict: "근거 부족" as Verdict,
+        confidence: 50,
+        brief: "",
+        supporting: "",
+        counter: "",
+      };
     }
     if (!h || typeof h !== "object") {
-      return { claim: "주요 주장", verdict: "근거 부족" as Verdict, confidence: 50, brief: "", supporting: "", counter: "" };
+      return {
+        claim: "주요 주장",
+        verdict: "근거 부족" as Verdict,
+        confidence: 50,
+        brief: "",
+        supporting: "",
+        counter: "",
+      };
     }
     const o = h as Record<string, unknown>;
     return {
@@ -173,7 +202,7 @@ export function buildQuickFromCF(obj: Record<string, unknown>) {
     overall_verdict: cfV(obj.overall_verdict ?? obj.overall ?? obj.판정),
     overall_confidence: cfN(obj.overall_confidence ?? obj.confidence),
     highlights,
-    risk_flags: (Array.isArray(rawF) ? rawF : []).slice(0, 4).map(f => cfS(f, 50)),
+    risk_flags: (Array.isArray(rawF) ? rawF : []).slice(0, 4).map((f) => cfS(f, 50)),
   };
 }
 

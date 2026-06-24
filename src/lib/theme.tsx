@@ -11,11 +11,35 @@ export interface ThemeMeta {
 }
 
 export const THEME_LIST: ThemeMeta[] = [
-  { id: "dark",     label: "다크",   sub: "딥 네이비 다크모드",      swatchBg: "#1b2a4a", swatchFg: "#e8edf5" },
-  { id: "light",    label: "라이트", sub: "밝은 문서 스타일",        swatchBg: "#f7f4ef", swatchFg: "#1a2030" },
-  { id: "teen",     label: "10대",   sub: "Z세대 네온 바이브",       swatchBg: "#1a0e2e", swatchFg: "#ff5ecb" },
-  { id: "thirties", label: "30대",   sub: "프로페셔널 모던",         swatchBg: "#eef0f6", swatchFg: "#2a4499" },
-  { id: "senior",   label: "60대",   sub: "큰 글씨 고대비 모드",    swatchBg: "#ffffff", swatchFg: "#0d1520" },
+  {
+    id: "dark",
+    label: "다크",
+    sub: "딥 네이비 다크모드",
+    swatchBg: "#1b2a4a",
+    swatchFg: "#e8edf5",
+  },
+  {
+    id: "light",
+    label: "라이트",
+    sub: "밝은 문서 스타일",
+    swatchBg: "#f7f4ef",
+    swatchFg: "#1a2030",
+  },
+  { id: "teen", label: "10대", sub: "Z세대 네온 바이브", swatchBg: "#1a0e2e", swatchFg: "#ff5ecb" },
+  {
+    id: "thirties",
+    label: "30대",
+    sub: "프로페셔널 모던",
+    swatchBg: "#eef0f6",
+    swatchFg: "#2a4499",
+  },
+  {
+    id: "senior",
+    label: "60대",
+    sub: "큰 글씨 고대비 모드",
+    swatchBg: "#ffffff",
+    swatchFg: "#0d1520",
+  },
 ];
 
 const VALID_THEMES = new Set<string>(["dark", "light", "teen", "thirties", "senior"]);

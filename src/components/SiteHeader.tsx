@@ -1,21 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
-  ShieldCheck, History, LogOut, User as UserIcon,
-  LayoutDashboard, Menu, X, Home, MessageSquare,
-  Moon, Sun, Zap, Briefcase, ZoomIn, Palette,
+  ShieldCheck,
+  History,
+  LogOut,
+  User as UserIcon,
+  LayoutDashboard,
+  Menu,
+  X,
+  Home,
+  MessageSquare,
+  Moon,
+  Sun,
+  Zap,
+  Briefcase,
+  ZoomIn,
   Check,
+  BarChart3,
+  Palette,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useTheme, THEME_LIST, type Theme } from "@/lib/theme";
 
 /* ── 테마별 아이콘 ── */
 const THEME_ICONS: Record<Theme, React.ElementType> = {
-  dark:     Moon,
-  light:    Sun,
-  teen:     Zap,
+  dark: Moon,
+  light: Sun,
+  teen: Zap,
   thirties: Briefcase,
-  senior:   ZoomIn,
+  senior: ZoomIn,
 };
 
 /* ── 테마 선택기 드롭다운 ── */
@@ -57,9 +70,12 @@ function ThemeSelector({ mobile = false }: { mobile?: boolean }) {
               >
                 <span
                   className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
-                  style={{ backgroundColor: THEME_LIST.find(t => t.id === id)?.swatchBg }}
+                  style={{ backgroundColor: THEME_LIST.find((t) => t.id === id)?.swatchBg }}
                 >
-                  <Icon className="w-4 h-4" style={{ color: THEME_LIST.find(t => t.id === id)?.swatchFg }} />
+                  <Icon
+                    className="w-4 h-4"
+                    style={{ color: THEME_LIST.find((t) => t.id === id)?.swatchFg }}
+                  />
                 </span>
                 <span className="flex-1 text-left">
                   <span className="block font-semibold text-sm">{label}</span>
@@ -79,7 +95,7 @@ function ThemeSelector({ mobile = false }: { mobile?: boolean }) {
     <div ref={ref} className="relative">
       <button
         type="button"
-        onClick={() => setOpen(v => !v)}
+        onClick={() => setOpen((v) => !v)}
         aria-label="테마 선택"
         className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
           open
@@ -102,7 +118,10 @@ function ThemeSelector({ mobile = false }: { mobile?: boolean }) {
               <button
                 key={id}
                 type="button"
-                onClick={() => { setTheme(id); setOpen(false); }}
+                onClick={() => {
+                  setTheme(id);
+                  setOpen(false);
+                }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${
                   active
                     ? "bg-primary/12 text-foreground"
@@ -117,7 +136,9 @@ function ThemeSelector({ mobile = false }: { mobile?: boolean }) {
                 </span>
                 <span className="flex-1 min-w-0">
                   <span className="block text-xs font-semibold leading-tight">{label}</span>
-                  <span className="block text-[10px] text-muted-foreground leading-tight truncate">{sub}</span>
+                  <span className="block text-[10px] text-muted-foreground leading-tight truncate">
+                    {sub}
+                  </span>
                 </span>
                 {active && <Check className="w-3.5 h-3.5 text-primary shrink-0" />}
               </button>
@@ -157,9 +178,7 @@ export function SiteHeader() {
             </div>
             <div className="flex flex-col leading-tight">
               <span className="font-bold text-base tracking-tight">팩트체크</span>
-              <span className="hidden sm:block text-[10px] text-muted-foreground">
-                AI 사실검증
-              </span>
+              <span className="hidden sm:block text-[10px] text-muted-foreground">AI 사실검증</span>
             </div>
           </Link>
 
@@ -178,6 +197,12 @@ export function SiteHeader() {
               className="px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors flex items-center gap-1.5"
             >
               <History className="w-4 h-4" /> 히스토리
+            </Link>
+            <Link
+              to="/stats"
+              className="px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors flex items-center gap-1.5"
+            >
+              <BarChart3 className="w-4 h-4" /> 통계
             </Link>
             {user ? (
               <>
@@ -270,8 +295,15 @@ export function SiteHeader() {
               <DrawerLink to="/history" icon={<History className="w-6 h-6" />} onClick={close}>
                 분석 히스토리
               </DrawerLink>
+              <DrawerLink to="/stats" icon={<BarChart3 className="w-6 h-6" />} onClick={close}>
+                내 통계
+              </DrawerLink>
               {isAdmin && (
-                <DrawerLink to="/admin" icon={<LayoutDashboard className="w-6 h-6" />} onClick={close}>
+                <DrawerLink
+                  to="/admin"
+                  icon={<LayoutDashboard className="w-6 h-6" />}
+                  onClick={close}
+                >
                   관리자 대시보드
                 </DrawerLink>
               )}
@@ -308,7 +340,10 @@ export function SiteHeader() {
 }
 
 function DrawerLink({
-  to, icon, children, onClick,
+  to,
+  icon,
+  children,
+  onClick,
 }: {
   to: string;
   icon: React.ReactNode;
@@ -332,32 +367,42 @@ export function BottomNav() {
   const { isAdmin } = useBottomNavAdmin();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  const active = (path: string) =>
-    pathname === path ? "text-primary" : "text-muted-foreground";
+  const active = (path: string) => (pathname === path ? "text-primary" : "text-muted-foreground");
 
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 sm:hidden bg-card border-t border-border flex items-stretch">
-      <Link to="/" className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/")}`}>
-        <Home className="w-5 h-5" />
-        홈
+      <Link
+        to="/"
+        className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/")}`}
+      >
+        <Home className="w-5 h-5" />홈
       </Link>
       <Link to="/live" search={{ room: undefined, viewer: false }} className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/live")}`}>
         <MessageSquare className="w-5 h-5" />
         대화
       </Link>
-      <Link to="/history" className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/history")}`}>
+      <Link
+        to="/history"
+        className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/history")}`}
+      >
         <History className="w-5 h-5" />
         히스토리
       </Link>
       {user && isAdmin && (
-        <Link to="/admin" className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/admin")}`}>
+        <Link
+          to="/admin"
+          className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/admin")}`}
+        >
           <LayoutDashboard className="w-5 h-5" />
           관리자
         </Link>
       )}
-      <Link to={user ? "/" : "/auth"} className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/auth")}`}>
+      <Link
+        to={user ? "/" : "/auth"}
+        className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/auth")}`}
+      >
         <UserIcon className="w-5 h-5" />
-        {user ? user.email?.split("@")[0] ?? "나" : "로그인"}
+        {user ? (user.email?.split("@")[0] ?? "나") : "로그인"}
       </Link>
     </nav>
   );

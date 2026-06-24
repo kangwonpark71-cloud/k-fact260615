@@ -70,7 +70,9 @@ export async function getOptionalUserId(): Promise<string | null> {
 
 export function validatePublicUrl(rawUrl: string): void {
   let parsed: URL;
-  try { parsed = new URL(rawUrl); } catch {
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
     throw new Error("유효하지 않은 URL입니다.");
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -79,13 +81,17 @@ export function validatePublicUrl(rawUrl: string): void {
   const h = parsed.hostname.toLowerCase();
 
   // IPv6 리터럴 차단
-  const ipv6Host = h.startsWith("[") ? h.slice(1, -1) : (h.includes(":") ? h : null);
+  const ipv6Host = h.startsWith("[") ? h.slice(1, -1) : h.includes(":") ? h : null;
   if (ipv6Host !== null) {
     if (
-      ipv6Host === "::" || ipv6Host === "::1" ||
-      /^fc/i.test(ipv6Host) || /^fd/i.test(ipv6Host) ||
-      /^fe[89ab]/i.test(ipv6Host) || /^::ffff:/i.test(ipv6Host)
-    ) throw new Error("내부 주소는 분석할 수 없습니다.");
+      ipv6Host === "::" ||
+      ipv6Host === "::1" ||
+      /^fc/i.test(ipv6Host) ||
+      /^fd/i.test(ipv6Host) ||
+      /^fe[89ab]/i.test(ipv6Host) ||
+      /^::ffff:/i.test(ipv6Host)
+    )
+      throw new Error("내부 주소는 분석할 수 없습니다.");
     return;
   }
 
@@ -103,14 +109,17 @@ export function validatePublicUrl(rawUrl: string): void {
   if (oct) {
     const [a, b] = [Number(oct[1]), Number(oct[2])];
     if (
-      a === 0 || a === 127 || a === 10 ||
+      a === 0 ||
+      a === 127 ||
+      a === 10 ||
       (a === 172 && b >= 16 && b <= 31) ||
       (a === 192 && b === 168) ||
       (a === 169 && b === 254) ||
       (a === 100 && b >= 64 && b <= 127) ||
       (a === 198 && (b === 18 || b === 19)) ||
       a >= 224
-    ) throw new Error("내부 IP 주소는 분석할 수 없습니다.");
+    )
+      throw new Error("내부 IP 주소는 분석할 수 없습니다.");
   }
 }
 
@@ -152,7 +161,11 @@ export async function kvGetRaw(key: string): Promise<Record<string, unknown> | n
   }
 }
 
-export async function kvPutRaw(key: string, data: Record<string, unknown>, ttlSec = 3600): Promise<void> {
+export async function kvPutRaw(
+  key: string,
+  data: Record<string, unknown>,
+  ttlSec = 3600,
+): Promise<void> {
   const kv = getAnalysisKV();
   if (!kv) return;
   try {
@@ -222,6 +235,41 @@ export async function checkUrlCache(
   }
 }
 
+/* ── 유사 텍스트 중복 분석 방지 ── */
+
+export async function getRecentAnalyses(
+  sessionId: string,
+  userId: string | null,
+  limit = 20,
+): Promise<Array<{ id: string; inputText: string }>> {
+  if (!getEnv("SUPABASE_SERVICE_ROLE_KEY")) return [];
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    let query = supabaseAdmin
+      .from("analyses")
+      .select("id, input_text")
+      .eq("status", "completed")
+      .gte("created_at", since)
+      .not("input_text", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (userId) {
+      query = query.eq("user_id", userId);
+    } else {
+      query = query.eq("session_id", sessionId).is("user_id", null);
+    }
+    const { data, error } = await query;
+    if (error || !data) return [];
+    return data.map((row) => ({
+      id: row.id,
+      inputText: (row.input_text as string) ?? "",
+    }));
+  } catch {
+    return [];
+  }
+}
+
 /* ── URL 본문 fetch ── */
 
 export async function fetchUrlBody(sourceUrl: string, fallback: string): Promise<string> {
@@ -259,5 +307,7 @@ export function getCfAIBindingOrNull(): unknown {
 
 export async function hashText(text: string): Promise<string> {
   const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }

@@ -14,6 +14,7 @@ import {
   searchEvidenceForClaimsTyped,
   formatEvidenceBlock,
   extractEvidenceUrls,
+  buildReviewedSources,
   StyleClassificationSchema,
   STYLE_CLASSIFIER_SYSTEM,
   type StyleClassification,
@@ -38,6 +39,14 @@ import {
   type Verdict,
   VerdictEnum,
 } from "./analyses/types";
+import {
+  canMutateAnalysis,
+  buildVerdictTimelineEntry,
+  extractPhaseClaims,
+  extractStyleClassification,
+  mergeVerdictTimeline,
+  resolvePhase1Model,
+} from "./analyses/reverify-helpers";
 import { parseCFResponse, CF_JSON_HINT } from "./analyses/cf-fallback";
 import { KOREAN_PRESIDENT_RULES, KOREAN_HISTORY_EVENT_RULES, KOREAN_HISTORY_PROMPT_FACTS } from "./analyses/korean-history-rules";
 import { matchRecentFakeCases, formatRecentFakeCasesForPrompt } from "./analyses/recent-fake-news-rules";
@@ -51,10 +60,12 @@ import {
   kvPutRaw,
   checkRateLimit,
   checkUrlCache,
+  getRecentAnalyses,
   fetchUrlBody,
   getCfAIBindingOrNull,
   hashText,
 } from "./analyses/access-control";
+import { findSimilarAnalysis, SIMILARITY_THRESHOLD } from "./analyses/similarity";
 
 /* ── 알려진 오정보 패턴 — LLM 판정 교정 룰 ── */
 
@@ -70,66 +81,119 @@ type KnownVerdictRule = {
 const KNOWN_VERDICT_RULES: KnownVerdictRule[] = [
   // ── 영토·주권 ──
   {
-    patterns: [/독도.{0,15}(일본|일본측|일본의).{0,10}(땅|영토|고유|소유|귀속)/i, /독도.{0,10}영유권.{0,15}일본/i, /일본.{0,10}독도.{0,10}(땅|영토)/i],
-    verdict: "반대 근거 우세", confidence: 97,
-    reasoning: "독도는 대한민국 헌법 제3조(한반도와 부속 도서)에 따른 대한민국 영토이며, 경찰청·해양경찰이 실효 지배 중입니다. 대한민국 정부 공식 입장이자 국제법상 지위입니다.",
-    supporting: ["대한민국 경찰청 독도경비대 상주 실효 지배", "한국 정부 공식 영토 명시 (독도법 제정 2005)", "조선왕조실록·세종실록지리지 등 역사 문헌 기록"],
-    counter: ["일본 시마네현 1905년 편입 주장 (국제법 무효 논란)", "샌프란시스코 강화조약 독도 명시 여부 해석 차이"],
+    patterns: [
+      /독도.{0,15}(일본|일본측|일본의).{0,10}(땅|영토|고유|소유|귀속)/i,
+      /독도.{0,10}영유권.{0,15}일본/i,
+      /일본.{0,10}독도.{0,10}(땅|영토)/i,
+    ],
+    verdict: "반대 근거 우세",
+    confidence: 97,
+    reasoning:
+      "독도는 대한민국 헌법 제3조(한반도와 부속 도서)에 따른 대한민국 영토이며, 경찰청·해양경찰이 실효 지배 중입니다. 대한민국 정부 공식 입장이자 국제법상 지위입니다.",
+    supporting: [
+      "대한민국 경찰청 독도경비대 상주 실효 지배",
+      "한국 정부 공식 영토 명시 (독도법 제정 2005)",
+      "조선왕조실록·세종실록지리지 등 역사 문헌 기록",
+    ],
+    counter: [
+      "일본 시마네현 1905년 편입 주장 (국제법 무효 논란)",
+      "샌프란시스코 강화조약 독도 명시 여부 해석 차이",
+    ],
   },
   {
-    patterns: [/대마도.{0,15}(한국|한국의|우리).{0,10}(땅|영토|소유)/i, /쓰시마.{0,15}(한국|우리).{0,10}(땅|영토)/i],
-    verdict: "반대 근거 우세", confidence: 93,
-    reasoning: "대마도(쓰시마)는 일본 나가사키현 쓰시마시로, 현재 일본이 실효 지배하는 일본 영토입니다. 대한민국 정부는 대마도 영유권을 공식 주장하지 않습니다.",
+    patterns: [
+      /대마도.{0,15}(한국|한국의|우리).{0,10}(땅|영토|소유)/i,
+      /쓰시마.{0,15}(한국|우리).{0,10}(땅|영토)/i,
+    ],
+    verdict: "반대 근거 우세",
+    confidence: 93,
+    reasoning:
+      "대마도(쓰시마)는 일본 나가사키현 쓰시마시로, 현재 일본이 실효 지배하는 일본 영토입니다. 대한민국 정부는 대마도 영유권을 공식 주장하지 않습니다.",
     supporting: ["일본 나가사키현 쓰시마시 행정구역 편입", "일본 실효 지배·자치단체 운영"],
     counter: ["일부 한국 역사 연구자의 역사적 연관성 주장 (공식 입장 아님)"],
   },
   {
-    patterns: [/동해.{0,10}(일본해|Japan Sea).{0,5}(맞|옳|맞다|옳다|정확|올바)/i, /일본해.{0,5}(맞|옳|정확|공식)/i],
-    verdict: "반대 근거 우세", confidence: 90,
-    reasoning: "대한민국 정부 공식 명칭은 '동해(East Sea)'이며, 국제수로기구(IHO) S-23 개정안에서 고유 식별자 병기가 논의되고 있습니다.",
+    patterns: [
+      /동해.{0,10}(일본해|Japan Sea).{0,5}(맞|옳|맞다|옳다|정확|올바)/i,
+      /일본해.{0,5}(맞|옳|정확|공식)/i,
+    ],
+    verdict: "반대 근거 우세",
+    confidence: 90,
+    reasoning:
+      "대한민국 정부 공식 명칭은 '동해(East Sea)'이며, 국제수로기구(IHO) S-23 개정안에서 고유 식별자 병기가 논의되고 있습니다.",
     supporting: ["대한민국 정부 공식 명칭 동해", "IHO S-23 개정 논의 중 고유번호 병기 방식"],
     counter: ["일본 정부 공식 명칭 일본해(Japan Sea)", "일부 국제 지도 일본해 단독 표기"],
   },
   {
     patterns: [/일제.{0,5}식민지배.{0,15}(합법|정당|적법|올바)/i, /일본.{0,5}식민통치.{0,10}합법/i],
-    verdict: "반대 근거 우세", confidence: 98,
-    reasoning: "1910년 한일병합조약의 합법성은 대한민국 정부 입장상 원천 무효이며, 2010년 한·일 양국 정부 공동 발표에서 '불법·무효' 확인. 국제법 학계 주류 의견도 조약 강제성 지적.",
+    verdict: "반대 근거 우세",
+    confidence: 98,
+    reasoning:
+      "1910년 한일병합조약의 합법성은 대한민국 정부 입장상 원천 무효이며, 2010년 한·일 양국 정부 공동 발표에서 '불법·무효' 확인. 국제법 학계 주류 의견도 조약 강제성 지적.",
     supporting: ["대한민국 정부 공식 입장: 한일병합조약 원천 무효", "유엔 식민지배 규탄 결의"],
     counter: ["일본 정부 '당시 국제법상 유효' 주장 (소수 견해)"],
   },
   {
-    patterns: [/위안부.{0,15}(없었|부정|조작|거짓|사실이 아니)/i, /일본군.{0,5}위안부.{0,10}(없었|부정|날조)/i],
-    verdict: "반대 근거 우세", confidence: 98,
-    reasoning: "일본군 위안부 동원은 대한민국 정부·유엔 인권위원회·국제앰네스티가 공식 인정한 역사적 사실입니다. 1993년 고노 담화에서 일본 정부도 일부 인정.",
-    supporting: ["유엔 인권위 쿠마라스와미 보고서(1996) 공식 인정", "1993년 일본 고노 관방장관 담화 인정", "생존 피해자 증언 및 사료 다수"],
+    patterns: [
+      /위안부.{0,15}(없었|부정|조작|거짓|사실이 아니)/i,
+      /일본군.{0,5}위안부.{0,10}(없었|부정|날조)/i,
+    ],
+    verdict: "반대 근거 우세",
+    confidence: 98,
+    reasoning:
+      "일본군 위안부 동원은 대한민국 정부·유엔 인권위원회·국제앰네스티가 공식 인정한 역사적 사실입니다. 1993년 고노 담화에서 일본 정부도 일부 인정.",
+    supporting: [
+      "유엔 인권위 쿠마라스와미 보고서(1996) 공식 인정",
+      "1993년 일본 고노 관방장관 담화 인정",
+      "생존 피해자 증언 및 사료 다수",
+    ],
     counter: ["일부 일본 우익 단체의 역사 수정주의 주장 (소수·비주류)"],
   },
   {
     patterns: [/고구려.{0,15}(중국|중국의).{0,10}(역사|고대사)/i, /고구려.{0,5}중국사/i],
-    verdict: "반대 근거 우세", confidence: 95,
-    reasoning: "고구려는 대한민국·북한 및 국제 학계(한국사 전공)가 한국 고대국가로 인정합니다. 중국의 '동북공정' 주장은 한국·국제 역사 학계에서 정치적 목적의 역사 왜곡으로 비판받습니다.",
+    verdict: "반대 근거 우세",
+    confidence: 95,
+    reasoning:
+      "고구려는 대한민국·북한 및 국제 학계(한국사 전공)가 한국 고대국가로 인정합니다. 중국의 '동북공정' 주장은 한국·국제 역사 학계에서 정치적 목적의 역사 왜곡으로 비판받습니다.",
     supporting: ["대한민국·북한 공식 역사 인정", "국제 역사학계 한국 고대국가 분류"],
     counter: ["중국 '동북공정'(2002~)에서 다민족 통일국가 역사 주장"],
   },
   // ── 과학적 합의 ──
   {
     patterns: [/백신.{0,15}(자폐|자폐증).{0,10}(유발|원인|관련)/i],
-    verdict: "반대 근거 우세", confidence: 97,
-    reasoning: "1998년 Wakefield 논문(백신-자폐 연관 주장)은 데이터 조작으로 2010년 완전 철회됐습니다. WHO·CDC·수천 편의 독립 연구가 연관 없음을 확인.",
-    supporting: ["WHO 공식 입장: 백신과 자폐 무관", "2019년 100만 명 덴마크 코호트 연구 무관 확인", "Lancet 논문 2010년 완전 철회"],
+    verdict: "반대 근거 우세",
+    confidence: 97,
+    reasoning:
+      "1998년 Wakefield 논문(백신-자폐 연관 주장)은 데이터 조작으로 2010년 완전 철회됐습니다. WHO·CDC·수천 편의 독립 연구가 연관 없음을 확인.",
+    supporting: [
+      "WHO 공식 입장: 백신과 자폐 무관",
+      "2019년 100만 명 덴마크 코호트 연구 무관 확인",
+      "Lancet 논문 2010년 완전 철회",
+    ],
     counter: [],
   },
   {
     patterns: [/지구.{0,5}(평평|평면|납작)/i],
-    verdict: "반대 근거 우세", confidence: 99,
-    reasoning: "지구 구형은 고대 그리스 시대부터 수학적으로 증명됐으며, 위성 사진·GPS·중력 측정·항공 경로 등 수천 가지 독립적 방법으로 반복 확인된 과학적 사실입니다.",
-    supporting: ["NASA 위성 사진", "GPS 시스템 구면 삼각법 기반 작동", "에라토스테네스 기원전 240년 측정"],
+    verdict: "반대 근거 우세",
+    confidence: 99,
+    reasoning:
+      "지구 구형은 고대 그리스 시대부터 수학적으로 증명됐으며, 위성 사진·GPS·중력 측정·항공 경로 등 수천 가지 독립적 방법으로 반복 확인된 과학적 사실입니다.",
+    supporting: [
+      "NASA 위성 사진",
+      "GPS 시스템 구면 삼각법 기반 작동",
+      "에라토스테네스 기원전 240년 측정",
+    ],
     counter: [],
   },
   {
-    patterns: [/(코로나|코로나19|covid).{0,10}5g.{0,10}(발생|원인|확산)/i, /5g.{0,10}(코로나|covid).{0,10}(유발|원인)/i],
-    verdict: "반대 근거 우세", confidence: 99,
-    reasoning: "바이러스는 전파파(전자기파)가 아닌 비말·공기 전파입니다. WHO·국제통신연합(ITU)·과학계 전체가 5G-코로나 연관성을 완전히 부정.",
+    patterns: [
+      /(코로나|코로나19|covid).{0,10}5g.{0,10}(발생|원인|확산)/i,
+      /5g.{0,10}(코로나|covid).{0,10}(유발|원인)/i,
+    ],
+    verdict: "반대 근거 우세",
+    confidence: 99,
+    reasoning:
+      "바이러스는 전파파(전자기파)가 아닌 비말·공기 전파입니다. WHO·국제통신연합(ITU)·과학계 전체가 5G-코로나 연관성을 완전히 부정.",
     supporting: ["WHO 공식 팩트체크: 5G-코로나 무관", "바이러스 기본 생물학적 전파 원리"],
     counter: [],
   },
@@ -143,16 +207,16 @@ const KNOWN_VERDICT_RULES: KnownVerdictRule[] = [
       /윤석[열렬].{0,40}(민주주의.{0,10}(회복|수호|지키|위해|위한)|민주주의.{0,5}최선)/i,
       /윤석[열렬].{0,30}(비상계엄.{0,15}(정당|합법|적법|옳|올바|맞다)|계엄령.{0,10}(정당|합법))/i,
     ],
-    verdict: "반대 근거 우세", confidence: 92,
-    reasoning: "윤석열은 2024년 12월 3일 비상계엄을 선포했다가 국회 해제 의결(6시간 만에 철회)로 종료됐고, 2024년 12월 14일 국회 탄핵소추안이 가결, 2025년 4월 4일 헌법재판소 탄핵 인용으로 파면되었습니다. '민주주의 회복' 주장은 이 사실과 배치됩니다.",
+    verdict: "반대 근거 우세",
+    confidence: 92,
+    reasoning:
+      "윤석열은 2024년 12월 3일 비상계엄을 선포했다가 국회 해제 의결(6시간 만에 철회)로 종료됐고, 2024년 12월 14일 국회 탄핵소추안이 가결, 2025년 4월 4일 헌법재판소 탄핵 인용으로 파면되었습니다. '민주주의 회복' 주장은 이 사실과 배치됩니다.",
     supporting: [
       "2025.4.4. 헌법재판소 탄핵 심판 인용 — 대통령직 파면",
       "2024.12.14. 국회 탄핵소추안 가결 (재석 300 중 204표 찬성)",
       "2024.12.3. 비상계엄 선포 — 헌정 질서 위배 행위로 탄핵 사유",
     ],
-    counter: [
-      "윤석열 측 주장: 비상계엄은 헌법 제77조상 대통령의 권한 행사 (소수 의견)",
-    ],
+    counter: ["윤석열 측 주장: 비상계엄은 헌법 제77조상 대통령의 권한 행사 (소수 의견)"],
   },
   {
     // 비상계엄 + 민주주의/국가위기 정당화 주장
@@ -160,8 +224,10 @@ const KNOWN_VERDICT_RULES: KnownVerdictRule[] = [
       /비상계엄.{0,20}(민주주의|국가위기|종북|국가안보).{0,15}(위해|필요|정당)/i,
       /12월\s*3일.{0,20}(비상)?계엄.{0,15}(정당|합법|불가피|어쩔\s*수\s*없)/i,
     ],
-    verdict: "반대 근거 우세", confidence: 90,
-    reasoning: "2024년 12월 3일 비상계엄은 국회에서 재적 의원 과반수 해제 의결(190표)로 6시간 만에 종료됐으며, 헌법재판소는 이를 위헌·위법으로 판단해 탄핵 인용(파면)의 근거로 삼았습니다.",
+    verdict: "반대 근거 우세",
+    confidence: 90,
+    reasoning:
+      "2024년 12월 3일 비상계엄은 국회에서 재적 의원 과반수 해제 의결(190표)로 6시간 만에 종료됐으며, 헌법재판소는 이를 위헌·위법으로 판단해 탄핵 인용(파면)의 근거로 삼았습니다.",
     supporting: [
       "국회 계엄 해제 의결 (2024.12.3. 오전 1시): 재적 의원 190표 이상 찬성",
       "헌법재판소: 비상계엄 선포·계엄군 국회 봉쇄 위헌 판단",
@@ -171,11 +237,22 @@ const KNOWN_VERDICT_RULES: KnownVerdictRule[] = [
   },
   // ── 한국 역사·신화 (교정: 근거부족 → 부분사실) ──
   {
-    patterns: [/단군.{0,15}(완전히|전적으로|모두|다).{0,10}(거짓|허구|조작|없다)/i, /단군.{0,15}(거짓|허구|조작).{0,10}(이다|입니다)/i],
-    verdict: "부분 사실", confidence: 55,
-    reasoning: "단군신화는 삼국유사(1281년)·제왕운기 등에 기록된 실제 존재하는 한국 건국 신화로, 문화유산·역사 기록으로서는 사실입니다. 단군의 역사적 실존 여부는 학계에서 논쟁 중이지만, '완전히 거짓'이라는 표현은 신화 자체의 존재를 부정하는 과도한 단순화입니다.",
-    supporting: ["삼국유사(1281)·제왕운기(1287)에 단군신화 기록 실존", "유네스코 세계유산 강화 참성단 등 단군 관련 유적 실존"],
-    counter: ["단군의 역사적 인물 실존 여부: 학계 미결 논쟁", "기원전 2333년 고조선 건국 연도 역사적 검증 어려움"],
+    patterns: [
+      /단군.{0,15}(완전히|전적으로|모두|다).{0,10}(거짓|허구|조작|없다)/i,
+      /단군.{0,15}(거짓|허구|조작).{0,10}(이다|입니다)/i,
+    ],
+    verdict: "부분 사실",
+    confidence: 55,
+    reasoning:
+      "단군신화는 삼국유사(1281년)·제왕운기 등에 기록된 실제 존재하는 한국 건국 신화로, 문화유산·역사 기록으로서는 사실입니다. 단군의 역사적 실존 여부는 학계에서 논쟁 중이지만, '완전히 거짓'이라는 표현은 신화 자체의 존재를 부정하는 과도한 단순화입니다.",
+    supporting: [
+      "삼국유사(1281)·제왕운기(1287)에 단군신화 기록 실존",
+      "유네스코 세계유산 강화 참성단 등 단군 관련 유적 실존",
+    ],
+    counter: [
+      "단군의 역사적 인물 실존 여부: 학계 미결 논쟁",
+      "기원전 2333년 고조선 건국 연도 역사적 검증 어려움",
+    ],
   },
   // ── 전 대통령 / 근현대 역사 사건 ──
   ...KOREAN_PRESIDENT_RULES,
@@ -187,7 +264,11 @@ const SOVEREIGNTY_KEYS = ["독도", "대마도", "동해", "일제", "위안부"
 // ── 역사적 시대착오(Anachronism) 감지 ──
 // 역사 인물의 활동 시대 [시작, 종료] (연도)
 const HIST_FIGURES = [
-  { pattern: /세종대왕|세종\s*(임금|왕|대왕)?/, name: "세종대왕", period: [1418, 1450] as [number, number] },
+  {
+    pattern: /세종대왕|세종\s*(임금|왕|대왕)?/,
+    name: "세종대왕",
+    period: [1418, 1450] as [number, number],
+  },
   { pattern: /이순신/, name: "이순신 장군", period: [1545, 1598] as [number, number] },
   { pattern: /광개토대왕|광개토/, name: "광개토대왕", period: [391, 413] as [number, number] },
   { pattern: /을지문덕/, name: "을지문덕", period: [580, 630] as [number, number] },
@@ -200,8 +281,16 @@ const HIST_FIGURES = [
   { pattern: /안중근/, name: "안중근", period: [1879, 1910] as [number, number] },
   { pattern: /김구/, name: "김구", period: [1876, 1949] as [number, number] },
   { pattern: /단군/, name: "단군", period: [-2333, -2000] as [number, number] },
-  { pattern: /훈민정음|한글 창제/, name: "훈민정음 창제", period: [1443, 1446] as [number, number] },
-  { pattern: /임진왜란|병자호란|삼국지|삼국시대|고려시대|조선시대/, name: "역사적 시대", period: [0, 1910] as [number, number] },
+  {
+    pattern: /훈민정음|한글 창제/,
+    name: "훈민정음 창제",
+    period: [1443, 1446] as [number, number],
+  },
+  {
+    pattern: /임진왜란|병자호란|삼국지|삼국시대|고려시대|조선시대/,
+    name: "역사적 시대",
+    period: [0, 1910] as [number, number],
+  },
 ] as const;
 
 // 현대 기술/개념 (등장 연도 기준)
@@ -226,7 +315,8 @@ const MODERN_TECH_LIST = [
 ] as const;
 
 // 직접 상호작용 동사 패턴 (단순 언급 vs 상호작용 구분)
-const INTERACTION_VERB = /욕(을|을 했|했|하다)|연락|통화|카톡|문자(를)?|대화|만(났|나다|나서|나)|얘기|이야기|전화(했|를|를 했)|메시지|보냈|받았|썼|적었/;
+const INTERACTION_VERB =
+  /욕(을|을 했|했|하다)|연락|통화|카톡|문자(를)?|대화|만(났|나다|나서|나)|얘기|이야기|전화(했|를|를 했)|메시지|보냈|받았|썼|적었/;
 
 type AnachronismResult = {
   figures: string;
@@ -234,6 +324,28 @@ type AnachronismResult = {
   reasoning: string;
   supporting: string[];
 };
+
+type WorkersAIRequest = {
+  readonly messages: readonly { readonly role: "system" | "user"; readonly content: string }[];
+  readonly response_format: { readonly type: "json_object" };
+  readonly max_tokens: number;
+};
+
+type WorkersAIBinding = {
+  run(model: string, request: WorkersAIRequest): Promise<unknown>;
+};
+
+function isWorkersAIBinding(value: unknown): value is WorkersAIBinding {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { readonly run?: unknown };
+  return typeof candidate.run === "function";
+}
+
+function getStringResponse(value: unknown): string | null {
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as { readonly response?: unknown };
+  return typeof candidate.response === "string" ? candidate.response : null;
+}
 
 function detectAnachronism(text: string): AnachronismResult | null {
   const t = text.slice(0, 3000);
@@ -260,7 +372,7 @@ function detectAnachronism(text: string): AnachronismResult | null {
   // ── Case 2: 서로 다른 시대 인물 간 상호작용 (50년 이상 차이) ──
   if (!INTERACTION_VERB.test(t)) return null;
 
-  const matched = HIST_FIGURES.filter(f => f.pattern.test(t));
+  const matched = HIST_FIGURES.filter((f) => f.pattern.test(t));
   for (let i = 0; i < matched.length; i++) {
     for (let j = i + 1; j < matched.length; j++) {
       const a = matched[i];
@@ -302,13 +414,13 @@ function applyAnachronismRules(claims: Phase1Claim[], bodyText = ""): Phase1Clai
 
   const claimText = `${anachronism.figures} ${anachronism.tech} 주장`;
   const corrected: Phase1Claim = {
-    claim:             claimText,
-    verdict:           "반대 근거 우세",
-    confidence:        99,
-    reasoning:         anachronism.reasoning,
+    claim: claimText,
+    verdict: "반대 근거 우세",
+    confidence: 99,
+    reasoning: anachronism.reasoning,
     supporting_points: anachronism.supporting,
-    counter_points:    [],
-    unknowns:          [],
+    counter_points: [],
+    unknowns: [],
     suggested_sources: [],
     claim_type:        "ANACHRONISM" as ClaimType,
     judgment_basis:    "역사적 사실",
@@ -317,17 +429,21 @@ function applyAnachronismRules(claims: Phase1Claim[], bodyText = ""): Phase1Clai
   if (isFallback) return [corrected];
 
   // 기존 클레임 중 관련 클레임 교정
-  const updated = claims.map(c => {
+  const updated = claims.map((c) => {
     const ct = `${c.claim} ${(c.reasoning as string) ?? ""}`.toLowerCase();
-    const hasAnachronismFigure = HIST_FIGURES.some(f => f.pattern.test(ct));
-    const hasAnachronismTech   = MODERN_TECH_LIST.some(tt => tt.pattern.test(ct));
+    const hasAnachronismFigure = HIST_FIGURES.some((f) => f.pattern.test(ct));
+    const hasAnachronismTech = MODERN_TECH_LIST.some((tt) => tt.pattern.test(ct));
     if (hasAnachronismFigure || hasAnachronismTech) {
-      return { ...c, verdict: "반대 근거 우세" as const, confidence: 99,
+      return {
+        ...c,
+        verdict: "반대 근거 우세" as const,
+        confidence: 99,
         reasoning: anachronism.reasoning,
         supporting_points: anachronism.supporting,
         counter_points: [],
         claim_type: "ANACHRONISM" as unknown as "EMPIRICAL",
-        judgment_basis: "역사적 사실" };
+        judgment_basis: "역사적 사실",
+      };
     }
     return c;
   });
@@ -357,18 +473,18 @@ function applyKnownVerdictRules(claims: Phase1Claim[], bodyText = ""): Phase1Cla
       usedRules.add(ri);
       const raw = match[0].replace(/\s+/g, " ").trim();
       const claimText = raw.length > 60 ? raw.slice(0, 58) + "…" : raw;
-      const isSov = SOVEREIGNTY_KEYS.some(k => (claimText + body.slice(0, 100)).includes(k));
+      const isSov = SOVEREIGNTY_KEYS.some((k) => (claimText + body.slice(0, 100)).includes(k));
       generated.push({
-        claim:             claimText,
-        verdict:           rule.verdict,
-        confidence:        rule.confidence,
-        reasoning:         rule.reasoning,
+        claim: claimText,
+        verdict: rule.verdict,
+        confidence: rule.confidence,
+        reasoning: rule.reasoning,
         supporting_points: rule.supporting,
-        counter_points:    rule.counter,
-        unknowns:          [],
+        counter_points: rule.counter,
+        unknowns: [],
         suggested_sources: [],
-        claim_type:        "EMPIRICAL" as const,
-        judgment_basis:    isSov ? "국가 공인 입장" : "팩트체크",
+        claim_type: "EMPIRICAL" as const,
+        judgment_basis: isSov ? "국가 공인 입장" : "팩트체크",
       } as Phase1Claim);
     }
 
@@ -376,22 +492,24 @@ function applyKnownVerdictRules(claims: Phase1Claim[], bodyText = ""): Phase1Cla
   }
 
   // ── 기존 클레임 교정: claim/reasoning/원문 모두 패턴 검색 ──
-  return claims.map(claim => {
+  return claims.map((claim) => {
     const claimText = `${claim.claim} ${claim.reasoning ?? ""} ${body}`.toLowerCase();
     for (const rule of KNOWN_VERDICT_RULES) {
-      const matched = rule.patterns.some(p => p.test(claimText));
+      const matched = rule.patterns.some((p) => p.test(claimText));
       if (!matched) continue;
-      if (claim.verdict === rule.verdict && (claim.confidence as number) >= rule.confidence - 15) continue;
-      const isSov = SOVEREIGNTY_KEYS.some(k => claimText.includes(k));
+      if (claim.verdict === rule.verdict && (claim.confidence as number) >= rule.confidence - 15)
+        continue;
+      const isSov = SOVEREIGNTY_KEYS.some((k) => claimText.includes(k));
       return {
         ...claim,
-        verdict:           rule.verdict,
-        confidence:        rule.confidence,
-        reasoning:         rule.reasoning,
+        verdict: rule.verdict,
+        confidence: rule.confidence,
+        reasoning: rule.reasoning,
         supporting_points: rule.supporting.length > 0 ? rule.supporting : claim.supporting_points,
-        counter_points:    rule.counter.length > 0    ? rule.counter    : claim.counter_points,
-        claim_type:        claim.claim_type === "OPINION" ? "EMPIRICAL" : (claim.claim_type ?? "EMPIRICAL"),
-        judgment_basis:    isSov ? "국가 공인 입장" : (claim.judgment_basis ?? "팩트체크"),
+        counter_points: rule.counter.length > 0 ? rule.counter : claim.counter_points,
+        claim_type:
+          claim.claim_type === "OPINION" ? "EMPIRICAL" : (claim.claim_type ?? "EMPIRICAL"),
+        judgment_basis: isSov ? "국가 공인 입장" : (claim.judgment_basis ?? "팩트체크"),
       };
     }
     return claim;
@@ -414,9 +532,10 @@ function computeOverallFromClaims(claims: Phase1Claim[]): { verdict: string; con
   const scores = new Map<string, Score>();
   for (const c of claims) {
     const v = String((c as Record<string, unknown>).verdict ?? "근거 부족");
-    const conf = typeof (c as Record<string, unknown>).confidence === "number"
-      ? (c as unknown as { confidence: number }).confidence
-      : 50;
+    const conf =
+      typeof (c as Record<string, unknown>).confidence === "number"
+        ? (c as unknown as { confidence: number }).confidence
+        : 50;
     const cur = scores.get(v) ?? { count: 0, totalConf: 0 };
     scores.set(v, { count: cur.count + 1, totalConf: cur.totalConf + conf });
   }
@@ -424,21 +543,27 @@ function computeOverallFromClaims(claims: Phase1Claim[]): { verdict: string; con
   // 반대 근거 우세 우선
   const falseScore = scores.get("반대 근거 우세");
   if (falseScore) {
-    return { verdict: "반대 근거 우세", confidence: Math.round(falseScore.totalConf / falseScore.count) };
+    return {
+      verdict: "반대 근거 우세",
+      confidence: Math.round(falseScore.totalConf / falseScore.count),
+    };
   }
 
-  const priority: Record<string, number> = { "사실": 4, "부분 사실": 3, "근거 부족": 2, "미확인": 1 };
+  const priority: Record<string, number> = { 사실: 4, "부분 사실": 3, "근거 부족": 2, 미확인: 1 };
   let bestVerdict = "근거 부족";
   let bestCount = 0;
   let totalConf = 0;
   let totalCount = 0;
 
   for (const [v, sc] of scores.entries()) {
-    totalConf  += sc.totalConf;
+    totalConf += sc.totalConf;
     totalCount += sc.count;
-    if (sc.count > bestCount || (sc.count === bestCount && (priority[v] ?? 0) > (priority[bestVerdict] ?? 0))) {
+    if (
+      sc.count > bestCount ||
+      (sc.count === bestCount && (priority[v] ?? 0) > (priority[bestVerdict] ?? 0))
+    ) {
       bestVerdict = v;
-      bestCount   = sc.count;
+      bestCount = sc.count;
     }
   }
 
@@ -721,7 +846,7 @@ async function generateWithFallback<T extends z.ZodType>(params: {
     for (const { model: cfModel, timeout: cfTimeout } of cfModels) {
       try {
         const cfResult: unknown = await Promise.race([
-          (cfAIBinding as any).run(cfModel, {
+          cfAIBinding.run(cfModel, {
             messages: [
               { role: "system", content: cfSystem },
               { role: "user", content: params.prompt },
@@ -734,6 +859,7 @@ async function generateWithFallback<T extends z.ZodType>(params: {
           ),
         ]);
 
+        const response = getStringResponse(cfResult);
         const raw: string =
           typeof cfResult === "string"
             ? cfResult
@@ -790,6 +916,8 @@ async function processAnalysisPhase1(
   analysisId: string,
   inputText: string,
   sourceUrl: string | undefined,
+  sourceName: string | null,
+  sourceType: string | null,
   meta: { sessionId: string; userId: string | null },
 ): Promise<AnalysisPayload> {
   const bodyText = await fetchUrlBody(sourceUrl ?? "", inputText);
@@ -800,6 +928,10 @@ async function processAnalysisPhase1(
 
   const p1ModelRef: ModelRef = { model: "unknown" };
   const styleModelRef: ModelRef = { model: "unknown" };
+
+  const factcheckSourceBlock = sourceName
+    ? `\n• 이 기사는 팩트체크 매체 "${sourceName}"에서 발행한 기사입니다. 팩트체크 기관이 이미 검증한 내용임을 고려하여 분석하세요.`
+    : "";
 
   const phase1Prompt = `${styleBlock}
 
@@ -815,8 +947,12 @@ async function processAnalysisPhase1(
 • "반대 근거 우세"는 명백한 반증이 있을 때만 사용
 • bias_type: 텍스트 편향 유형 (정치적/경제적/사회적/과학적/역사적/중립)
 • Stage 2 SPO: subject·predicate·object 모두 채우기
-• Stage 1 가짜 가능성 지수 ${quickStyle.fakeProbability}% 반영${sourceUrl ? `
-• 원본 URL: ${sourceUrl}` : ""}
+• Stage 1 가짜 가능성 지수 ${quickStyle.fakeProbability}% 반영${
+    sourceUrl
+      ? `
+• 원본 URL: ${sourceUrl}`
+      : ""
+  }${factcheckSourceBlock}
 
 ${isolateUserContent(bodyText.slice(0, 7000))}`;
 
@@ -836,14 +972,18 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
 
   // LLM 분류 결과 우선, 실패 시 정규식 결과 사용
   const fakeProbability = styleClassification?.fake_probability ?? quickStyle.fakeProbability;
-  const styleSignals    = (styleClassification?.signals ?? []).length > 0 ? styleClassification!.signals : quickStyle.signals;
+  const styleSignals =
+    (styleClassification?.signals ?? []).length > 0
+      ? styleClassification!.signals
+      : quickStyle.signals;
 
   // ── 코드 레벨 Post-judgment 교정: LLM이 명백한 오정보를 "근거 부족"으로 처리한 경우 강제 수정 ──
   // ── 코드 레벨 Post-judgment 교정 (순서: 시대착오 → 알려진 판정 규칙) ──
   const anachronismCorrected = applyAnachronismRules(parsed.claims, bodyText);
   const correctedClaims = applyKnownVerdictRules(anachronismCorrected, bodyText);
   // 교정된 클레임 기반으로 overall 재계산 (LLM 원본값 덮어쓰기)
-  const { verdict: p1Verdict, confidence: p1Confidence } = computeOverallFromClaims(correctedClaims);
+  const { verdict: p1Verdict, confidence: p1Confidence } =
+    computeOverallFromClaims(correctedClaims);
 
   const phase1Payload: AnalysisPayload = {
     id: analysisId,
@@ -852,6 +992,8 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
     session_id: meta.sessionId,
     user_id: meta.userId,
     source_url: sourceUrl ?? null,
+    source_name: sourceName,
+    source_type: sourceType,
     input_text: bodyText.slice(0, 8000),
     title: parsed.title,
     summary: parsed.summary,
@@ -882,6 +1024,7 @@ async function processAnalysisPhase2(
   phase1Claims: Phase1Claim[],
   phase1Model: string = "unknown",
   phase1StyleClassification?: StyleClassification,
+  previousStoredPayload?: Record<string, unknown> | null,
 ): Promise<AnalysisPayload> {
   const hasDB = (getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? "").startsWith("eyJ");
   console.log(`[phase2 START] id=${analysisId} hasDB=${hasDB} claims=${phase1Claims.length}`);
@@ -889,27 +1032,32 @@ async function processAnalysisPhase2(
     // Phase 1 트랜스포머 분류 결과 재사용 — 재실행 없음
     const quickStyle = buildStyleAnalysis(bodyText);
     const styleAnalysis = phase1StyleClassification
-      ? { ...quickStyle, fakeProbability: phase1StyleClassification.fake_probability ?? quickStyle.fakeProbability, signals: phase1StyleClassification.signals ?? quickStyle.signals }
+      ? {
+          ...quickStyle,
+          fakeProbability: phase1StyleClassification.fake_probability ?? quickStyle.fakeProbability,
+          signals: phase1StyleClassification.signals ?? quickStyle.signals,
+        }
       : quickStyle;
     const styleBlock = styleAnalysisToPromptBlock(styleAnalysis);
 
-    const uncertainClaims = phase1Claims.filter(c => c.verdict !== "반대 근거 우세");
+    const uncertainClaims = phase1Claims.filter((c) => c.verdict !== "반대 근거 우세");
     const searchBase = uncertainClaims.length > 0 ? uncertainClaims : phase1Claims;
 
     const FALLBACK_CLAIM_LABELS = ["본문 내 주요 주장"];
     const typedQueries = searchBase
       .slice(0, 3)
-      .map(c => {
+      .map((c) => {
         const claimText = String(c.claim ?? "");
         // CF fallback 더미 클레임 → 실제 원문을 검색 쿼리로 사용
         const isFallbackClaim = FALLBACK_CLAIM_LABELS.includes(claimText) || claimText.length < 10;
         const query = isFallbackClaim ? bodyText.slice(0, 120) : claimText.slice(0, 120);
-        return { query, claimType: (String(c.claim_type ?? "EMPIRICAL")) as ClaimType };
+        return { query, claimType: String(c.claim_type ?? "EMPIRICAL") as ClaimType };
       })
-      .filter(q => q.query.length >= 10);
+      .filter((q) => q.query.length >= 10);
 
     // 정치인·공직자 이름이 있으면 현직 여부·최근 동향 검색 쿼리 자동 추가
-    const POLITICAL_FIGURE_PAT = /윤석[열렬]|이재명|한덕수|홍준표|오세훈|이낙연|박근혜|문재인|최상목/;
+    const POLITICAL_FIGURE_PAT =
+      /윤석[열렬]|이재명|한덕수|홍준표|오세훈|이낙연|박근혜|문재인|최상목/;
     const figureMatch = bodyText.match(POLITICAL_FIGURE_PAT);
     if (figureMatch && typedQueries.length < 3) {
       typedQueries.push({
@@ -919,8 +1067,11 @@ async function processAnalysisPhase2(
     }
 
     if (typedQueries.length === 0) {
-      bodyText.split(/(?<=[.!?。])\s+/).filter(s => s.length >= 20).slice(0, 3)
-        .forEach(s => typedQueries.push({ query: s.slice(0, 120), claimType: "EMPIRICAL" }));
+      bodyText
+        .split(/(?<=[.!?。])\s+/)
+        .filter((s) => s.length >= 20)
+        .slice(0, 3)
+        .forEach((s) => typedQueries.push({ query: s.slice(0, 120), claimType: "EMPIRICAL" }));
     }
     if (typedQueries.length === 0) {
       typedQueries.push({ query: bodyText.slice(0, 120), claimType: "EMPIRICAL" });
@@ -930,17 +1081,27 @@ async function processAnalysisPhase2(
       searchEvidenceForClaimsTyped(typedQueries),
       fetchPublicDataForClaims(bodyText),
     ]);
-    const evidenceBlock = formatEvidenceBlock(typedQueries.map(q => q.query), evidenceMap);
+    const evidenceBlock = formatEvidenceBlock(
+      typedQueries.map((q) => q.query),
+      evidenceMap,
+    );
     const evidenceUrls = extractEvidenceUrls(evidenceMap);
     const publicDataBlock = formatPublicDataBlock(publicStats);
 
-    const phase1Ref = phase1Claims.length > 0
-      ? "\n[Phase 1 1차 판정 — 참고]\n" + phase1Claims.map((c, i) =>
-          `${i + 1}. [${c.verdict}] ${String(c.claim ?? "").slice(0, 80)}`
-        ).join("\n") + "\n"
-      : "";
+    const phase1Ref =
+      phase1Claims.length > 0
+        ? "\n[Phase 1 1차 판정 — 참고]\n" +
+          phase1Claims
+            .map((c, i) => `${i + 1}. [${c.verdict}] ${String(c.claim ?? "").slice(0, 80)}`)
+            .join("\n") +
+          "\n"
+        : "";
 
     const p2ModelRef: ModelRef = { model: "unknown" };
+    const p2SourceName = previousStoredPayload?.source_name ? String(previousStoredPayload.source_name) : null;
+    const factcheckSourceBlock = p2SourceName
+      ? `\n• 이 기사는 팩트체크 매체 "${p2SourceName}"에서 발행한 기사입니다. 팩트체크 기관이 이미 검증한 내용임을 고려하여 분석하세요.`
+      : "";
     const prompt = `${styleBlock}
 ${phase1Ref}
 ${evidenceBlock}${publicDataBlock}
@@ -965,8 +1126,12 @@ Phase 1 결과를 Tavily 증거로 업데이트하세요:
 • ⚠️ 2024~2025 대한민국 주요 팩트 (학습 데이터 한계 보완):
   - 2024.12.3. 윤석열 비상계엄 선포 → 국회 해제 → 탄핵소추 → 2025.4.4. 헌재 파면
   - "현 대통령 윤석열" 표현 = 사실 오류 (파면 상태)
-${publicDataBlock ? "• 공공 통계 데이터가 제공된 경우 수치 관련 주장 판정 시 반드시 공식 수치와 비교하여 판정하세요\n" : ""}• Stage 1 가짜 가능성 지수 ${styleAnalysis.fakeProbability}% 반영${sourceUrl ? `
-• 원본 URL: ${sourceUrl}` : ""}
+${publicDataBlock ? "• 공공 통계 데이터가 제공된 경우 수치 관련 주장 판정 시 반드시 공식 수치와 비교하여 판정하세요\n" : ""}• Stage 1 가짜 가능성 지수 ${styleAnalysis.fakeProbability}% 반영${
+      sourceUrl
+        ? `
+• 원본 URL: ${sourceUrl}`
+        : ""
+    }${factcheckSourceBlock}
 
 ${isolateUserContent(bodyText.slice(0, 7000))}`;
 
@@ -981,7 +1146,7 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
     console.log(`[phase2 AI] model=${p2ModelRef.model} summary=${parsed.summary.slice(0,50)} claims=${parsed.claims.length}`);
 
     // ── Phase 2.5: 근거 부족 클레임 전용 심층 재검색 ──────────────────────
-    const weakClaims = parsed.claims.filter(c => c.verdict === "근거 부족");
+    const weakClaims = parsed.claims.filter((c) => c.verdict === "근거 부족");
     const uncertainRatio = parsed.claims.length > 0 ? weakClaims.length / parsed.claims.length : 0;
 
     let finalClaims = parsed.claims;
@@ -990,10 +1155,11 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
     if (weakClaims.length > 0 && uncertainRatio >= 0.4 && getEnv("TAVILY_API_KEY")) {
       try {
         // 약한 클레임만 대상으로 advanced 심층 재검색 (쿼리를 다르게 구성)
-        const deepQueries = weakClaims.slice(0, 3).map(c => ({
-          query: [c.subject, c.predicate, c.object].filter(Boolean).join(" ").slice(0, 120)
-            || String(c.claim ?? "").slice(0, 120),
-          claimType: (String(c.claim_type ?? "EMPIRICAL")) as ClaimType,
+        const deepQueries = weakClaims.slice(0, 3).map((c) => ({
+          query:
+            [c.subject, c.predicate, c.object].filter(Boolean).join(" ").slice(0, 120) ||
+            String(c.claim ?? "").slice(0, 120),
+          claimType: String(c.claim_type ?? "EMPIRICAL") as ClaimType,
         }));
 
         phase25EvidenceMap = await searchEvidenceForClaimsTyped(deepQueries, {
@@ -1001,10 +1167,10 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
           maxPerClaim: 5,
         });
 
-        const hasNewEvidence = Object.values(phase25EvidenceMap).some(evs => evs.length > 0);
+        const hasNewEvidence = Object.values(phase25EvidenceMap).some((evs) => evs.length > 0);
         if (hasNewEvidence) {
           const deepEvidenceBlock = formatEvidenceBlock(
-            deepQueries.map(q => q.query),
+            deepQueries.map((q) => q.query),
             phase25EvidenceMap,
           );
           const phase25Prompt = `${deepEvidenceBlock}
@@ -1015,7 +1181,17 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
 confidence ≥ 35이면 근거 부족 사용 금지.
 
 재판정 대상 클레임 (JSON):
-${JSON.stringify(weakClaims.map(c => ({ claim: c.claim, subject: c.subject, predicate: c.predicate, object: c.object, claim_type: c.claim_type })), null, 2).slice(0, 2000)}
+${JSON.stringify(
+  weakClaims.map((c) => ({
+    claim: c.claim,
+    subject: c.subject,
+    predicate: c.predicate,
+    object: c.object,
+    claim_type: c.claim_type,
+  })),
+  null,
+  2,
+).slice(0, 2000)}
 
 전체 분석 요약: ${parsed.summary}
 
@@ -1034,11 +1210,11 @@ ${isolateUserContent(bodyText.slice(0, 3000))}`;
 
           // Phase 2 결과에서 근거 부족 항목을 Phase 2.5 결과로 교체
           // 클레임 앞 60자 일치로 매칭 (Phase 2.5는 weakClaims만 재판정하므로 단순 텍스트 비교)
-          finalClaims = parsed.claims.map(orig => {
+          finalClaims = parsed.claims.map((orig) => {
             if (orig.verdict !== "근거 부족") return orig;
             const origKey = orig.claim?.slice(0, 60) ?? "";
-            const updated = phase25Result.claims.find(nc =>
-              (nc.claim?.slice(0, 60) ?? "") === origKey,
+            const updated = phase25Result.claims.find(
+              (nc) => (nc.claim?.slice(0, 60) ?? "") === origKey,
             );
             if (updated && updated.verdict !== "근거 부족") return updated;
             return orig;
@@ -1053,37 +1229,53 @@ ${isolateUserContent(bodyText.slice(0, 3000))}`;
     const rawEnrichedClaims = applyAnachronismRules(
       finalClaims.map((c, i) => ({
         ...c,
-        evidence_urls: (evidenceMap[i] ?? phase25EvidenceMap[i] ?? []).slice(0, 2).map(e => e.url).filter(Boolean),
+        evidence_urls: (evidenceMap[i] ?? phase25EvidenceMap[i] ?? [])
+          .slice(0, 2)
+          .map((e) => e.url)
+          .filter(Boolean),
       })),
       bodyText,
     );
     const enrichedClaims = applyKnownVerdictRules(rawEnrichedClaims, bodyText);
     // 교정된 클레임 기반으로 overall 재계산
-    const { verdict: p2Verdict, confidence: p2Confidence } = computeOverallFromClaims(enrichedClaims);
+    const { verdict: p2Verdict, confidence: p2Confidence } =
+      computeOverallFromClaims(enrichedClaims);
 
-    const searchQueriesUsed = typedQueries.map(q => q.query);
-    const sourcesConsidered = evidenceUrls.slice(0, 10).map((url: string) => ({ url }));
+    const searchQueriesUsed = typedQueries.map((q) => q.query);
+    const sourcesConsidered = buildReviewedSources(evidenceMap, 10);
+    const phase2CompletedAt = new Date().toISOString();
+    const timelineEntry = buildVerdictTimelineEntry({
+      recordedAt: phase2CompletedAt,
+      trigger: previousStoredPayload ? "reverify" : "initial",
+      overallVerdict: p2Verdict,
+      overallConfidence: p2Confidence,
+      claims: enrichedClaims,
+      phase2Model: p2ModelRef.model,
+      evidenceCount: evidenceUrls.length,
+      sourceCount: sourcesConsidered.length,
+    });
     const auditLog = {
       phase1: {
         model: phase1Model,
-        completed_at: new Date().toISOString(),
+        completed_at: phase2CompletedAt,
         fake_probability: styleAnalysis.fakeProbability,
         style_signals: styleAnalysis.signals,
       },
       phase2: {
         model: p2ModelRef.model,
-        completed_at: new Date().toISOString(),
+        completed_at: phase2CompletedAt,
         search_queries: searchQueriesUsed,
         sources_reviewed: sourcesConsidered,
         evidence_count: evidenceUrls.length,
       },
       weights: { fact_match_pct: 50, source_transparency_pct: 30, context_completeness_pct: 20 },
+      verdict_timeline: mergeVerdictTimeline(previousStoredPayload?.audit_log, timelineEntry),
     };
     const integrityHash = await signAnalysisResult({
       id: analysisId,
       overall_verdict: p2Verdict,
       overall_confidence: p2Confidence,
-      claims: finalClaims,  // Phase 2.5 업데이트 반영
+      claims: finalClaims, // Phase 2.5 업데이트 반영
     });
 
     const completedPayload = {
@@ -1091,6 +1283,8 @@ ${isolateUserContent(bodyText.slice(0, 3000))}`;
       status: "completed",
       input_text: bodyText.slice(0, 8000),
       source_url: sourceUrl ?? null,
+      source_name: p2SourceName,
+      source_type: previousStoredPayload?.source_type ? String(previousStoredPayload.source_type) : null,
       title: parsed.title,
       summary: parsed.summary,
       overall_verdict: p2Verdict,
@@ -1134,8 +1328,11 @@ ${isolateUserContent(bodyText.slice(0, 3000))}`;
     const stack = err instanceof Error ? (err.stack ?? "").slice(0, 800) : "";
     console.error("[phase2 ERROR]", msg, "\n", stack);
     const failPayload = {
-      id: analysisId, status: "phase2_failed",
-      title: "심층 분석 실패", summary: msg.slice(0, 300), claims: [],
+      id: analysisId,
+      status: "phase2_failed",
+      title: "심층 분석 실패",
+      summary: msg.slice(0, 300),
+      claims: [],
     };
     await kvPut(analysisId, failPayload);
     return failPayload;
@@ -1147,13 +1344,15 @@ ${isolateUserContent(bodyText.slice(0, 3000))}`;
    ═══════════════════════════════════════════════════════ */
 
 export const analyzeContent = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => InputSchema.parse(input))
+  .validator((input: unknown) => InputSchema.parse(input))
   // @ts-expect-error TanStack Start ValidateSerializableMapped doesn't accept dynamic KV types
   .handler(async ({ data }) => {
     const userId = await getOptionalUserId();
     await checkRateLimit(data.sessionId, userId);
 
     const sourceUrl = data.url;
+    const sourceName = data.source_name ?? null;
+    const sourceType = data.source_type ?? null;
     if (sourceUrl) validatePublicUrl(sourceUrl);
 
     if (sourceUrl) {
@@ -1204,23 +1403,80 @@ export const analyzeContent = createServerFn({ method: "POST" })
 
     if (!hasDB) {
       await kvPut(analysisId, {
-        id: analysisId, status: "pending",
-        session_id: data.sessionId, user_id: userId,
-        source_url: sourceUrl ?? null, input_text: data.text.slice(0, 8000),
+        id: analysisId,
+        status: "pending",
+        session_id: data.sessionId,
+        user_id: userId,
+        source_url: sourceUrl ?? null,
+        source_name: sourceName,
+        source_type: sourceType,
+        input_text: data.text.slice(0, 8000),
         created_at: new Date().toISOString(),
-        title: null, summary: null, overall_verdict: null, overall_confidence: null, claims: [],
+        title: null,
+        summary: null,
+        overall_verdict: null,
+        overall_confidence: null,
+        claims: [],
       });
     }
 
     // 텍스트 해시 캐시 저장 (7일 TTL)
     await kvPutRaw(`texthash:${RULES_VER}:${textHash}`, { analysisId }, 604800);
 
-    const analysisResult = await processAnalysisPhase1(analysisId, data.text, sourceUrl, { sessionId: data.sessionId, userId });
+    const analysisResult = await processAnalysisPhase1(analysisId, data.text, sourceUrl, sourceName, sourceType, {
+      sessionId: data.sessionId,
+      userId,
+    });
     return { id: analysisId, cached: false, pending: false, analysisResult };
   });
 
+export const reverifyAnalysis = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    z.object({ id: z.string().uuid(), sessionId: z.string().min(1) }).parse(input),
+  )
+  // @ts-expect-error TanStack Start ValidateSerializableMapped doesn't accept dynamic KV types
+  .handler(async ({ data }) => {
+    const userId = await getOptionalUserId();
+    const hasDB = !!getEnv("SUPABASE_SERVICE_ROLE_KEY");
+
+    let stored: Record<string, unknown> | null = null;
+    if (hasDB) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: row, error } = await supabaseAdmin
+        .from("analyses")
+        .select("*")
+        .eq("id", data.id)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      stored = row as Record<string, unknown> | null;
+    }
+
+    if (!stored) stored = await kvGet(data.id);
+    if (!stored) throw new Error("분석을 찾을 수 없습니다.");
+
+    if (!canMutateAnalysis(stored, { sessionId: data.sessionId, userId })) {
+      throw new Error("이 분석을 다시 검증할 권한이 없습니다.");
+    }
+
+    const sourceUrl = typeof stored.source_url === "string" ? stored.source_url : undefined;
+    const storedText = typeof stored.input_text === "string" ? stored.input_text : "";
+    if (sourceUrl && storedText.length < 10) validatePublicUrl(sourceUrl);
+    const bodyText = await fetchUrlBody(sourceUrl ?? "", storedText);
+    if (!bodyText || bodyText.length < 10) throw new Error("다시 검증할 본문이 없습니다.");
+
+    return processAnalysisPhase2(
+      data.id,
+      bodyText,
+      sourceUrl,
+      extractPhaseClaims(stored.claims),
+      resolvePhase1Model(stored),
+      extractStyleClassification(stored.claims),
+      stored,
+    );
+  });
+
 export const getAnalysis = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ id: z.string().uuid(), sessionId: z.string().min(1) }).parse(input),
   )
   // @ts-expect-error TanStack Start ValidateSerializableMapped doesn't accept dynamic KV types
@@ -1235,7 +1491,8 @@ export const getAnalysis = createServerFn({ method: "GET" })
       const ownedByUser = !!(userId && kvRow.user_id === userId);
       const ownedBySession = !kvRow.user_id && kvRow.session_id === data.sessionId;
       if (kvRow.status !== "pending" || !hasDB) {
-        if (!isPublicResult && !ownedByUser && !ownedBySession) throw new Error("이 분析을 볼 권한이 없습니다.");
+        if (!isPublicResult && !ownedByUser && !ownedBySession)
+          throw new Error("이 분析을 볼 권한이 없습니다.");
         return kvRow;
       }
     }
@@ -1257,7 +1514,8 @@ export const getAnalysis = createServerFn({ method: "GET" })
         const isPublicResult = kvRow.status === "phase1_complete" || kvRow.status === "completed";
         const ownedByUser = !!(userId && kvRow.user_id === userId);
         const ownedBySession = !kvRow.user_id && kvRow.session_id === data.sessionId;
-        if (!isPublicResult && !ownedByUser && !ownedBySession) throw new Error("이 분析을 볼 권한이 없습니다.");
+        if (!isPublicResult && !ownedByUser && !ownedBySession)
+          throw new Error("이 분析을 볼 권한이 없습니다.");
         return kvRow;
       }
       throw new Error(error ? error.message : "분析을 찾을 수 없습니다.");
@@ -1266,18 +1524,21 @@ export const getAnalysis = createServerFn({ method: "GET" })
     const isPublicResult = row.status === "phase1_complete" || row.status === "completed";
     const ownedByUser = !!(userId && row.user_id === userId);
     const ownedBySession = !row.user_id && row.session_id === data.sessionId;
-    if (!isPublicResult && !ownedByUser && !ownedBySession) throw new Error("이 분析을 볼 권한이 없습니다.");
+    if (!isPublicResult && !ownedByUser && !ownedBySession)
+      throw new Error("이 분析을 볼 권한이 없습니다.");
     return row;
   });
 
 export const continueAnalysis = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
-    z.object({
-      id: z.string().uuid(),
-      sessionId: z.string().min(1),
-      text: z.string().default(""),
-      sourceUrl: z.string().optional(),
-    }).parse(input),
+  .validator((input: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        sessionId: z.string().min(1),
+        text: z.string().default(""),
+        sourceUrl: z.string().optional(),
+      })
+      .parse(input),
   )
   // @ts-expect-error TanStack Start ValidateSerializableMapped doesn't accept dynamic KV types
   .handler(async ({ data }) => {
@@ -1353,14 +1614,16 @@ export const continueAnalysis = createServerFn({ method: "POST" })
   });
 
 export const listAnalyses = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => z.object({ sessionId: z.string().min(1) }).parse(input))
+  .validator((input: unknown) => z.object({ sessionId: z.string().min(1) }).parse(input))
   .handler(async ({ data }) => {
     const userId = await getOptionalUserId();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     let query = supabaseAdmin
       .from("analyses")
-      .select("id, title, summary, overall_verdict, overall_confidence, created_at, source_url, status")
+      .select(
+        "id, title, summary, overall_verdict, overall_confidence, created_at, source_url, status",
+      )
       .order("created_at", { ascending: false })
       .limit(50);
 
@@ -1376,7 +1639,7 @@ export const listAnalyses = createServerFn({ method: "POST" })
   });
 
 export const deleteAnalysis = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ id: z.string().uuid(), sessionId: z.string().min(1) }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -1404,7 +1667,6 @@ export const deleteAnalysis = createServerFn({ method: "POST" })
   });
 
 /* ── 실시간 빠른 팩트체크 ── */
-
 
 const QUICK_SYSTEM = `당신은 다국어 팩트체크 AI입니다. 학습 지식을 적극 활용하여 각 주장에 단호한 판정을 내립니다. 입력 언어로 응답하되 판정 enum은 한국어 고정(사실/부분 사실/근거 부족/반대 근거 우세).
 
@@ -1597,18 +1859,22 @@ const SIMPLIFY_SYSTEM = `당신은 한국 중고등학생을 위한 팩트체크
 모든 설명은 반드시 JSON 형식으로 반환합니다.`;
 
 export const simplifyAnalysis = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
-    z.object({
-      summary: z.string().default(""),
-      claims: z.array(z.object({
-        claim: z.string(),
-        verdict: z.string(),
-        confidence: z.number(),
-        reasoning: z.string(),
-        supporting_points: z.array(z.string()),
-        counter_points: z.array(z.string()),
-      })),
-    }).parse(input),
+  .validator((input: unknown) =>
+    z
+      .object({
+        summary: z.string().default(""),
+        claims: z.array(
+          z.object({
+            claim: z.string(),
+            verdict: z.string(),
+            confidence: z.number(),
+            reasoning: z.string(),
+            supporting_points: z.array(z.string()),
+            counter_points: z.array(z.string()),
+          }),
+        ),
+      })
+      .parse(input),
   )
   .handler(async ({ data }): Promise<SimplifiedResult> => {
     const claimsJson = JSON.stringify(
@@ -1621,7 +1887,8 @@ export const simplifyAnalysis = createServerFn({ method: "POST" })
         supporting: c.supporting_points,
         counter: c.counter_points,
       })),
-      null, 2,
+      null,
+      2,
     ).slice(0, 4000);
 
     const prompt = `다음 팩트체크 결과를 한국 중고등학생이 이해하기 쉽도록 변환해줘.
@@ -1656,7 +1923,7 @@ ${claimsJson}`;
 /* ── 감사 로그 조회 ── */
 
 export const getAuditLog = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ id: z.string().uuid(), sessionId: z.string().min(1) }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -1679,7 +1946,7 @@ export const getAuditLog = createServerFn({ method: "POST" })
 /* ── 결과 무결성 검증 ── */
 
 export const verifyIntegrity = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ id: z.string().uuid(), sessionId: z.string().min(1) }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -1689,7 +1956,9 @@ export const verifyIntegrity = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: row } = await supabaseAdmin
       .from("analyses")
-      .select("id, overall_verdict, overall_confidence, claims, integrity_hash, user_id, session_id")
+      .select(
+        "id, overall_verdict, overall_confidence, claims, integrity_hash, user_id, session_id",
+      )
       .eq("id", data.id)
       .maybeSingle();
     if (!row) return { status: "unsigned" as const };
@@ -1712,9 +1981,7 @@ export const verifyIntegrity = createServerFn({ method: "POST" })
 /* ── Google 팩트체크 교차 확인 ── */
 
 export const crossCheckClaims = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
-    z.object({ query: z.string().min(5).max(200) }).parse(input),
-  )
+  .validator((input: unknown) => z.object({ query: z.string().min(5).max(200) }).parse(input))
   .handler(async ({ data }) => {
     return fetchGoogleFactChecks(data.query);
   });
@@ -1722,7 +1989,7 @@ export const crossCheckClaims = createServerFn({ method: "POST" })
 /* ── 익명 분석 기록 계정 연결 ── */
 
 export const claimAnonymousAnalyses = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => z.object({ sessionId: z.string().min(1) }).parse(input))
+  .validator((input: unknown) => z.object({ sessionId: z.string().min(1) }).parse(input))
   .handler(async ({ data }) => {
     const userId = await getOptionalUserId();
     if (!userId) return { claimed: 0 };
@@ -1742,7 +2009,7 @@ export const claimAnonymousAnalyses = createServerFn({ method: "POST" })
 /* ── 분석 결과 공유 링크 ── */
 
 export const createShareLink = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
+  .validator((input: unknown) =>
     z.object({ id: z.string().uuid(), sessionId: z.string().min(1) }).parse(input),
   )
   .handler(async ({ data }) => {
@@ -1778,7 +2045,7 @@ export const createShareLink = createServerFn({ method: "POST" })
     if (!analysis) throw new Error("분석을 찾을 수 없습니다.");
 
     const shareToken = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-      .map(b => b.toString(36).padStart(2, "0"))
+      .map((b) => b.toString(36).padStart(2, "0"))
       .join("")
       .slice(0, 24);
 
@@ -1797,9 +2064,7 @@ export const createShareLink = createServerFn({ method: "POST" })
   });
 
 export const getSharedAnalysis = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) =>
-    z.object({ token: z.string().min(10).max(32) }).parse(input),
-  )
+  .validator((input: unknown) => z.object({ token: z.string().min(10).max(32) }).parse(input))
   // @ts-expect-error TanStack Start ValidateSerializableMapped doesn't accept dynamic KV types
   .handler(async ({ data }) => {
     const shareData = await kvGet(`share:${data.token}`);

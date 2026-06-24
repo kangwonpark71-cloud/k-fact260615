@@ -404,22 +404,28 @@ function useSpeechRecognition({
   useEffect(() => { onInterimRef.current = onInterim; }, [onInterim]);
 
   useEffect(() => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR = getSpeechRecognitionConstructor(window);
     setIsSupported(!!SR);
-    return () => { listeningRef.current = false; };
+    return () => {
+      listeningRef.current = false;
+    };
   }, []);
 
   const doStop = useCallback(() => {
     listeningRef.current = false;
     retryRef.current = 0;
-    try { recRef.current?.stop(); } catch {}
+    try {
+      recRef.current?.stop();
+    } catch {
+      recRef.current = null;
+    }
     recRef.current = null;
     setRecStatus("idle");
     onInterimRef.current("");
   }, []);
 
   const doStart = useCallback(async () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR = getSpeechRecognitionConstructor(window);
     if (!SR || listeningRef.current) return;
 
     setMicError(null);
@@ -460,8 +466,8 @@ function useSpeechRecognition({
         else { onInterimRef.current(interim); }
       };
 
-      rec.onerror = (e: any) => {
-        const err = e.error as string;
+      rec.onerror = (e) => {
+        const err = e.error;
         if (err === "not-allowed") {
           (async () => {
             try {
@@ -481,7 +487,10 @@ function useSpeechRecognition({
       };
 
       rec.onend = () => {
-        if (!listeningRef.current) { setRecStatus("idle"); return; }
+        if (!listeningRef.current) {
+          setRecStatus("idle");
+          return;
+        }
         retryRef.current += 1;
         if (retryRef.current > 20) {
           setMicError("음성 인식이 반복 중단됩니다. 페이지를 새로고침 후 다시 시도해 주세요.");
@@ -662,7 +671,7 @@ function LivePage() {
     setSpeakerIdx(i => (i + 1) % SPEAKERS.length);
     textareaRef.current?.focus();
 
-    if (!checking) return;
+      if (!checking) return;
 
     // 방청석 즉시 브로드캐스트 (checking 상태)
     broadcastRef.current(newU);
@@ -690,14 +699,16 @@ function LivePage() {
     }
   }, [doQuickCheck, hostRoomId]);
 
-  useEffect(() => { addRef.current = addUtterance; }, [addUtterance]);
+  useEffect(() => {
+    addRef.current = addUtterance;
+  }, [addUtterance]);
 
   /* ── 음성 인식 ── */
   const { isListening, isStarting, isSupported, permissionDenied, micError, setPermissionDenied, start, stop } =
     useSpeechRecognition({
       onFinal:  useCallback((text: string) => {
         if (text.length >= 10) setTimeout(() => addRef.current(text), 0);
-        else setInput(prev => (prev + " " + text).trim());
+        else setInput((prev) => (prev + " " + text).trim());
       }, []),
       onInterim: useCallback((text: string) => setInterim(text), []),
     });
@@ -725,14 +736,22 @@ function LivePage() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addUtterance(input); }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      addUtterance(input);
+    }
   };
 
   /* ── 텍스트 파일 내보내기 ── */
   const handleExport = () => {
     if (!utterances.length) return;
     const now = new Date();
-    const dateStr = now.toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
+    const dateStr = now.toLocaleDateString("ko-KR", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      weekday: "long",
+    });
     const timeStr = now.toLocaleTimeString("ko-KR");
     const checkedCount = utterances.filter(u => u.result).length;
     const falseList    = utterances.filter(u => u.result?.overall_verdict === "반대 근거 우세");
@@ -828,14 +847,19 @@ function LivePage() {
               </div>
               {isListening && (
                 <span className="absolute -top-1 -right-1 w-3 h-3">
-                  <span className="absolute inset-0 rounded-full bg-red-500" style={{ animation: "livePing 1.4s ease-out infinite" }} />
+                  <span
+                    className="absolute inset-0 rounded-full bg-red-500"
+                    style={{ animation: "livePing 1.4s ease-out infinite" }}
+                  />
                   <span className="relative block w-3 h-3 rounded-full bg-red-500" />
                 </span>
               )}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-base font-bold leading-tight text-foreground">실시간 대화 팩트체크</h1>
+                <h1 className="text-base font-bold leading-tight text-foreground">
+                  실시간 대화 팩트체크
+                </h1>
                 {isListening && (
                   <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-red-400 bg-red-400/10 border border-red-400/30 px-1.5 py-0.5 rounded-full tracking-wider">
                     <span className="w-1.5 h-1.5 rounded-full bg-red-400" style={{ animation: "recDot 1s ease-in-out infinite" }} />
@@ -988,7 +1012,10 @@ function LivePage() {
                 <Mic className={`w-7 h-7 transition-colors ${isListening ? "text-red-400 animate-pulse" : "text-muted-foreground/30"}`} />
               </div>
               {isListening && (
-                <span className="absolute -inset-3 rounded-full border border-red-400/15" style={{ animation: "livePing 2s ease-out 0.3s infinite" }} />
+                <span
+                  className="absolute -inset-3 rounded-full border border-red-400/15"
+                  style={{ animation: "livePing 2s ease-out 0.3s infinite" }}
+                />
               )}
             </div>
             <div className="space-y-1.5">
@@ -1047,14 +1074,26 @@ function LivePage() {
 }
 
 /* ── 마이크 오류 배너 ── */
-function MicErrorBanner({ permissionDenied, micError }: { permissionDenied: boolean; micError: string | null }) {
+function MicErrorBanner({
+  permissionDenied,
+  micError,
+}: {
+  permissionDenied: boolean;
+  micError: string | null;
+}) {
   if (micError === "no-device") {
     return (
       <div className="rounded-xl border border-red-400/20 bg-red-400/5 px-3 py-2.5 space-y-1.5">
         <p className="text-xs font-semibold text-red-400">마이크 장치를 찾을 수 없음</p>
         <ol className="space-y-0.5 list-decimal list-inside">
-          {["USB 헤드셋이 PC에 꽂혀 있는지 확인 (허브 말고 본체 직결)", "Win+R → mmsys.cpl → 녹음 탭 → USB 헤드셋 우클릭 → 기본 장치로 설정", "헤드셋 연결 후 Chrome 재시작"].map((s, i) => (
-            <li key={i} className="text-[11px] text-muted-foreground leading-relaxed">{s}</li>
+          {[
+            "USB 헤드셋이 PC에 꽂혀 있는지 확인 (허브 말고 본체 직결)",
+            "Win+R → mmsys.cpl → 녹음 탭 → USB 헤드셋 우클릭 → 기본 장치로 설정",
+            "헤드셋 연결 후 Chrome 재시작",
+          ].map((s, i) => (
+            <li key={i} className="text-[11px] text-muted-foreground leading-relaxed">
+              {s}
+            </li>
           ))}
         </ol>
       </div>
@@ -1065,8 +1104,14 @@ function MicErrorBanner({ permissionDenied, micError }: { permissionDenied: bool
       <div className="rounded-xl border border-orange-400/20 bg-orange-400/5 px-3 py-2.5 space-y-1.5">
         <p className="text-xs font-semibold text-orange-400">마이크 접근이 차단됨</p>
         <ol className="space-y-0.5 list-decimal list-inside">
-          {["Win+I → 개인정보 보호 및 보안 → 마이크 → 데스크톱 앱 허용 켜기", "chrome://settings/content/microphone 에서 이 사이트 허용 확인", "Chrome 재시작"].map((s, i) => (
-            <li key={i} className="text-[11px] text-muted-foreground leading-relaxed">{s}</li>
+          {[
+            "Win+I → 개인정보 보호 및 보안 → 마이크 → 데스크톱 앱 허용 켜기",
+            "chrome://settings/content/microphone 에서 이 사이트 허용 확인",
+            "Chrome 재시작",
+          ].map((s, i) => (
+            <li key={i} className="text-[11px] text-muted-foreground leading-relaxed">
+              {s}
+            </li>
           ))}
         </ol>
       </div>
@@ -1093,7 +1138,9 @@ function UtteranceCard({ u, isNew }: { u: Utterance; isNew: boolean }) {
           <XCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1.5">
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${style.badge}`}>{u.speaker}</span>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${style.badge}`}>
+                {u.speaker}
+              </span>
               <span className="text-[10px] text-muted-foreground/80">{u.time}</span>
               {u.result.bias_type && u.result.bias_type !== "중립" && (
                 <span className="text-[10px] font-medium text-orange-400 bg-orange-400/10 border border-orange-400/20 px-1.5 py-0.5 rounded-full">
@@ -1129,12 +1176,26 @@ function UtteranceCard({ u, isNew }: { u: Utterance; isNew: boolean }) {
                 <p className="text-xs font-medium text-foreground/88 mb-1">{h.claim}</p>
                 {(h.subject || h.predicate || h.object) && (
                   <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
-                    {h.subject   && <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground">주어: {h.subject}</span>}
-                    {h.predicate && <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground">서술: {h.predicate}</span>}
-                    {h.object    && <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground">대상: {h.object}</span>}
+                    {h.subject && (
+                      <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground">
+                        주어: {h.subject}
+                      </span>
+                    )}
+                    {h.predicate && (
+                      <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground">
+                        서술: {h.predicate}
+                      </span>
+                    )}
+                    {h.object && (
+                      <span className="text-[10px] bg-border/20 border border-border/40 rounded px-1.5 py-0.5 text-muted-foreground">
+                        대상: {h.object}
+                      </span>
+                    )}
                   </div>
                 )}
-                {h.brief && <p className="text-[11px] text-foreground/85 leading-relaxed mb-1">{h.brief}</p>}
+                {h.brief && (
+                  <p className="text-[11px] text-foreground/85 leading-relaxed mb-1">{h.brief}</p>
+                )}
                 {h.counter && (
                   <div className="flex items-start gap-1.5 mt-1">
                     <ThumbsDown className="w-3 h-3 text-red-400 shrink-0 mt-0.5" />
@@ -1151,7 +1212,12 @@ function UtteranceCard({ u, isNew }: { u: Utterance; isNew: boolean }) {
           <div className="flex items-center gap-1 flex-wrap pl-2">
             <TriangleAlert className="w-3 h-3 text-orange-400 shrink-0" />
             {u.result.risk_flags.map((f, i) => (
-              <span key={i} className="text-[10px] text-orange-400 bg-orange-400/10 border border-orange-400/20 px-1.5 py-0.5 rounded-full">{f}</span>
+              <span
+                key={i}
+                className="text-[10px] text-orange-400 bg-orange-400/10 border border-orange-400/20 px-1.5 py-0.5 rounded-full"
+              >
+                {f}
+              </span>
             ))}
           </div>
         )}
@@ -1169,7 +1235,10 @@ function UtteranceCard({ u, isNew }: { u: Utterance; isNew: boolean }) {
   if (u.result?.overall_verdict === "사실") {
     const hasCrossRef = u.result.naver_factchecks?.length || u.result.daum_factchecks?.length;
     return (
-      <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-emerald-400/20 bg-emerald-400/5 group transition-colors" style={cardAnim}>
+      <div
+        className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-emerald-400/20 bg-emerald-400/5 group transition-colors"
+        style={cardAnim}
+      >
         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-1" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-1 flex-wrap">
@@ -1188,7 +1257,9 @@ function UtteranceCard({ u, isNew }: { u: Utterance; isNew: boolean }) {
           ) : null}
           <MatchedFakeCasesPanel cases={u.result.matched_fake_cases} />
         </div>
-        <span className="text-[10px] text-muted-foreground/60 shrink-0 mt-1 group-hover:text-muted-foreground/80 transition-colors">{u.time}</span>
+        <span className="text-[10px] text-muted-foreground/60 shrink-0 mt-1 group-hover:text-muted-foreground/80 transition-colors">
+          {u.time}
+        </span>
       </div>
     );
   }
@@ -1223,7 +1294,9 @@ function UtteranceCard({ u, isNew }: { u: Utterance; isNew: boolean }) {
         )}
         {u.error && <p className="text-[11px] text-destructive/70 mt-0.5">{u.error}</p>}
       </div>
-      <span className="text-[10px] text-muted-foreground/32 shrink-0 mt-1 group-hover:text-muted-foreground/50 transition-colors">{u.time}</span>
+      <span className="text-[10px] text-muted-foreground/32 shrink-0 mt-1 group-hover:text-muted-foreground/50 transition-colors">
+        {u.time}
+      </span>
     </div>
   );
 }

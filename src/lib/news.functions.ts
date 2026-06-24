@@ -28,7 +28,9 @@ interface KVBinding {
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
 }
 const KV_KEY = "trending-news-v2";
-function getNewsKV(): KVBinding | null { return getCfBinding<KVBinding>("NEWS_CACHE"); }
+function getNewsKV(): KVBinding | null {
+  return getCfBinding<KVBinding>("NEWS_CACHE");
+}
 
 // ── 인메모리 폴백 캐시 (KV 없는 환경용) ──
 let _cache: TrendingItem[] = [];
@@ -70,17 +72,27 @@ function stableId(s: string): string {
 
 function extractTag(xml: string, tag: string): string {
   const re = new RegExp(
-    `<${tag}(?:\\s[^>]*)?>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`, "i",
+    `<${tag}(?:\\s[^>]*)?>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`,
+    "i",
   );
   const m = xml.match(re);
   if (!m) return "";
   return m[1]
-    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"').replace(/&#39;|&#039;/g, "'")
-    .replace(/<[^>]+>/g, "").trim();
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&#039;/g, "'")
+    .replace(/<[^>]+>/g, "")
+    .trim();
 }
 
-function parseRss(xml: string, sourceName: string, sourceType: SourceType, max = 10): TrendingItem[] {
+function parseRss(
+  xml: string,
+  sourceName: string,
+  sourceType: SourceType,
+  max = 10,
+): TrendingItem[] {
   const items: TrendingItem[] = [];
   const re = /<(?:item|entry)[^>]*>([\s\S]*?)<\/(?:item|entry)>/gi;
   let m: RegExpExecArray | null;
@@ -98,7 +110,8 @@ function parseRss(xml: string, sourceName: string, sourceType: SourceType, max =
       extractTag(body, "pubDate") ||
       extractTag(body, "published") ||
       extractTag(body, "updated") ||
-      extractTag(body, "dc:date") || "";
+      extractTag(body, "dc:date") ||
+      "";
     items.push({
       id: stableId(link),
       title: title.slice(0, 120),
@@ -113,7 +126,31 @@ function parseRss(xml: string, sourceName: string, sourceType: SourceType, max =
   return items;
 }
 
-async function safeRss(url: string, name: string, type: SourceType, max = 10): Promise<TrendingItem[]> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function stringField(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  return typeof value === "string" ? value : "";
+}
+
+function objectField(record: Record<string, unknown>, key: string): Record<string, unknown> {
+  const value = record[key];
+  return isRecord(value) ? value : {};
+}
+
+function arrayField(record: Record<string, unknown>, key: string): unknown[] {
+  const value = record[key];
+  return Array.isArray(value) ? value : [];
+}
+
+async function safeRss(
+  url: string,
+  name: string,
+  type: SourceType,
+  max = 10,
+): Promise<TrendingItem[]> {
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 KFactBot/1.0" },
@@ -121,7 +158,9 @@ async function safeRss(url: string, name: string, type: SourceType, max = 10): P
     });
     if (!res.ok) return [];
     return parseRss(await res.text(), name, type, max);
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 // ── 네이버 뉴스 API ──
@@ -134,25 +173,36 @@ async function fetchNaverNews(): Promise<TrendingItem[]> {
     try {
       const res = await fetch(
         `https://openapi.naver.com/v1/search/news.json?query=${encodeURIComponent(q)}&display=10&sort=date`,
-        { headers: { "X-Naver-Client-Id": clientId, "X-Naver-Client-Secret": clientSecret }, signal: AbortSignal.timeout(5000) },
+        {
+          headers: { "X-Naver-Client-Id": clientId, "X-Naver-Client-Secret": clientSecret },
+          signal: AbortSignal.timeout(5000),
+        },
       );
       if (!res.ok) continue;
-      const json = await res.json() as { items?: any[] };
-      for (const it of json.items ?? []) {
-        const link = (it.originallink as string) || (it.link as string);
+      const json: unknown = await res.json();
+      const items = isRecord(json) ? arrayField(json, "items") : [];
+      for (const raw of items) {
+        if (!isRecord(raw)) continue;
+        const link = stringField(raw, "originallink") || stringField(raw, "link");
         if (!link) continue;
         results.push({
           id: stableId(link),
-          title: (it.title as string).replace(/<[^>]+>/g, "").slice(0, 120),
+          title: stringField(raw, "title")
+            .replace(/<[^>]+>/g, "")
+            .slice(0, 120),
           link,
-          pubDate: it.pubDate as string,
+          pubDate: stringField(raw, "pubDate"),
           source: "네이버 뉴스",
           sourceType: "naver",
-          description: (it.description as string)?.replace(/<[^>]+>/g, "").slice(0, 200),
+          description: stringField(raw, "description")
+            .replace(/<[^>]+>/g, "")
+            .slice(0, 200),
           score: 0,
         });
       }
-    } catch { /**/ }
+    } catch {
+      /**/
+    }
   }
   return results;
 }
@@ -165,23 +215,39 @@ async function fetchSnuFactcheck(): Promise<TrendingItem[]> {
       signal: AbortSignal.timeout(7000),
     });
     if (!res.ok) return [];
-    const json = await res.json() as any;
-    const arr: any[] = Array.isArray(json) ? json : (json.results ?? json.facts ?? []);
-    return arr.filter((it: any) => it?.title || it?.factTitle).slice(0, 10).map((it: any): TrendingItem => {
-      const id = String(it.id ?? it.factId ?? Math.random());
-      const link = it.url ?? `https://factcheck.snu.ac.kr/v2/facts/${id}`;
-      return {
-        id: stableId(link),
-        title: (it.title ?? it.factTitle ?? "").slice(0, 120),
-        link,
-        pubDate: it.publishedAt ?? it.createdAt ?? "",
-        source: "SNU 팩트체크",
-        sourceType: "factcheck",
-        description: (it.summary ?? it.content ?? "").slice(0, 200),
-        score: 0,
-      };
-    });
-  } catch { return []; }
+    const json: unknown = await res.json();
+    const arr = Array.isArray(json)
+      ? json
+      : isRecord(json) && arrayField(json, "results").length > 0
+        ? arrayField(json, "results")
+        : isRecord(json)
+          ? arrayField(json, "facts")
+          : [];
+    return arr
+      .filter((it) => isRecord(it) && (stringField(it, "title") || stringField(it, "factTitle")))
+      .slice(0, 10)
+      .map((it): TrendingItem => {
+        const record = isRecord(it) ? it : {};
+        const id =
+          stringField(record, "id") || stringField(record, "factId") || String(Math.random());
+        const link = stringField(record, "url") || `https://factcheck.snu.ac.kr/v2/facts/${id}`;
+        return {
+          id: stableId(link),
+          title: (stringField(record, "title") || stringField(record, "factTitle")).slice(0, 120),
+          link,
+          pubDate: stringField(record, "publishedAt") || stringField(record, "createdAt"),
+          source: "SNU 팩트체크",
+          sourceType: "factcheck",
+          description: (stringField(record, "summary") || stringField(record, "content")).slice(
+            0,
+            200,
+          ),
+          score: 0,
+        };
+      });
+  } catch {
+    return [];
+  }
 }
 
 // ── 다음뉴스 언론사별 팩트체크 ──
@@ -209,26 +275,30 @@ async function fetchDaumFactcheck(): Promise<TrendingItem[]> {
     const res = await fetch(DAUM_FACTCHECK_API, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json",
-        "Referer": "https://news.daum.net/factcheck",
-        "Origin": "https://news.daum.net",
+        Accept: "application/json",
+        Referer: "https://news.daum.net/factcheck",
+        Origin: "https://news.daum.net",
       },
       signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return [];
-    const json = await res.json() as DaumFactcheckResponse;
+    const json = (await res.json()) as DaumFactcheckResponse;
     const contents = json?.document?.data?.contents ?? [];
-    return contents.slice(0, 30).map((it): TrendingItem => ({
-      id: stableId(it.pcUrl ?? it.id),
-      title: (it.title ?? "").slice(0, 120),
-      link: it.pcUrl,
-      pubDate: it.createdAt ?? "",
-      source: it.cpName ?? "다음",
-      sourceType: "daum",
-      description: it.summary?.slice(0, 200),
-      score: 0,
-    }));
-  } catch { return []; }
+    return contents.slice(0, 30).map(
+      (it): TrendingItem => ({
+        id: stableId(it.pcUrl ?? it.id),
+        title: (it.title ?? "").slice(0, 120),
+        link: it.pcUrl,
+        pubDate: it.createdAt ?? "",
+        source: it.cpName ?? "다음",
+        sourceType: "daum",
+        description: it.summary?.slice(0, 200),
+        score: 0,
+      }),
+    );
+  } catch {
+    return [];
+  }
 }
 
 // ── YouTube ──
@@ -242,24 +312,30 @@ async function fetchYouTube(): Promise<TrendingItem[]> {
       const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet&chart=mostPopular&regionCode=KR&videoCategoryId=25&maxResults=10&key=${apiKey}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
       if (res.ok) {
-        const json = await res.json() as { items?: any[] };
-        for (const v of json.items ?? []) {
-          const videoId = v.id as string;
+        const json: unknown = await res.json();
+        const videos = isRecord(json) ? arrayField(json, "items") : [];
+        for (const raw of videos) {
+          if (!isRecord(raw)) continue;
+          const videoId = stringField(raw, "id");
+          const snippet = objectField(raw, "snippet");
+          if (!videoId) continue;
           const link = `https://www.youtube.com/watch?v=${videoId}`;
           items.push({
             id: stableId(link),
-            title: (v.snippet?.title ?? "").slice(0, 120),
+            title: stringField(snippet, "title").slice(0, 120),
             link,
-            pubDate: v.snippet?.publishedAt ?? "",
-            source: v.snippet?.channelTitle ?? "YouTube",
+            pubDate: stringField(snippet, "publishedAt"),
+            source: stringField(snippet, "channelTitle") || "YouTube",
             sourceType: "youtube",
-            description: v.snippet?.description?.slice(0, 200),
+            description: stringField(snippet, "description").slice(0, 200),
             score: 0,
           });
         }
         if (items.length >= 10) return items;
       }
-    } catch { /**/ }
+    } catch {
+      /**/
+    }
   }
 
   // 폴백: 주요 한국 뉴스 채널 RSS
@@ -274,7 +350,9 @@ async function fetchYouTube(): Promise<TrendingItem[]> {
     channels.map((ch) =>
       safeRss(
         `https://www.youtube.com/feeds/videos.xml?channel_id=${ch.id}`,
-        ch.name, "youtube", 3,
+        ch.name,
+        "youtube",
+        3,
       ),
     ),
   );
@@ -297,9 +375,9 @@ async function fetchDCInside(): Promise<TrendingItem[]> {
       const res = await fetch(url, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          "Accept": "text/html,application/xhtml+xml",
+          Accept: "text/html,application/xhtml+xml",
           "Accept-Language": "ko-KR,ko;q=0.9",
-          "Referer": "https://www.dcinside.com/",
+          Referer: "https://www.dcinside.com/",
         },
         signal: AbortSignal.timeout(8000),
       });
@@ -307,7 +385,8 @@ async function fetchDCInside(): Promise<TrendingItem[]> {
       const html = await res.text();
 
       // 제목과 링크 파싱: <a href="/board/view/..." class="ub-word">TITLE</a>
-      const re = /<a[^>]+href="(\/board\/view\/[^"]+)"[^>]*class="[^"]*ub-word[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+      const re =
+        /<a[^>]+href="(\/board\/view\/[^"]+)"[^>]*class="[^"]*ub-word[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
       let m: RegExpExecArray | null;
       while ((m = re.exec(html)) !== null && items.length < 10) {
         const href = m[1];
@@ -325,7 +404,9 @@ async function fetchDCInside(): Promise<TrendingItem[]> {
           score: 0,
         });
       }
-    } catch { /**/ }
+    } catch {
+      /**/
+    }
   }
   return items.slice(0, 10);
 }
@@ -341,9 +422,9 @@ async function fetchFMKorea(): Promise<TrendingItem[]> {
     const res = await fetch("https://www.fmkorea.com/best", {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "text/html",
+        Accept: "text/html",
         "Accept-Language": "ko-KR,ko;q=0.9",
-        "Referer": "https://www.fmkorea.com/",
+        Referer: "https://www.fmkorea.com/",
       },
       signal: AbortSignal.timeout(8000),
     });
@@ -371,7 +452,9 @@ async function fetchFMKorea(): Promise<TrendingItem[]> {
       });
     }
     return items.slice(0, 10);
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 // ── 일간베스트 ──
@@ -386,17 +469,19 @@ async function fetchIlbeBest(): Promise<TrendingItem[]> {
     try {
       const res = await fetch(url, {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml",
           "Accept-Language": "ko-KR,ko;q=0.9",
-          "Referer": "https://www.ilbe.com/",
+          Referer: "https://www.ilbe.com/",
         },
         signal: AbortSignal.timeout(9000),
         redirect: "follow",
       });
       if (!res.ok) continue;
       const html = await res.text();
-      if (html.length < 1000 || html.includes("접근이 차단") || html.includes("로봇 확인")) continue;
+      if (html.length < 1000 || html.includes("접근이 차단") || html.includes("로봇 확인"))
+        continue;
 
       const items: TrendingItem[] = [];
       // 핵심 패턴: href="/view/숫자..." class="subject">[제목]
@@ -420,7 +505,9 @@ async function fetchIlbeBest(): Promise<TrendingItem[]> {
       }
 
       if (items.length >= 3) return items.slice(0, 10);
-    } catch { /**/ }
+    } catch {
+      /**/
+    }
   }
   return [];
 }
@@ -444,11 +531,12 @@ async function fetchXTwitter(): Promise<TrendingItem[]> {
         if (results.length >= 10) break;
       }
       if (results.length >= 3) return results.slice(0, 10);
-    } catch { /**/ }
+    } catch {
+      /**/
+    }
   }
   return [];
 }
-
 
 // ── 스코어 계산 ──
 function calcScore(item: TrendingItem): number {
@@ -457,11 +545,32 @@ function calcScore(item: TrendingItem): number {
     const ageH = (Date.now() - new Date(item.pubDate).getTime()) / 3_600_000;
     score += Math.max(0, 50 - ageH * (50 / 48));
   }
-  const factKws = ["팩트체크","사실확인","거짓","허위","오해","진실","검증","확인결과","논란","주장"];
-  for (const kw of factKws) if (item.title.includes(kw)) { score += 12; break; }
+  const factKws = [
+    "팩트체크",
+    "사실확인",
+    "거짓",
+    "허위",
+    "오해",
+    "진실",
+    "검증",
+    "확인결과",
+    "논란",
+    "주장",
+  ];
+  for (const kw of factKws)
+    if (item.title.includes(kw)) {
+      score += 12;
+      break;
+    }
   const bonus: Record<SourceType, number> = {
-    factcheck: 30, daum: 28, government: 24, naver: 18,
-    news: 12, youtube: 10, community: 8, social: 6,
+    factcheck: 30,
+    daum: 28,
+    government: 24,
+    naver: 18,
+    news: 12,
+    youtube: 10,
+    community: 8,
+    social: 6,
   };
   score += bonus[item.sourceType] ?? 0;
   return Math.round(score);
@@ -469,13 +578,13 @@ function calcScore(item: TrendingItem): number {
 
 // ── RSS 소스 목록 ──
 const RSS_SOURCES: { url: string; name: string; type: SourceType; max?: number }[] = [
-  { url: "https://www.yna.co.kr/rss/politics.xml",              name: "연합뉴스",  type: "news", max: 10 },
-  { url: "https://www.yna.co.kr/rss/society.xml",               name: "연합뉴스",  type: "news", max: 10 },
-  { url: "https://www.newsis.com/RSS/national.xml",             name: "뉴시스",   type: "news", max: 10 },
-  { url: "https://www.news1.kr/rss/news_main.xml",              name: "뉴스1",    type: "news", max: 10 },
-  { url: "https://imnews.imbc.com/rss/news/news_00.xml",        name: "MBC뉴스",  type: "news", max: 10 },
-  { url: "https://www.mk.co.kr/rss/40300001/",                  name: "매일경제", type: "news", max: 10 },
-  { url: "https://www.korea.kr/rss/policy.xml",                 name: "정책브리핑", type: "government", max: 10 },
+  { url: "https://www.yna.co.kr/rss/politics.xml", name: "연합뉴스", type: "news", max: 10 },
+  { url: "https://www.yna.co.kr/rss/society.xml", name: "연합뉴스", type: "news", max: 10 },
+  { url: "https://www.newsis.com/RSS/national.xml", name: "뉴시스", type: "news", max: 10 },
+  { url: "https://www.news1.kr/rss/news_main.xml", name: "뉴스1", type: "news", max: 10 },
+  { url: "https://imnews.imbc.com/rss/news/news_00.xml", name: "MBC뉴스", type: "news", max: 10 },
+  { url: "https://www.mk.co.kr/rss/40300001/", name: "매일경제", type: "news", max: 10 },
+  { url: "https://www.korea.kr/rss/policy.xml", name: "정책브리핑", type: "government", max: 10 },
 ];
 
 export const fetchTrendingNews = createServerFn({ method: "GET" }).handler(async () => {
@@ -485,13 +594,15 @@ export const fetchTrendingNews = createServerFn({ method: "GET" }).handler(async
   // KV 캐시 확인 (인스턴스 간 공유)
   if (kv) {
     try {
-      const cached = await kv.get(KV_KEY, "json") as { data: TrendingItem[]; ts: number } | null;
+      const cached = (await kv.get(KV_KEY, "json")) as { data: TrendingItem[]; ts: number } | null;
       if (cached && cached.ts >= scheduledTs) {
         _cache = cached.data;
         _cacheTs = cached.ts;
         return cached.data;
       }
-    } catch { /* KV 읽기 실패 시 재fetch */ }
+    } catch {
+      /* KV 읽기 실패 시 재fetch */
+    }
   } else if (isCacheValid()) {
     // KV 없으면 인메모리 폴백
     return _cache;
@@ -499,7 +610,9 @@ export const fetchTrendingNews = createServerFn({ method: "GET" }).handler(async
 
   const [rssAll, naverItems, snuItems, daumItems, ytItems, dcItems, fmItems, xItems, ilbeItems] =
     await Promise.all([
-      Promise.all(RSS_SOURCES.map((s) => safeRss(s.url, s.name, s.type, s.max))).then((r) => r.flat()),
+      Promise.all(RSS_SOURCES.map((s) => safeRss(s.url, s.name, s.type, s.max))).then((r) =>
+        r.flat(),
+      ),
       fetchNaverNews(),
       fetchSnuFactcheck(),
       fetchDaumFactcheck(),
@@ -511,8 +624,15 @@ export const fetchTrendingNews = createServerFn({ method: "GET" }).handler(async
     ]);
 
   const merged = [
-    ...daumItems, ...snuItems, ...naverItems, ...ytItems,
-    ...dcItems, ...fmItems, ...ilbeItems, ...xItems, ...rssAll,
+    ...daumItems,
+    ...snuItems,
+    ...naverItems,
+    ...ytItems,
+    ...dcItems,
+    ...fmItems,
+    ...ilbeItems,
+    ...xItems,
+    ...rssAll,
   ];
 
   const seen = new Set<string>();
@@ -535,7 +655,13 @@ export const fetchTrendingNews = createServerFn({ method: "GET" }).handler(async
   if (kv) {
     const nextKST = scheduledTs + 5 * 3600000; // 다음 예약 (5시간 후)
     const ttlSec = Math.max(1800, Math.floor((nextKST - Date.now()) / 1000));
-    try { await kv.put(KV_KEY, JSON.stringify({ data: scored, ts: _cacheTs }), { expirationTtl: ttlSec }); } catch {}
+    try {
+      await kv.put(KV_KEY, JSON.stringify({ data: scored, ts: _cacheTs }), {
+        expirationTtl: ttlSec,
+      });
+    } catch {
+      _cacheTs = Date.now();
+    }
   }
 
   return scored;
@@ -547,7 +673,11 @@ export const refreshTrendingNews = createServerFn({ method: "POST" }).handler(as
   // KV 캐시도 만료 처리 (ts를 0으로 덮어쓰기)
   const kv = getNewsKV();
   if (kv) {
-    try { await kv.put(KV_KEY, JSON.stringify({ data: [], ts: 0 }), { expirationTtl: 1 }); } catch {}
+    try {
+      await kv.put(KV_KEY, JSON.stringify({ data: [], ts: 0 }), { expirationTtl: 1 });
+    } catch {
+      _cacheTs = 0;
+    }
   }
   return { ok: true };
 });

@@ -88,9 +88,7 @@ export interface YouTubeInfo {
 // ── 서버 함수 ──
 
 export const fetchYouTubeInfo = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) =>
-    z.object({ url: z.string().url() }).parse(input),
-  )
+  .validator((input: unknown) => z.object({ url: z.string().url() }).parse(input))
   .handler(async ({ data }): Promise<YouTubeInfo> => {
     const videoId = extractYouTubeId(data.url);
     if (!videoId) throw new Error("유효하지 않은 YouTube URL입니다");
@@ -104,13 +102,9 @@ export const fetchYouTubeInfo = createServerFn({ method: "POST" })
     ]);
 
     const title =
-      oembedResult.status === "fulfilled"
-        ? oembedResult.value.title
-        : `YouTube 영상 ${videoId}`;
+      oembedResult.status === "fulfilled" ? oembedResult.value.title : `YouTube 영상 ${videoId}`;
     const author =
-      oembedResult.status === "fulfilled"
-        ? oembedResult.value.author_name
-        : "알 수 없음";
+      oembedResult.status === "fulfilled" ? oembedResult.value.author_name : "알 수 없음";
     const thumbnailUrl =
       oembedResult.status === "fulfilled"
         ? oembedResult.value.thumbnail_url
