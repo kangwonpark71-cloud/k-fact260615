@@ -168,6 +168,7 @@ export function SiteHeader() {
             <ThemeSelector />
             <Link
               to="/live"
+              search={{ room: undefined, viewer: false }}
               className="px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors flex items-center gap-1.5"
             >
               <MessageSquare className="w-4 h-4" /> 대화 분석
@@ -340,7 +341,7 @@ export function BottomNav() {
         <Home className="w-5 h-5" />
         홈
       </Link>
-      <Link to="/live" className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/live")}`}>
+      <Link to="/live" search={{ room: undefined, viewer: false }} className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${active("/live")}`}>
         <MessageSquare className="w-5 h-5" />
         대화
       </Link>

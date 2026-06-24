@@ -50,7 +50,7 @@ function cfSrc(v: unknown): { name: string; type: string }[] {
   });
 }
 
-const CF_CLAIM_TYPES = ["EMPIRICAL", "DISPUTED_TERRITORY", "OPINION", "DOMESTIC_LAW_FACT"] as const;
+const CF_CLAIM_TYPES = ["EMPIRICAL", "DISPUTED_TERRITORY", "OPINION", "DOMESTIC_LAW_FACT", "ANACHRONISM"] as const;
 
 function cfCT(v: unknown): typeof CF_CLAIM_TYPES[number] {
   const s = typeof v === "string" ? v.trim().toUpperCase() : "";

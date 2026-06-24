@@ -262,3 +262,70 @@ export const checkIsAdmin = createServerFn({ method: "GET" }).handler(async () =
     return false;
   }
 });
+
+/* ═══════════════════════════════════════════════════════
+   히어로 메시지 (PHASES) — KV 기반
+   ═══════════════════════════════════════════════════════ */
+
+const KV_HERO_KEY = "hero:phases";
+
+export type PhaseVariant =
+  | "default"   // 기본 텍스트
+  | "impact"    // 파랑 그라디언트
+  | "natural"   // 이탤릭 흐린
+  | "aurora"    // 무지개 그라디언트
+  | "neon"      // 시안 글로우
+  | "elegant";  // 골드 쉰
+
+export type PhaseAnimation =
+  | "blur"      // 블러+슬라이드 (기본)
+  | "slide-up"  // 아래→위
+  | "zoom"      // 줌인
+  | "flip";     // X축 플립
+
+export type PhaseFontStyle =
+  | "sans"      // Pretendard (기본)
+  | "serif"     // 세리프
+  | "mono"      // 모노스페이스
+  | "display";  // 굵고 촘촘
+
+export interface HeroPhase {
+  text: string;
+  variant: PhaseVariant;
+  animation?: PhaseAnimation;
+  fontStyle?: PhaseFontStyle;
+}
+
+export const DEFAULT_HERO_PHASES: HeroPhase[] = [
+  { text: "올인원 Pass! 인공지능 언어 마스터 1기", variant: "default",  animation: "blur",     fontStyle: "sans" },
+  { text: "팩트체크AI",                            variant: "impact",   animation: "zoom",     fontStyle: "display" },
+  { text: '"사실"보다 "자극"에 더 쉽게 반응함',    variant: "natural",  animation: "slide-up", fontStyle: "serif" },
+  { text: '"진짜처럼 보이는 거짓"',                 variant: "aurora",   animation: "flip",     fontStyle: "sans" },
+];
+
+export const getHeroPhases = createServerFn({ method: "GET" }).handler(async () => {
+  const { kvGetRaw } = await import("@/lib/analyses/access-control");
+  const raw = await kvGetRaw(KV_HERO_KEY);
+  if (raw && Array.isArray((raw as { phases?: unknown }).phases)) {
+    return (raw as { phases: HeroPhase[] }).phases;
+  }
+  return DEFAULT_HERO_PHASES;
+});
+
+export const saveHeroPhases = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({
+      phases: z.array(z.object({
+        text: z.string().min(1, "내용을 입력하세요.").max(200),
+        variant: z.enum(["default", "impact", "natural", "aurora", "neon", "elegant"]),
+        animation: z.enum(["blur", "slide-up", "zoom", "flip"]).optional(),
+        fontStyle: z.enum(["sans", "serif", "mono", "display"]).optional(),
+      })).min(1).max(20),
+    }).parse(input),
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { kvPutRaw } = await import("@/lib/analyses/access-control");
+    await kvPutRaw(KV_HERO_KEY, { phases: data.phases }, 86400 * 365);
+    return { saved: true };
+  });

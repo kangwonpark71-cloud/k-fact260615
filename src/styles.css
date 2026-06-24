@@ -441,6 +441,80 @@
   to   { background-position: 300% center; }
 }
 
+/* ═══════════════════════════════════════════════════════
+   Hero 메시지 Variant 스타일
+   ═══════════════════════════════════════════════════════ */
+
+/* aurora — 무지개 그라디언트 */
+.hero-aurora-text {
+  background: linear-gradient(135deg,
+    oklch(0.70 0.22 330) 0%,
+    oklch(0.68 0.20 270) 30%,
+    oklch(0.72 0.22 200) 65%,
+    oklch(0.70 0.22 330) 100%
+  );
+  background-size: 300% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: aurora-sweep 4s linear infinite;
+}
+
+/* neon — 시안 글로우 */
+.hero-neon-text {
+  color: oklch(0.75 0.25 180);
+  text-shadow:
+    0 0 14px oklch(0.78 0.28 180 / 0.65),
+    0 0 32px oklch(0.65 0.25 180 / 0.35),
+    0 0 60px oklch(0.55 0.22 180 / 0.15);
+}
+:root[data-theme="dark"] .hero-neon-text,
+:root[data-theme="teen"] .hero-neon-text {
+  color: oklch(0.90 0.28 180);
+  text-shadow:
+    0 0 14px oklch(0.85 0.32 180 / 0.80),
+    0 0 36px oklch(0.72 0.30 180 / 0.55),
+    0 0 72px oklch(0.60 0.26 180 / 0.25);
+}
+
+/* elegant — 골드 쉰 */
+.hero-elegant-text {
+  background: linear-gradient(120deg,
+    oklch(0.62 0.12 75)  0%,
+    oklch(0.82 0.10 80) 40%,
+    oklch(0.68 0.14 85) 60%,
+    oklch(0.82 0.10 80) 80%,
+    oklch(0.62 0.12 75) 100%
+  );
+  background-size: 250% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: elegant-sheen 3.5s linear infinite;
+}
+
+@keyframes aurora-sweep {
+  from { background-position: 0% center; }
+  to   { background-position: 300% center; }
+}
+
+@keyframes elegant-sheen {
+  from { background-position: -100% center; }
+  to   { background-position: 250% center; }
+}
+
+/* Hero 폰트 스타일 */
+.hero-font-serif   { font-family: "Georgia", "Nanum Myeongjo", ui-serif, serif; }
+.hero-font-mono    { font-family: var(--font-mono); letter-spacing: -0.04em; }
+.hero-font-display { font-family: var(--font-sans); font-weight: 900; letter-spacing: -0.055em; }
+
+/* prefers-reduced-motion: aurora, elegant 정지 */
+@media (prefers-reduced-motion: reduce) {
+  .hero-aurora-text,
+  .hero-elegant-text { animation: none !important; background-position: 50% center !important; }
+  .hero-neon-text    { text-shadow: none !important; }
+}
+
 @keyframes draw-rule-fade {
   0%   { transform: scaleX(0);  opacity: 0; }
   30%  { opacity: 1; }

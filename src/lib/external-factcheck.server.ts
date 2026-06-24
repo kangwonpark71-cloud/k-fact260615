@@ -1,13 +1,6 @@
 import { getEnv } from "./runtime-env.server";
 
-export type ExternalFactCheck = {
-  claim_text: string;
-  claimant: string;
-  rating: string;
-  publisher: string;
-  review_url: string;
-  review_date?: string;
-};
+export type { ExternalFactCheck } from "./factcheck.types";
 
 interface GFCClaimReview {
   publisher?: { name?: string };

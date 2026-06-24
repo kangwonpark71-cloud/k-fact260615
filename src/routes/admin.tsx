@@ -6,7 +6,7 @@ import {
   Search, Trash2, ExternalLink, ChevronLeft, ChevronRight,
   RefreshCw, X, Download, Calendar, Clock, UserCheck,
   Mail, Globe, Eye, ChevronDown, ChevronUp,
-  Key, Plus, Power,
+  Key, Plus, Power, MessageSquare, GripVertical, ArrowUp, ArrowDown,
 } from "lucide-react";
 
 import { useAuth } from "@/lib/auth";
@@ -15,6 +15,8 @@ import {
   getAdminUsers, adminGetAnalysisDetail,
   listApiKeys, addApiKey, deleteApiKey, toggleApiKey,
   checkIsAdmin,
+  getHeroPhases, saveHeroPhases, DEFAULT_HERO_PHASES,
+  type HeroPhase, type PhaseVariant, type PhaseAnimation, type PhaseFontStyle,
 } from "@/lib/admin.functions";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -40,7 +42,7 @@ const VERDICT_TEXT: Record<string, string> = {
   "미확인": "text-orange-400",
 };
 
-type Tab = "overview" | "analyses" | "users" | "apikeys";
+type Tab = "overview" | "analyses" | "users" | "apikeys" | "hero";
 
 function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -198,6 +200,7 @@ function AdminPage() {
             ["analyses", "분석 목록"],
             ["users", "사용자 관리"],
             ["apikeys", "API 키"],
+            ["hero", "히어로 메시지"],
           ] as [Tab, string][]).map(([t, label]) => (
             <button
               key={t}
@@ -599,6 +602,11 @@ function AdminPage() {
           </div>
         )}
 
+        {/* ── 히어로 메시지 탭 ── */}
+        {tab === "hero" && (
+          <HeroPhaseEditor />
+        )}
+
       </main>
 
       {/* API 키 추가 모달 */}
@@ -922,6 +930,318 @@ function CollapsibleSection({ title, children }: { title: string; children: Reac
         {open ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
       </button>
       {open && <div className="px-4 pb-4">{children}</div>}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────
+   히어로 메시지 에디터
+───────────────────────────────────────────────── */
+const VARIANT_META: Record<PhaseVariant, { label: string; preview: string; badge: string; dot: string }> = {
+  default: { label: "기본",    preview: "text-foreground/80 font-medium",           badge: "bg-border/40 text-foreground/70 border-border/60",  dot: "bg-foreground/40" },
+  impact:  { label: "강조",    preview: "text-primary font-extrabold",              badge: "bg-primary/10 text-primary border-primary/30",       dot: "bg-primary" },
+  natural: { label: "자연체",  preview: "text-muted-foreground italic font-normal", badge: "bg-muted/20 text-muted-foreground border-border/40", dot: "bg-muted-foreground" },
+  aurora:  { label: "오로라",  preview: "text-purple-400 font-extrabold",           badge: "bg-purple-400/10 text-purple-400 border-purple-400/30", dot: "bg-gradient-to-r from-pink-400 via-purple-400 to-cyan-400" },
+  neon:    { label: "네온",    preview: "text-cyan-400 font-bold",                  badge: "bg-cyan-400/10 text-cyan-400 border-cyan-400/30",    dot: "bg-cyan-400" },
+  elegant: { label: "엘레강트", preview: "text-yellow-500 font-semibold",            badge: "bg-yellow-400/10 text-yellow-500 border-yellow-400/30", dot: "bg-yellow-400" },
+};
+
+const ANIMATION_META: Record<PhaseAnimation, { label: string; icon: string }> = {
+  blur:       { label: "블러",   icon: "✦" },
+  "slide-up": { label: "슬라이드", icon: "↑" },
+  zoom:       { label: "줌인",   icon: "◎" },
+  flip:       { label: "플립",   icon: "↻" },
+};
+
+const FONT_META: Record<PhaseFontStyle, { label: string; cls: string }> = {
+  sans:    { label: "고딕",   cls: "" },
+  serif:   { label: "명조",   cls: "font-serif" },
+  mono:    { label: "모노",   cls: "font-mono" },
+  display: { label: "디스플레이", cls: "font-black tracking-tighter" },
+};
+
+function HeroPhaseEditorPreview({ phases }: { phases: HeroPhase[] }) {
+  const [idx, setIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    if (phases.length <= 1) return;
+    const id = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => { setIdx(p => (p + 1) % phases.length); setVisible(true); }, 350);
+    }, 2200);
+    return () => clearInterval(id);
+  }, [phases.length]);
+
+  const phase = phases[idx] ?? phases[0];
+  if (!phase) return null;
+
+  const vm   = VARIANT_META[phase.variant] ?? VARIANT_META.default;
+  const fm   = FONT_META[phase.fontStyle ?? "sans"] ?? FONT_META.sans;
+
+  const isGradient = ["aurora", "impact"].includes(phase.variant);
+  const isNeon     = phase.variant === "neon";
+  const isElegant  = phase.variant === "elegant";
+
+  const colorStyle: React.CSSProperties = isNeon
+    ? { color: "oklch(0.78 0.26 180)", textShadow: "0 0 10px oklch(0.75 0.28 180 / 0.6)" }
+    : isElegant
+      ? { background: "linear-gradient(120deg, oklch(0.62 0.12 75), oklch(0.82 0.10 80), oklch(0.62 0.12 75))", backgroundClip: "text", WebkitBackgroundClip: "text", color: "transparent" }
+      : isGradient
+        ? { background: phase.variant === "aurora"
+              ? "linear-gradient(135deg, oklch(0.70 0.22 330), oklch(0.68 0.20 270), oklch(0.72 0.22 200))"
+              : "linear-gradient(135deg, var(--primary), var(--accent))",
+            backgroundClip: "text", WebkitBackgroundClip: "text", color: "transparent" }
+        : {};
+
+  const transitionStyle: React.CSSProperties = {
+    opacity:    visible ? 1 : 0,
+    transform:  visible ? "none" : phase.animation === "zoom" ? "scale(0.8)" : phase.animation === "flip" ? "perspective(400px) rotateX(60deg)" : "translateY(10px)",
+    filter:     visible || phase.animation !== "blur" ? "none" : "blur(6px)",
+    transition: "opacity 0.3s ease, transform 0.35s ease, filter 0.3s ease",
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-2 py-4">
+      <span className="text-[10px] text-muted-foreground/50 uppercase tracking-widest font-bold mb-1">미리보기</span>
+      <div className="relative min-h-[2.5rem] flex items-center justify-center">
+        <span
+          className={`text-2xl sm:text-3xl whitespace-nowrap leading-tight select-none ${vm.preview} ${fm.cls}`}
+          style={{ ...transitionStyle, ...colorStyle }}
+        >
+          {phase.text || "(비어 있음)"}
+        </span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        {phases.map((_, pi) => (
+          <button
+            key={pi}
+            onClick={() => { setIdx(pi); setVisible(true); }}
+            className={`w-1.5 h-1.5 rounded-full transition-all ${pi === idx ? "bg-primary scale-125" : "bg-border/60 hover:bg-border"}`}
+          />
+        ))}
+      </div>
+      <div className="flex items-center gap-2 text-[10px] text-muted-foreground/60">
+        <span className={`inline-block w-2 h-2 rounded-full ${vm.dot}`} />
+        <span>{vm.label}</span>
+        <span>·</span>
+        <span>{ANIMATION_META[phase.animation ?? "blur"].icon} {ANIMATION_META[phase.animation ?? "blur"].label}</span>
+        <span>·</span>
+        <span>{FONT_META[phase.fontStyle ?? "sans"].label}</span>
+      </div>
+    </div>
+  );
+}
+
+function HeroPhaseEditor() {
+  const qc = useQueryClient();
+
+  const { data: savedPhases, isLoading } = useQuery({
+    queryKey: ["admin", "hero-phases"],
+    queryFn: () => getHeroPhases(),
+    staleTime: 30_000,
+  });
+
+  const [phases, setPhases] = useState<HeroPhase[]>(DEFAULT_HERO_PHASES);
+  const [dirty, setDirty] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [saveOk, setSaveOk] = useState(false);
+
+  useEffect(() => {
+    if (savedPhases) { setPhases(savedPhases); setDirty(false); }
+  }, [savedPhases]);
+
+  const saveMut = useMutation({
+    mutationFn: (p: HeroPhase[]) => saveHeroPhases({ data: { phases: p } }),
+    onSuccess: () => {
+      setSaveOk(true); setSaveErr(null); setDirty(false);
+      qc.invalidateQueries({ queryKey: ["admin", "hero-phases"] });
+      setTimeout(() => setSaveOk(false), 2500);
+    },
+    onError: (e) => setSaveErr(e instanceof Error ? e.message : "저장 실패"),
+  });
+
+  function update(i: number, patch: Partial<HeroPhase>) {
+    setPhases(prev => prev.map((p, idx) => idx === i ? { ...p, ...patch } : p));
+    setDirty(true); setSaveOk(false);
+  }
+  function addPhase() {
+    if (phases.length >= 20) return;
+    setPhases(prev => [...prev, { text: "", variant: "default", animation: "blur", fontStyle: "sans" }]);
+    setDirty(true);
+  }
+  function removePhase(i: number) {
+    if (phases.length <= 1) return;
+    setPhases(prev => prev.filter((_, idx) => idx !== i)); setDirty(true);
+  }
+  function movePhase(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= phases.length) return;
+    const next = [...phases]; [next[i], next[j]] = [next[j], next[i]];
+    setPhases(next); setDirty(true);
+  }
+  function resetToDefault() {
+    if (!confirm("기본값으로 초기화할까요?")) return;
+    setPhases(DEFAULT_HERO_PHASES); setDirty(true);
+  }
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center py-20"><RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
+  }
+
+  return (
+    <div className="space-y-5 max-w-2xl">
+      {/* 헤더 */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <MessageSquare className="w-4 h-4 text-primary" />
+            <h2 className="text-base font-semibold">히어로 메시지 관리</h2>
+          </div>
+          <p className="text-xs text-muted-foreground">홈 화면 상단에 순서대로 순환 표시됩니다. 최대 20개.</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={resetToDefault} className="px-3 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-surface-2 transition-colors">초기화</button>
+          <button onClick={() => addPhase()} disabled={phases.length >= 20} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-surface-2 border border-border hover:bg-border/50 disabled:opacity-40 transition-colors">
+            <Plus className="w-3.5 h-3.5" />추가
+          </button>
+        </div>
+      </div>
+
+      {/* 메시지 리스트 */}
+      <div className="space-y-3">
+        {phases.map((phase, i) => {
+          const vm = VARIANT_META[phase.variant] ?? VARIANT_META.default;
+          return (
+            <div key={i} className="glass rounded-xl p-3 flex gap-3 items-start">
+              {/* 순서 이동 */}
+              <div className="flex flex-col gap-0.5 pt-0.5 shrink-0">
+                <button onClick={() => movePhase(i, -1)} disabled={i === 0} className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-surface-2 disabled:opacity-25 transition-colors" title="위로"><ArrowUp className="w-3 h-3" /></button>
+                <button onClick={() => movePhase(i, 1)} disabled={i === phases.length - 1} className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-surface-2 disabled:opacity-25 transition-colors" title="아래로"><ArrowDown className="w-3 h-3" /></button>
+              </div>
+              <span className="text-xs text-muted-foreground/50 tabular-nums font-mono pt-2 w-4 shrink-0">{i + 1}</span>
+
+              {/* 편집 영역 */}
+              <div className="flex-1 space-y-2.5 min-w-0">
+                {/* 텍스트 입력 */}
+                <input
+                  type="text"
+                  value={phase.text}
+                  onChange={(e) => update(i, { text: e.target.value })}
+                  maxLength={200}
+                  placeholder="메시지 내용을 입력하세요…"
+                  className="w-full px-3 py-2 rounded-lg bg-background/40 border border-border outline-none focus:border-primary text-sm"
+                />
+
+                {/* Variant 선택 */}
+                <div>
+                  <p className="text-[10px] text-muted-foreground/60 mb-1.5 font-medium uppercase tracking-wide">글색</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(Object.keys(VARIANT_META) as PhaseVariant[]).map((v) => {
+                      const vvm = VARIANT_META[v];
+                      const active = phase.variant === v;
+                      return (
+                        <button
+                          key={v}
+                          onClick={() => update(i, { variant: v })}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                            active ? vvm.badge + " ring-1 ring-primary/40 shadow-sm" : "border-border/40 text-muted-foreground hover:bg-surface-2"
+                          }`}
+                        >
+                          <span className={`inline-block w-1.5 h-1.5 rounded-full ${vvm.dot}`} />
+                          {vvm.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Animation 선택 */}
+                <div>
+                  <p className="text-[10px] text-muted-foreground/60 mb-1.5 font-medium uppercase tracking-wide">전환 효과</p>
+                  <div className="flex gap-1.5">
+                    {(Object.keys(ANIMATION_META) as PhaseAnimation[]).map((a) => {
+                      const am = ANIMATION_META[a];
+                      const active = (phase.animation ?? "blur") === a;
+                      return (
+                        <button
+                          key={a}
+                          onClick={() => update(i, { animation: a })}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                            active ? "bg-primary/10 text-primary border-primary/30 ring-1 ring-primary/40" : "border-border/40 text-muted-foreground hover:bg-surface-2"
+                          }`}
+                        >
+                          <span className="text-[11px]">{am.icon}</span>
+                          {am.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* FontStyle 선택 */}
+                <div>
+                  <p className="text-[10px] text-muted-foreground/60 mb-1.5 font-medium uppercase tracking-wide">폰트</p>
+                  <div className="flex gap-1.5">
+                    {(Object.keys(FONT_META) as PhaseFontStyle[]).map((f) => {
+                      const fm = FONT_META[f];
+                      const active = (phase.fontStyle ?? "sans") === f;
+                      return (
+                        <button
+                          key={f}
+                          onClick={() => update(i, { fontStyle: f })}
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${fm.cls} ${
+                            active ? "bg-accent/10 text-accent border-accent/30 ring-1 ring-accent/40" : "border-border/40 text-muted-foreground hover:bg-surface-2"
+                          }`}
+                        >
+                          {fm.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* 삭제 */}
+              <button
+                onClick={() => removePhase(i)}
+                disabled={phases.length <= 1}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-25 transition-colors shrink-0 mt-0.5"
+                title="삭제"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* 저장 버튼 */}
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          onClick={() => saveMut.mutate(phases)}
+          disabled={saveMut.isPending || !dirty}
+          className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-primary to-accent text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity shadow-[var(--shadow-glow)]"
+        >
+          {saveMut.isPending ? "저장 중…" : "저장하기"}
+        </button>
+        {saveOk && (
+          <span className="text-xs text-emerald-400 font-medium flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+            저장됐습니다. 홈 화면에 바로 반영됩니다.
+          </span>
+        )}
+        {saveErr && <span className="text-xs text-destructive">{saveErr}</span>}
+        {dirty && !saveOk && !saveMut.isPending && (
+          <span className="text-xs text-muted-foreground">저장되지 않은 변경사항이 있습니다.</span>
+        )}
+      </div>
+
+      {/* 인터랙티브 미리보기 */}
+      <div className="glass rounded-xl p-4 border border-border/40">
+        <HeroPhaseEditorPreview phases={phases} />
+        <p className="text-[10px] text-muted-foreground/40 text-center mt-1">실제 화면에서는 {phases.length}개 메시지가 3.2초 간격으로 순환됩니다.</p>
+      </div>
     </div>
   );
 }

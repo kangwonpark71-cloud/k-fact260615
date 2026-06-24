@@ -125,22 +125,33 @@ function quoteSnip(text: string, max = 46): string {
 }
 
 /* ── 근거 부족 전용 동적 인사이트 ── 핵심 단어·문장을 실제 클레임에서 추출 */
-function buildWeakInsights(claims: Claim[]): string[] {
+function buildWeakInsights(claims: Claim[], inputText?: string): string[] {
   const SKIP_W = new Set([
     "이","가","은","는","을","를","의","에","으로","로","도","과","와",
     "보다","그리고","하지만","따라서","그래서","위해","통해","대한",
     "있다","없다","됐다","했다","이다","이며","것","수","한","그","이런","저런",
   ]);
+  const stripParticle = (w: string): string => {
+    if (w.length < 3) return w;
+    const stripped = w.replace(/(은|는|이|가|을|를|의|에|로|도|과|와)$/, "");
+    return stripped.length >= 2 ? stripped : w;
+  };
   const kw = (text: string) =>
     text.replace(/[。.!?,;:""''「」『』【】\[\]()]/g, " ")
-      .split(/\s+/).map(w => w.trim())
+      .split(/\s+/).map(w => stripParticle(w.trim()))
       .filter(w => w.length >= 2 && !SKIP_W.has(w))
       .slice(0, 6);
 
   const real    = claims.filter(c => c.claim.length >= 10 && c.claim !== "본문 내 주요 주장");
   const unknowns = claims.flatMap(c => c.unknowns ?? []).filter(u => u.length >= 5 && u.length <= 52);
   const reasons  = claims.map(c => extractFirstSentence(c.reasoning, 12, 60)).filter((s): s is string => !!s);
-  const uniqueKw = [...new Set(real.flatMap(c => kw(c.claim)))].slice(0, 6);
+  // Phase 1 플레이스홀더만 있을 경우 원문 텍스트에서 키워드 추출
+  const uniqueKw = (() => {
+    const fromClaims = [...new Set(real.flatMap(c => kw(c.claim)))].slice(0, 6);
+    if (fromClaims.length > 0) return fromClaims;
+    if (inputText) return [...new Set(kw(inputText))].slice(0, 6);
+    return [];
+  })();
 
   const out: string[] = [];
 
@@ -180,7 +191,7 @@ function buildWeakInsights(claims: Claim[]): string[] {
   return out;
 }
 
-function generateAiThoughts(claims: Claim[], verdict: string, confidence: number): string[] {
+function generateAiThoughts(claims: Claim[], verdict: string, confidence: number, inputText?: string): string[] {
   const thoughts: string[] = [];
   const total   = claims.length;
   const sorted  = [...claims].sort((a, b) => b.confidence - a.confidence);
@@ -286,9 +297,8 @@ function generateAiThoughts(claims: Claim[], verdict: string, confidence: number
       thoughts.push(trim68(`💡 ${reasonSnip}`));
     } else if (realClaims.length > 0) {
       thoughts.push(trim68(`${quoteSnip(snip(realClaims[0].claim, 24), 26)} — 공신력 있는 1차 출처 확인 권장`));
-    } else {
-      thoughts.push("공개 자료만으로 판단하기 어려운 내용이에요 — 1차 출처 직접 확인 권장");
     }
+    // else: Phase 1 플레이스홀더만 있을 때는 buildWeakInsights(inputText)가 동적 메시지 처리
   }
 
   /* ── ⑥ 주장 유형 구성 분석 ── */
@@ -319,7 +329,7 @@ function generateAiThoughts(claims: Claim[], verdict: string, confidence: number
 
   /* ── 최소 3개 보장 — "근거 부족"은 실제 클레임 키워드 기반 동적 인사이트 사용 ── */
   const fallback = verdict === "근거 부족"
-    ? buildWeakInsights(claims)
+    ? buildWeakInsights(claims, inputText)
     : (THOUGHT_FALLBACK[verdict] ?? [
         "공개 자료만으로 판단하기 어려운 내용이에요 — 1차 출처 직접 확인 권장",
         "비공개 정보나 내부 데이터가 관련됐을 수 있어요",
@@ -351,12 +361,26 @@ function generateAiThoughts(claims: Claim[], verdict: string, confidence: number
 
 type ThoughtPhase = "intro" | "typing" | "hold" | "out";
 
-function AiThought({ verdict, confidence, claims }: { verdict: string; confidence: number; claims: Claim[] }) {
-  const thoughts = generateAiThoughts(claims, verdict, confidence);
+function AiThought({ verdict, confidence, claims, inputText }: {
+  verdict: string; confidence: number; claims: Claim[]; inputText?: string;
+}) {
+  const thoughts = generateAiThoughts(claims, verdict, confidence, inputText);
   const [idx, setIdx] = useState(0);
   const [charCount, setCharCount] = useState(0);
-  const [phase, setPhase] = useState<ThoughtPhase>("intro");
+  const [phase, setPhase] = useState<ThoughtPhase>("typing");
   const current = thoughts[idx % thoughts.length];
+
+  /* Phase 2 완료 후 thoughts가 바뀌면 처음부터 재시작 */
+  const thoughtsKey = thoughts.join("||");
+  const prevKeyRef = useRef(thoughtsKey);
+  useEffect(() => {
+    if (thoughtsKey !== prevKeyRef.current) {
+      prevKeyRef.current = thoughtsKey;
+      setIdx(0);
+      setCharCount(0);
+      setPhase("typing");
+    }
+  }, [thoughtsKey]);
 
   /* 문자 속도: 근거 문장은 조금 빠르게 */
   const charMs = current.length > 40 ? 24 : 32;
@@ -538,6 +562,7 @@ function AnalysisPage() {
   useEffect(() => { setSessionId(getSessionId()); }, []);
   const [phase2Result, setPhase2Result] = useState<Record<string, unknown> | null>(null);
   const [phase2Loading, setPhase2Loading] = useState(false);
+  const [needsPhase2Poll, setNeedsPhase2Poll] = useState(false);
 
   /* 쉽게 보기 상태 */
   const [readingMode, setReadingMode] = useState<"detailed" | "simple">("detailed");
@@ -570,13 +595,19 @@ function AnalysisPage() {
     queryFn: async () => {
       const result = await fetchAnalysis({ data: { id, sessionId } });
       setPollCount(c => c + 1);
+      const s = (result as { status?: string } | undefined)?.status;
+      if (s === "completed" || s === "phase2_failed") {
+        setPhase2Result(result as Record<string, unknown>);
+        setNeedsPhase2Poll(false);
+      }
       return result;
     },
-    // preloaded 결果가 있으면 서버 조회 불필요
-    enabled: !!sessionId && !preloadedResult,
+    enabled: !!sessionId && (!preloadedResult || needsPhase2Poll),
     refetchInterval: (q) => {
       const status = (q.state.data as { status?: string } | undefined)?.status;
-      return (status === "pending" && pollCount < 20) ? 2000 : false;
+      if (status === "pending" && pollCount < 20) return 2000;
+      if (needsPhase2Poll && status === "phase1_complete" && pollCount < 60) return 3000;
+      return false;
     },
   });
 
@@ -595,7 +626,12 @@ function AnalysisPage() {
     const inputText = (dataRow.input_text as string | undefined) ?? "";
     const srcUrl = (dataRow.source_url as string | null | undefined) ?? undefined;
     runPhase2({ data: { id, sessionId, text: inputText, sourceUrl: srcUrl } })
-      .then(r => setPhase2Result(r as Record<string, unknown>))
+      .then(r => {
+        const result = r as Record<string, unknown>;
+        setPhase2Result(result);
+        // Cloudflare Workers waitUntil: phase1_complete 즉시 응답 → 폴링으로 완료 감지
+        if (result?.status === "phase1_complete") setNeedsPhase2Poll(true);
+      })
       .catch(() => {})
       .finally(() => setPhase2Loading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -757,7 +793,12 @@ function AnalysisPage() {
                   <VerdictBadge verdict={overallVerdict} size="md" />
                   <span className="text-sm text-muted-foreground">신뢰도 <strong className="text-foreground">{overallConfidence}%</strong></span>
                 </div>
-                <AiThought verdict={overallVerdict} confidence={overallConfidence} claims={claims} />
+                <AiThought
+                  verdict={overallVerdict}
+                  confidence={overallConfidence}
+                  claims={claims}
+                  inputText={(dataRow.input_text as string | undefined) ?? ""}
+                />
               </div>
               <div className="shrink-0">
                 <VerdictGauge verdict={overallVerdict} confidence={overallConfidence} size="lg" />
@@ -767,9 +808,9 @@ function AnalysisPage() {
             {/* 요약 */}
             {cleanSummary ? (
               <p className="text-sm text-foreground leading-relaxed border-t border-border/30 pt-4">{cleanSummary}</p>
-            ) : (
+            ) : status !== "completed" ? (
               <p className="text-sm text-muted-foreground leading-relaxed border-t border-border/30 pt-4 italic">심층 분석 결과 생성 중…</p>
-            )}
+            ) : null}
 
             {/* 원문 링크 + 공유 */}
             <div className="flex items-center gap-4 mt-4 pt-3 border-t border-border/30">

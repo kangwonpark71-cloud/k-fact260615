@@ -365,7 +365,7 @@ export function extractEvidenceUrls(evidenceMap: Record<number, SearchEvidence[]
 //  CLASSIFY_PROMPT + AUTHORITATIVE_SOURCES 구현
 // ══════════════════════════════════════════════════
 
-export type ClaimType = "EMPIRICAL" | "DISPUTED_TERRITORY" | "OPINION" | "DOMESTIC_LAW_FACT";
+export type { ClaimType } from "./analyses/types";
 
 export const AUTHORITATIVE_DOMAINS: Record<string, string[]> = {
   territorial: [

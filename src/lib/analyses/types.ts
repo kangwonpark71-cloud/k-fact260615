@@ -16,6 +16,7 @@ export const ClaimTypeEnum = z.enum([
   "DISPUTED_TERRITORY",
   "OPINION",
   "DOMESTIC_LAW_FACT",
+  "ANACHRONISM",
 ]).default("EMPIRICAL");
 
 export type ClaimType = z.infer<typeof ClaimTypeEnum>;
@@ -127,10 +128,48 @@ export type NaverFactCheckItem = {
   publisher?: string;
 };
 
+/* ── Daum 팩트체크 참고 기사 ── */
+
+export type DaumFactCheckItem = {
+  title: string;
+  link: string;
+  contents: string;
+  datetime: string;
+  publisher: string;
+};
+
+/* ── 가짜뉴스 다신호 분석 상세 ── */
+
+export type FakeDetail = {
+  style_score: number;       // 정규식 기반 문체 점수 0-100
+  pattern_score: number;     // 한국형 가짜뉴스 패턴 점수 0-100
+  citation_score: number;    // 출처 미인용 점수 0-100 (높을수록 출처 없음)
+  urgency_score: number;     // 허위 긴박감 점수 0-100
+  cross_ref_count: number;   // Naver + Daum 교차확인 기사 수
+  combined: number;          // 종합 가짜뉴스 점수 0-100
+  signals: string[];         // 감지된 신호 목록
+};
+
+/* ── 최근 거짓뉴스 매칭 사례 ── */
+
+export type MatchedFakeCase = {
+  id: string;
+  category: string;
+  title: string;
+  period: string;
+  verdict: string;
+  briefing: string;
+  debunked_by: string;
+  confidence: number;
+};
+
 export type QuickCheckResult = z.infer<typeof QuickCheckSchema> & {
   fake_probability: number;
   style_signals: string[];
   naver_factchecks?: NaverFactCheckItem[];
+  daum_factchecks?: DaumFactCheckItem[];
+  fake_detail?: FakeDetail;
+  matched_fake_cases?: MatchedFakeCase[];
 };
 
 /* ── Simplified 스키마 ── */

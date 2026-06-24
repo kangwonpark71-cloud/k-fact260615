@@ -2,7 +2,8 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 
-export type SupportedProvider = "gemini" | "openai" | "anthropic";
+import type { SupportedProvider } from "./analyses/types";
+export type { SupportedProvider };
 
 const MODELS: Record<SupportedProvider, string> = {
   gemini: "gemini-2.5-flash",
@@ -20,4 +21,3 @@ export function createModelInstance(provider: SupportedProvider, apiKey: string)
       return createGoogleGenerativeAI({ apiKey })(MODELS.gemini);
   }
 }
-

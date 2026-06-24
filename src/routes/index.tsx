@@ -10,6 +10,7 @@ import {
 
 import { analyzeContent, quickAnalyzeContent, type QuickCheckResult } from "@/lib/analyses.functions";
 import { fetchYouTubeInfo, isYouTubeUrl, type YouTubeInfo } from "@/lib/youtube.functions";
+import { getHeroPhases, DEFAULT_HERO_PHASES, type HeroPhase, type PhaseAnimation } from "@/lib/admin.functions";
 import { getSessionId } from "@/lib/session";
 import { SiteHeader, BottomNav } from "@/components/SiteHeader";
 import { VoiceInput } from "@/components/VoiceInput";
@@ -25,6 +26,14 @@ export const Route = createFileRoute("/")({
       { property: "og:description", content: "주장 추출, 근거 정합성 평가, 반박 가능성까지 한 화면에서." },
     ],
   }),
+  loader: async () => {
+    try {
+      const heroPhases = await getHeroPhases();
+      return { heroPhases };
+    } catch {
+      return { heroPhases: DEFAULT_HERO_PHASES };
+    }
+  },
   component: Home,
 });
 
@@ -39,11 +48,10 @@ const VERDICT_META: Record<string, { icon: typeof CheckCircle2; color: string; b
 /* ═══════════════════════════════════════════════════════
    Hero 애니메이션 상수
    ═══════════════════════════════════════════════════════ */
-const HERO_LINE1 = "판정하지 않습니다.";
 const HERO_LINE2 = "근거를 구조화합니다.";
-const CHAR_MS    = 42;   // 글자 당 딜레이 ms
-const L1_START   = 160;  // 첫 줄 시작
-const L2_START   = L1_START + HERO_LINE1.length * CHAR_MS + 180;
+const CHAR_MS    = 42;
+const L1_START   = 160;  // 슬라이더 등장 시작
+const L2_START   = L1_START + 800;  // 슬라이더 등장 후 두 번째 줄 시작
 const DESC_START = L2_START + HERO_LINE2.length * CHAR_MS + 230;
 
 
@@ -70,9 +78,104 @@ function RevealChars({
 }
 
 /* ═══════════════════════════════════════════════════════
+   Hero 메시지 슬라이더 — h1 첫 줄 크기로 표시
+   ═══════════════════════════════════════════════════════ */
+
+const PHASE_VARIANT_CLASS: Record<string, string> = {
+  default:  "text-foreground/90 font-bold",
+  impact:   "bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent font-extrabold",
+  natural:  "text-muted-foreground italic font-normal",
+  aurora:   "hero-aurora-text font-extrabold",
+  neon:     "hero-neon-text font-bold",
+  elegant:  "hero-elegant-text font-semibold",
+};
+
+const PHASE_FONT_CLASS: Record<string, string> = {
+  sans:    "",
+  serif:   "hero-font-serif",
+  mono:    "hero-font-mono",
+  display: "hero-font-display",
+};
+
+type AnimState = { out: React.CSSProperties; in: React.CSSProperties; transition: string };
+const PHASE_ANIM: Record<PhaseAnimation, AnimState> = {
+  blur: {
+    out: { opacity: 0, filter: "blur(8px)", transform: "translateY(10px)" },
+    in:  { opacity: 1, filter: "blur(0)",   transform: "translateY(0)" },
+    transition: "opacity 0.32s ease, filter 0.32s ease, transform 0.32s ease",
+  },
+  "slide-up": {
+    out: { opacity: 0, transform: "translateY(22px)" },
+    in:  { opacity: 1, transform: "translateY(0)" },
+    transition: "opacity 0.30s ease, transform 0.40s cubic-bezier(0.22,1,0.36,1)",
+  },
+  zoom: {
+    out: { opacity: 0, transform: "scale(0.72)" },
+    in:  { opacity: 1, transform: "scale(1)" },
+    transition: "opacity 0.28s ease, transform 0.40s cubic-bezier(0.34,1.56,0.64,1)",
+  },
+  flip: {
+    out: { opacity: 0, transform: "perspective(600px) rotateX(80deg)" },
+    in:  { opacity: 1, transform: "perspective(600px) rotateX(0deg)" },
+    transition: "opacity 0.28s ease, transform 0.42s cubic-bezier(0.22,1,0.36,1)",
+  },
+};
+
+function HeroPhaseSlider({ phases }: { phases: HeroPhase[] }) {
+  const [idx, setIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    if (phases.length <= 1) return;
+    const id = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIdx(p => (p + 1) % phases.length);
+        setVisible(true);
+      }, 350);
+    }, 3200);
+    return () => clearInterval(id);
+  }, [phases.length]);
+
+  const phase = phases[idx] ?? phases[0];
+  const variantClass = PHASE_VARIANT_CLASS[phase.variant] ?? PHASE_VARIANT_CLASS.default;
+  const fontClass    = PHASE_FONT_CLASS[phase.fontStyle ?? "sans"] ?? "";
+  const anim         = PHASE_ANIM[phase.animation ?? "blur"];
+
+  const len = phase.text.length;
+  const sizeClass =
+    len <= 8  ? "text-3xl sm:text-5xl md:text-6xl" :
+    len <= 13 ? "text-2xl sm:text-4xl md:text-5xl" :
+    len <= 20 ? "text-xl  sm:text-3xl md:text-4xl" :
+                "text-lg  sm:text-2xl md:text-3xl";
+
+  return (
+    <div
+      className="flex justify-center items-baseline gap-2 select-none"
+      style={{ opacity: 0, animation: `char-blur-in 0.48s cubic-bezier(0.22, 1, 0.36, 1) ${L1_START}ms both` }}
+    >
+      <span
+        className={`whitespace-nowrap leading-[1.12] ${sizeClass} ${variantClass} ${fontClass}`}
+        style={{
+          ...(visible ? anim.in : anim.out),
+          transition: anim.transition,
+        }}
+      >
+        {phase.text}
+      </span>
+      {phases.length > 1 && (
+        <span className="text-[11px] text-muted-foreground/35 tabular-nums font-mono shrink-0 pb-1">
+          {idx + 1}/{phases.length}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
    Hero 섹션
    ═══════════════════════════════════════════════════════ */
-function HeroSection() {
+function HeroSection({ phases }: { phases: HeroPhase[] }) {
   return (
     <section className="text-center mb-5 sm:mb-7 py-2 sm:py-4">
       {/* 배지 */}
@@ -84,13 +187,11 @@ function HeroSection() {
         <span className="text-xs font-medium text-primary">AI 사실검증 보조</span>
       </div>
 
-      {/* 메인 헤드라인 */}
-      <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold leading-[1.12] mb-0 select-none">
-        <RevealChars
-          text={HERO_LINE1}
-          startMs={L1_START}
-          className="block"
-        />
+      {/* 히어로 메시지 슬라이더 (첫 번째 줄) */}
+      <HeroPhaseSlider phases={phases} />
+
+      {/* 두 번째 헤드라인 */}
+      <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold leading-[1.12] mt-0 mb-0 select-none">
         <RevealChars
           text={HERO_LINE2}
           startMs={L2_START}
@@ -129,6 +230,7 @@ function sanitizeServerError(e: unknown): string {
 }
 
 function Home() {
+  const { heroPhases } = Route.useLoaderData();
   const navigate = useNavigate();
   const analyze = useServerFn(analyzeContent);
   const quickCheck = useServerFn(quickAnalyzeContent);
@@ -302,7 +404,7 @@ function Home() {
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 pb-36 sm:pb-32">
         {/* Hero */}
-        <HeroSection />
+        <HeroSection phases={heroPhases} />
 
         {/* 입력 폼 영역 (중앙 정렬) */}
         <div className="relative">
@@ -337,6 +439,7 @@ function Home() {
             <div className="flex-1" />
             <Link
               to="/live"
+              search={{ room: undefined, viewer: false }}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-surface-2 border border-border/40 hover:border-border transition-all whitespace-nowrap"
             >
               <Users className="w-3.5 h-3.5" />

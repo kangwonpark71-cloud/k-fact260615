@@ -133,11 +133,11 @@ export async function kvGet(id: string): Promise<Record<string, unknown> | null>
 
 export async function kvPut(id: string, data: Record<string, unknown>): Promise<void> {
   const kv = getAnalysisKV();
-  if (!kv) return;
+  if (!kv) { console.warn("[kvPut] KV binding not found"); return; }
   try {
     await kv.put(`analysis:${id}`, JSON.stringify(data), { expirationTtl: 3600 });
-  } catch {
-    // KV 저장 실패는 무시 (DB 폴백 있음)
+  } catch (e) {
+    console.error("[kvPut ERROR]", e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -157,8 +157,8 @@ export async function kvPutRaw(key: string, data: Record<string, unknown>, ttlSe
   if (!kv) return;
   try {
     await kv.put(key, JSON.stringify(data), { expirationTtl: ttlSec });
-  } catch {
-    // 무시
+  } catch (e) {
+    console.error("[kvPutRaw ERROR]", e instanceof Error ? e.message : String(e));
   }
 }
 
