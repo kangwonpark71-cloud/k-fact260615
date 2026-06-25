@@ -2182,17 +2182,25 @@ export const analyzeImageDeepfake = createServerFn({ method: "POST" })
     // URL 유효성 검증 (SSRF 방지)
     validatePublicUrl(data.imageUrl);
 
-    // 이미지 메타데이터 확인
+    // 이미지 메타데이터 확인 — redirect: 'manual'로 SSRF 리다이렉트 우회 차단
     let contentType = "image/unknown";
     let sizeBytes = 0;
     try {
       const headRes = await fetch(data.imageUrl, {
         method: "HEAD",
+        redirect: "manual",       // 3xx 응답을 자동으로 따라가지 않음
         signal: AbortSignal.timeout(5000),
       });
+      if (headRes.status >= 300 && headRes.status < 400) {
+        throw new Error("리다이렉트가 포함된 URL은 허용되지 않습니다.");
+      }
       contentType = headRes.headers.get("content-type") ?? "image/unknown";
       sizeBytes = parseInt(headRes.headers.get("content-length") ?? "0", 10);
-    } catch { /* HEAD 실패 시 GET으로 시도 */ }
+    } catch (e) {
+      // SSRF 차단 오류는 그대로 전파
+      if (e instanceof Error && e.message.includes("리다이렉트")) throw e;
+      /* 그 외 HEAD 실패는 무시하고 AI 분석으로 진행 */
+    }
 
     if (!contentType.startsWith("image/") && !contentType.startsWith("application/octet")) {
       throw new Error("이미지 URL이 아닙니다 (Content-Type 불일치).");
