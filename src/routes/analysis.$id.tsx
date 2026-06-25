@@ -792,6 +792,15 @@ function AnalysisPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, id, status]);
 
+  // 확산 경보 — 조건부 return 앞에서 호출 (Rules of Hooks: 훅은 항상 같은 순서로 호출돼야 함)
+  const _spreadInputText = (dataRow.input_text as string | undefined) ?? "";
+  const { data: spreadAlert } = useQuery({
+    queryKey: ["spread-alert", id],
+    queryFn:  () => getSpreadFn({ data: { text: _spreadInputText } }),
+    enabled:  !!_spreadInputText && _spreadInputText.length >= 20,
+    staleTime: 5 * 60 * 1000,
+  });
+
   // pending/failed/timeout → 메시지창(배너) 표시
   if (isPendingStatus || isFailed || isTimedOut) {
     const isErr = isFailed || isTimedOut;
@@ -891,14 +900,6 @@ function AnalysisPage() {
   // Phase 0 클레임 분해 결과
   const decomposedClaims = (pipelineMeta as Record<string, unknown> | null)
     ?.decomposed_claims as import("@/lib/pipeline.server").Phase0Result | undefined;
-
-  // 확산 경보 — 동일 텍스트 반복 제출 감지
-  const { data: spreadAlert } = useQuery({
-    queryKey: ["spread-alert", id],
-    queryFn:  () => getSpreadFn({ data: { text: inputText } }),
-    enabled:  !!inputText && inputText.length >= 20,
-    staleTime: 5 * 60 * 1000,
-  });
 
   // 영토·주권 분쟁 주장 여부 — 고지 배너 표시 여부 결정
   const hasDisputedTerritory = claims.some((c) => c.claim_type === "DISPUTED_TERRITORY");
