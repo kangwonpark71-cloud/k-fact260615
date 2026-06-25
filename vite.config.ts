@@ -21,5 +21,33 @@ export default defineConfig({
       ],
       external: ["youtube-transcript"],
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: (id) => {
+            // AI SDK 관련 무거운 모듈 분리
+            if (id.includes("node_modules/@ai-sdk") || id.includes("node_modules/ai")) {
+              return "ai-sdk";
+            }
+            // Supabase 분리
+            if (id.includes("node_modules/@supabase")) {
+              return "supabase";
+            }
+            // Lucide 아이콘 분리
+            if (id.includes("node_modules/lucide-react")) {
+              return "lucide";
+            }
+            // TanStack 코어 분리
+            if (id.includes("node_modules/@tanstack")) {
+              return "tanstack";
+            }
+            // Zod 분리
+            if (id.includes("node_modules/zod")) {
+              return "zod";
+            }
+          },
+        },
+      },
+    },
   },
 });

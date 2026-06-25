@@ -1036,6 +1036,29 @@ function AnalysisPage() {
               </div>
             </div>
 
+            {/* 신뢰도 게이지 바 */}
+            <div className="mt-3 mb-1">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[11px] text-muted-foreground font-medium">전체 신뢰도</span>
+                <span className="text-[11px] font-bold text-foreground">{overallConfidence}%</span>
+              </div>
+              <div className="confidence-gauge">
+                <div
+                  className="confidence-gauge-fill"
+                  style={{
+                    "--gauge-w": `${overallConfidence}%`,
+                    background: overallVerdict === "사실"
+                      ? "var(--color-verdict-true)"
+                      : overallVerdict === "부분 사실"
+                        ? "var(--color-verdict-partial)"
+                        : overallVerdict === "반대 근거 우세"
+                          ? "var(--color-verdict-false)"
+                          : "var(--color-verdict-weak)",
+                  } as React.CSSProperties}
+                />
+              </div>
+            </div>
+
             {/* 요약 */}
             {cleanSummary ? (
               <p className="text-sm text-foreground leading-relaxed border-t border-border/30 pt-4">{cleanSummary}</p>
@@ -2507,7 +2530,8 @@ function ClaimCard({
 
   return (
     <article
-      className={`border-l-[3px] ${meta.border} border border-border/50 bg-surface shadow-[var(--shadow-card)]`}
+      className={`claim-card claim-card-enter border-l-[3px] ${meta.border} border border-border/50 bg-surface shadow-[var(--shadow-card)]`}
+      style={{ animationDelay: `${(index - 1) * 70}ms` }}
     >
       {/* ── 쉬운 모드: 아날로지 비유 배너 ── */}
       {isSimple && simpleData?.analogy && (
@@ -2909,19 +2933,29 @@ function ConfidenceBar({ value, compact }: { value: number; compact?: boolean })
 function BookmarkButton({ id }: { readonly id: string }) {
   const { isBookmarked, toggle } = useBookmarks();
   const active = isBookmarked(id);
+  const [flash, setFlash] = useState(false);
+
+  const handleToggle = () => {
+    toggle(id);
+    setFlash(true);
+    setTimeout(() => setFlash(false), 600);
+  };
+
   return (
     <button
       type="button"
-      onClick={() => toggle(id)}
-      className={
-        "inline-flex items-center gap-1.5 text-sm transition-colors " +
-        (active
-          ? "text-yellow-400 hover:text-yellow-300"
-          : "text-muted-foreground hover:text-yellow-400")
-      }
+      onClick={handleToggle}
+      title={active ? "즐겨찾기 해제" : "즐겨찾기 추가"}
+      className={[
+        "inline-flex items-center gap-1.5 text-sm font-medium px-2.5 py-1 rounded-lg border transition-all duration-200",
+        active
+          ? "text-yellow-500 border-yellow-400/40 bg-yellow-400/10 hover:bg-yellow-400/15"
+          : "text-muted-foreground border-border/50 bg-transparent hover:text-yellow-400 hover:border-yellow-400/30 hover:bg-yellow-400/8",
+        flash ? "scale-110" : "scale-100",
+      ].join(" ")}
     >
-      <Star className={"w-3.5 h-3.5 " + (active ? "fill-current" : "")} />
-      즐겨찾기
+      <Star className={"w-3.5 h-3.5 transition-transform duration-200 " + (active ? "fill-current" : "") + (flash ? " scale-125" : "")} />
+      {active ? "저장됨" : "저장"}
     </button>
   );
 }
@@ -3048,7 +3082,12 @@ function ShareButton({ id, sessionId }: { readonly id: string; readonly sessionI
     <button
       type="button"
       onClick={handleShare}
-      className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors text-sm"
+      className={[
+        "inline-flex items-center gap-1.5 text-sm font-medium px-2.5 py-1 rounded-lg border transition-all duration-200",
+        copied
+          ? "text-emerald-500 border-emerald-400/40 bg-emerald-400/10"
+          : "text-muted-foreground border-border/50 hover:text-primary hover:border-primary/30 hover:bg-primary/8",
+      ].join(" ")}
     >
       {copied ? (
         <Check className="w-3.5 h-3.5 text-emerald-400" />

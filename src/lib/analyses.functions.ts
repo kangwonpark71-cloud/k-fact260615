@@ -1762,8 +1762,10 @@ export const quickAnalyzeContent = createServerFn({ method: "POST" })
     if (matchedFakeCases.length > 0)
       fakeSignals.push(`알려진 거짓뉴스 사례 ${matchedFakeCases.length}건 매칭 — ${matchedFakeCases.map(c => c.title).join(" / ")}`);
 
-    // 최근 거짓뉴스 매칭 시 패턴 점수 보정
-    const recentCaseBonus = Math.min(30, matchedFakeCases.length * 15);
+    // 최근 거짓뉴스 매칭 시 패턴 점수 보정 (verdict='거짓' 사례는 가중치 더 높임)
+    const falseCases = matchedFakeCases.filter(c => c.verdict === "거짓" || c.verdict === "대부분 거짓");
+    const contextCases = matchedFakeCases.filter(c => c.verdict === "맥락 왜곡" || c.verdict === "절반의 사실");
+    const recentCaseBonus = Math.min(40, falseCases.length * 18 + contextCases.length * 8);
 
     // ── 대화 맥락 블록 ──
     const contextBlock = (data.context && data.context.length > 0)
@@ -1782,15 +1784,19 @@ export const quickAnalyzeContent = createServerFn({ method: "POST" })
       recentFakeBlock ? "최근 거짓뉴스 사례 DB" : "",
     ].filter(Boolean).join("·");
 
+    const recentCaseInstruction = matchedFakeCases.length > 0
+      ? `\n• ⚠️ 위 알려진 거짓뉴스 사례 DB와 일치하는 주장은 '반대 근거 우세'(confidence 80+)로 단호히 판정하고, debunked_by 출처를 근거로 명시하세요`
+        + (falseCases.length > 0 ? `\n• 특히 verdict='거짓'인 ${falseCases.length}건은 허위 확정 사례 — 최우선 적용하세요` : "")
+      : "";
+
     const quickPrompt = `${styleBlock}${naverBlock}${daumBlock}${publicDataBlock}${recentFakeBlock}${contextBlock}
 
-[Stage 2+3 — 주장 추출 및 팩트체크]
-위 Stage 1 문체 분석${sourcesDesc ? "·" + sourcesDesc : ""}를 참고하여 아래 텍스트에서 검증 가능한 사실 주장을 추출하고 팩트체크하세요.
-• 각 주장은 subject(주어)-predicate(서술어)-object(목적어) SPO 구조로 분해하세요
-• bias_type: 전체 편향 유형 판단
-• Stage 1 가짜 가능성 지수 ${styleAnalysis.fakeProbability}% / 한국형 패턴 ${patternScore}% — 높을수록 주장에 비판적 검토 적용
-• 학습 지식으로 판단 가능한 것은 반드시 사실/반대근거우세로 판정
-• confidence ≥ 35이면 근거 부족 사용 절대 금지 — 사실/부분사실/반대근거우세 중 하나로 단호히 판정${naverBlock ? "\n• 네이버 팩트체크 기사 내용을 판정 근거로 적극 활용하세요" : ""}${daumBlock ? "\n• 다음뉴스 팩트체크 기사 내용을 판정 근거로 적극 활용하세요" : ""}${publicDataBlock ? "\n• 공공 통계 수치가 있으면 반드시 그것을 근거로 통계 주장 판정에 활용하세요" : ""}${recentFakeBlock ? "\n• ⚠️ 알려진 거짓뉴스 사례와 일치하는 주장은 반드시 '반대 근거 우세'로 판정하고, 해당 사례의 debunked_by 출처를 근거로 명시하세요" : ""}
+[Stage 2+3 — 주장 추출 및 팩트체크 | 신뢰도 임계값: 가짜지수 ${styleAnalysis.fakeProbability}% / 패턴점수 ${patternScore}%]
+위 분석 자료${sourcesDesc ? "(" + sourcesDesc + ")" : ""}를 참고하여 텍스트에서 검증 가능한 사실 주장 최대 5개를 추출하고 팩트체크하세요.
+• subject(주어)·predicate(서술어)·object(목적어) SPO 구조로 분해
+• bias_type: 정치적편향/사실기반/감정호소/통계오용/근거없음 중 하나
+• 학습 데이터로 판단 가능한 역사·법률·통계 주장은 반드시 단정 판정(사실 또는 반대근거우세)
+• confidence ≥ 35이면 '근거 부족' 금지 — 사실/부분사실/반대근거우세 중 선택${naverBlock ? "\n• 네이버 팩트체크 기사를 판정 핵심 근거로 활용" : ""}${daumBlock ? "\n• 다음뉴스 팩트체크 기사를 판정 핵심 근거로 활용" : ""}${publicDataBlock ? "\n• 공공 통계 수치를 통계 주장 판정의 기준으로 사용" : ""}${recentCaseInstruction}
 
 """
 ${data.text.slice(0, 3000)}
