@@ -272,21 +272,36 @@ export async function getRecentAnalyses(
 
 /* ── URL 본문 fetch ── */
 
+// 리다이렉트를 수동으로 추적하며 매 hop마다 validatePublicUrl 검증 (SSRF 방지)
+async function fetchFollowSafe(
+  url: string,
+  signal: AbortSignal,
+  maxHops = 5,
+): Promise<Response> {
+  let current = url;
+  for (let hop = 0; hop <= maxHops; hop++) {
+    validatePublicUrl(current); // 매 hop 검증 — 내부 주소로의 우회 차단
+    const res = await fetch(current, {
+      headers: { "User-Agent": "Mozilla/5.0 FactGuardBot/1.0" },
+      redirect: "manual",
+      signal,
+    });
+    if (res.status < 300 || res.status >= 400) return res;
+    const location = res.headers.get("location");
+    if (!location) return res;
+    // 상대 경로 → 절대 URL 변환
+    current = new URL(location, current).href;
+  }
+  throw new Error("리다이렉트 한도 초과");
+}
+
 export async function fetchUrlBody(sourceUrl: string, fallback: string): Promise<string> {
   if (!sourceUrl || fallback.length >= 200) return fallback;
   try {
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 8000);
-    const res = await fetch(sourceUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 FactGuardBot/1.0" },
-      redirect: "follow",   // 뉴스 사이트는 대부분 리다이렉트 사용
-      signal: ac.signal,
-    });
+    const res = await fetchFollowSafe(sourceUrl, ac.signal);
     clearTimeout(timer);
-    // 리다이렉트 후 최종 도착 URL도 공개 주소인지 재검증 (SSRF 방지)
-    if (res.url && res.url !== sourceUrl) {
-      try { validatePublicUrl(res.url); } catch { return fallback; }
-    }
     if (!res.ok) return fallback;
     const html = await res.text();
     const stripped = html
