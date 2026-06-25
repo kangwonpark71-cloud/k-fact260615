@@ -276,13 +276,17 @@ export async function fetchUrlBody(sourceUrl: string, fallback: string): Promise
   if (!sourceUrl || fallback.length >= 200) return fallback;
   try {
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 5000);
+    const timer = setTimeout(() => ac.abort(), 8000);
     const res = await fetch(sourceUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 FactGuardBot" },
-      redirect: "error",
+      headers: { "User-Agent": "Mozilla/5.0 FactGuardBot/1.0" },
+      redirect: "follow",   // 뉴스 사이트는 대부분 리다이렉트 사용
       signal: ac.signal,
     });
     clearTimeout(timer);
+    // 리다이렉트 후 최종 도착 URL도 공개 주소인지 재검증 (SSRF 방지)
+    if (res.url && res.url !== sourceUrl) {
+      try { validatePublicUrl(res.url); } catch { return fallback; }
+    }
     if (!res.ok) return fallback;
     const html = await res.text();
     const stripped = html
