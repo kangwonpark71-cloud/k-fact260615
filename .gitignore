@@ -29,11 +29,17 @@ supabase/.temp/
 .env.*
 !.env.example
 
-# Debug / temporary files
-_debug_*.txt
-_server_log.txt
-_final_test.mjs
-_test_*.mjs
+# Debug / temporary test scripts & screenshots (root-level _ prefix)
+_*.ts
+_*.mjs
+_*.cjs
+_*.js
+_*.json
+_*.png
+_*.txt
+_storage_state.json
+playwright.config.cjs
+test-results/
 
 # Editor directories and files
 .vscode/*
