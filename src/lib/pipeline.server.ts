@@ -564,6 +564,51 @@ function getTopicDomains(query: string): string[] {
   return [];
 }
 
+/* ══════════════════════════════════════════════════
+   Phase 0: 팩트 클레임 자동 분해
+   ══════════════════════════════════════════════════ */
+
+export const Phase0ClaimSchema = z.object({
+  claim:        z.string().max(200).describe("원문에서 추출한 검증 가능한 사실 주장"),
+  type:         z.enum(["통계", "인과", "사실", "인용", "예측"]),
+  checkability: z.number().int().min(0).max(100).describe("검증 가능성 0~100"),
+  subject:      z.string().max(80).describe("주어 (인물·기관·사물)"),
+  predicate:    z.string().max(80).describe("서술어"),
+  object:       z.string().max(80).describe("목적어/보어"),
+  keywords:     z.array(z.string().max(30)).max(4).describe("검색 키워드"),
+});
+
+export const Phase0Schema = z.object({
+  claims:     z.array(Phase0ClaimSchema).min(1).max(8),
+  complexity: z.enum(["단순", "보통", "복잡"]).describe("텍스트 복잡도"),
+  total_found: z.number().int().describe("원문에서 발견된 검증 가능 주장 총 수"),
+});
+
+export type Phase0Claim  = z.infer<typeof Phase0ClaimSchema>;
+export type Phase0Result = z.infer<typeof Phase0Schema>;
+
+export const PHASE0_SYSTEM = `당신은 팩트체크를 위한 클레임 분해 전문 AI입니다.
+텍스트에서 독립적으로 검증 가능한 팩트 주장을 최대 8개 추출하세요.
+
+## 추출 규칙
+- 수치·통계·날짜·인명이 포함된 주장은 반드시 개별 claim으로 분리
+- "본문 전체", "주요 주장" 같은 포괄적 항목 금지
+- 의견·감상·예측은 제외하고 팩트 주장만 추출
+- claim은 최소 15자, 원문 문장을 최대한 인용
+- checkability: 외부 데이터 없이 검증 가능하면 60+, 실시간 데이터 필요하면 20~40
+- keywords: 검색엔진 쿼리용 핵심 단어 2~4개
+
+## 유형 분류
+- 통계: 수치·비율·순위·증감 포함 주장
+- 인과: "때문에"·"로 인해"·"결과" 포함 주장
+- 사실: 역사적·과학적·법률적 사실 주장
+- 인용: 특정 인물/기관의 발언·공표 인용
+- 예측: 미래 전망·예측·계획 주장`;
+
+export function buildPhase0Prompt(text: string): string {
+  return `다음 텍스트에서 독립적으로 팩트체크 가능한 주장을 분해·추출하세요.\n\n"""\n${text.slice(0, 5000)}\n"""`;
+}
+
 /** 주장 유형별 권위 출처 우선 검색 */
 export async function searchEvidenceForClaimsTyped(
   claims: Array<{ query: string; claimType: ClaimType }>,

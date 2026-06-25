@@ -408,3 +408,41 @@ export const saveHeroPhases = createServerFn({ method: "POST" })
     await kvPutRaw(KV_HERO_KEY, { phases: data.phases }, 86400 * 365);
     return { saved: true };
   });
+
+/* ── 관리자: 이의 상위 피드백 목록 ── */
+export const getAdminFeedback = createServerFn({ method: "GET" }).handler(async () => {
+  await requireAdmin();
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  try {
+    const { data } = await (supabaseAdmin as any)
+      .from("analysis_feedback_stats")
+      .select("analysis_id, total, agree_count, disagree_count, disagree_rate")
+      .gte("total", 3)
+      .gte("disagree_rate", 20)
+      .order("disagree_rate", { ascending: false })
+      .limit(20);
+
+    if (!data?.length) return { items: [] };
+
+    const ids: string[] = data.map((r: any) => r.analysis_id);
+    const { data: analyses } = await supabaseAdmin
+      .from("analyses")
+      .select("id, title, overall_verdict, overall_confidence, created_at")
+      .in("id", ids);
+
+    const analysisMap = new Map((analyses ?? []).map((a: any) => [a.id, a]));
+
+    const items = data.map((r: any) => ({
+      analysis_id:   r.analysis_id as string,
+      total:         r.total        as number,
+      agree:         r.agree_count  as number,
+      disagree:      r.disagree_count as number,
+      disagree_rate: r.disagree_rate  as number,
+      title:         (analysisMap.get(r.analysis_id) as any)?.title ?? "제목 없음",
+      overall_verdict: (analysisMap.get(r.analysis_id) as any)?.overall_verdict ?? "",
+    }));
+    return { items };
+  } catch {
+    return { items: [] };
+  }
+});

@@ -12,6 +12,8 @@ import {
   Search,
   Scale,
   Mic,
+  ScanSearch,
+  ImageIcon,
   Loader2,
   AlertCircle,
   CheckCircle2,
@@ -34,6 +36,7 @@ import {
 } from "@/lib/analyses.functions";
 import { fetchYouTubeInfo, isYouTubeUrl, type YouTubeInfo } from "@/lib/youtube.functions";
 import { getHeroPhases, DEFAULT_HERO_PHASES, type HeroPhase, type PhaseAnimation } from "@/lib/admin.functions";
+import { analyzeImageDeepfake, type DeepfakeResult } from "@/lib/analyses.functions";
 import { getSessionId } from "@/lib/session";
 import { SiteHeader, BottomNav } from "@/components/SiteHeader";
 import { VoiceInput } from "@/components/VoiceInput";
@@ -363,7 +366,12 @@ function Home() {
   const quickCheck = useServerFn(quickAnalyzeContent);
   const fetchYTInfo = useServerFn(fetchYouTubeInfo);
 
-  const [mode, setMode] = useState<"text" | "url" | "voice">("text");
+  const [mode, setMode] = useState<"text" | "url" | "voice" | "image">("text");
+  const [imageUrl, setImageUrl] = useState("");
+  const [imageResult, setImageResult] = useState<DeepfakeResult | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageErr, setImageErr] = useState<string | null>(null);
+  const analyzeImageFn = useServerFn(analyzeImageDeepfake);
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
   const [interimText, setInterimText] = useState("");
@@ -482,7 +490,7 @@ function Home() {
   const canSubmit = (mode === "url" ? !!url.trim() : text.trim().length >= 30) && !loading;
 
   // 탭 전환 시 텍스트 초기화
-  const handleModeChange = (newMode: "text" | "url" | "voice") => {
+  const handleModeChange = (newMode: "text" | "url" | "voice" | "image") => {
     if (newMode === mode) return;
     setMode(newMode);
     setText("");
@@ -579,6 +587,10 @@ function Home() {
             <TabButton active={mode === "voice"} onClick={() => handleModeChange("voice")}>
               <Mic className="w-4 h-4" />
               <span>음성 입력</span>
+            </TabButton>
+            <TabButton active={mode === "image"} onClick={() => handleModeChange("image")}>
+              <ScanSearch className="w-4 h-4" />
+              <span>이미지 분석</span>
             </TabButton>
             <div className="flex-1" />
             <Link
@@ -814,8 +826,114 @@ function Home() {
               </>
             )}
 
+            {/* 이미지 딥페이크 분석 모드 */}
+            {mode === "image" && (
+              <div className="space-y-4 py-2">
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={imageUrl}
+                    onChange={e => { setImageUrl(e.target.value); setImageErr(null); setImageResult(null); }}
+                    placeholder="이미지 URL을 붙여넣으세요 (https://...)"
+                    className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/50 border border-border/50 rounded-lg px-3 py-2"
+                  />
+                  <button
+                    type="button"
+                    disabled={imageLoading || !imageUrl.trim()}
+                    onClick={async () => {
+                      if (!imageUrl.trim()) return;
+                      setImageLoading(true);
+                      setImageErr(null);
+                      setImageResult(null);
+                      try {
+                        const r = await analyzeImageFn({ data: { imageUrl: imageUrl.trim() } });
+                        setImageResult(r);
+                      } catch (e: unknown) {
+                        setImageErr(e instanceof Error ? e.message : "분석 실패");
+                      } finally {
+                        setImageLoading(false);
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium disabled:opacity-50 transition-colors hover:bg-primary/90"
+                  >
+                    {imageLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanSearch className="w-4 h-4" />}
+                    분석
+                  </button>
+                </div>
+
+                {imageErr && (
+                  <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/8 border border-destructive/25 rounded-lg px-3 py-2">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    {imageErr}
+                  </div>
+                )}
+
+                {imageResult && (
+                  <div className="space-y-3 border border-border/50 rounded-xl p-4 bg-surface">
+                    {/* 이미지 프리뷰 */}
+                    <div className="flex gap-3 items-start">
+                      <img
+                        src={imageResult.imageUrl}
+                        alt="분석 대상 이미지"
+                        className="w-20 h-20 object-cover rounded-lg border border-border/40 shrink-0"
+                        onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
+                            imageResult.verdict === "고위험"
+                              ? "bg-red-500/15 text-red-400 border-red-500/30"
+                              : imageResult.verdict === "의심"
+                              ? "bg-orange-500/15 text-orange-400 border-orange-500/30"
+                              : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                          }`}>
+                            {imageResult.verdict}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            AI 생성 가능성 <strong className="text-foreground">{imageResult.ai_probability}%</strong>
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            조작 위험도 <strong className="text-foreground">{imageResult.manipulation_risk}%</strong>
+                          </span>
+                        </div>
+                        {/* 위험도 게이지 */}
+                        <div className="h-1.5 rounded-full bg-muted/30 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-700"
+                            style={{
+                              width: `${imageResult.ai_probability}%`,
+                              background: imageResult.ai_probability >= 70 ? "#ef4444"
+                                : imageResult.ai_probability >= 30 ? "#f97316" : "#22c55e",
+                            }}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{imageResult.description}</p>
+                      </div>
+                    </div>
+                    {imageResult.deepfake_signals.length > 0 && (
+                      <div className="border-t border-border/30 pt-3">
+                        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">탐지된 신호</p>
+                        <ul className="space-y-1">
+                          {imageResult.deepfake_signals.map((s, i) => (
+                            <li key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                              <AlertCircle className="w-3 h-3 shrink-0 mt-0.5 text-orange-400" />
+                              {s}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+                  이미지 URL을 직접 입력하세요. JPG·PNG·WebP 형식 지원. AI 분석은 참고용이며 100% 정확하지 않습니다.
+                </p>
+              </div>
+            )}
+
             {/* 실시간 팩트체크 프리뷰 (텍스트·URL 모드 전용) */}
-              {mode !== "voice" &&
+              {mode !== "voice" && mode !== "image" &&
                 (quickLoading || quickResult || quickErr) &&
                 text.length >= QUICK_CHECK_MIN && (
                   <div className="mt-4 border-t border-border/50 pt-4 space-y-3">

@@ -23,6 +23,7 @@ import {
   toggleApiKey,
   checkIsAdmin,
   getHeroPhases, saveHeroPhases, DEFAULT_HERO_PHASES,
+  getAdminFeedback,
   type HeroPhase, type PhaseVariant, type PhaseAnimation, type PhaseFontStyle,
 } from "@/lib/admin.functions";
 import { VerdictBadge } from "@/components/VerdictBadge";
@@ -49,7 +50,7 @@ const VERDICT_TEXT: Record<string, string> = {
   미확인: "text-orange-400",
 };
 
-type Tab = "overview" | "analyses" | "users" | "apikeys" | "hero";
+type Tab = "overview" | "analyses" | "users" | "apikeys" | "hero" | "feedback";
 
 function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -189,6 +190,13 @@ function AdminPage() {
     },
   });
 
+  const { data: feedbackData, isLoading: feedbackLoading } = useQuery({
+    queryKey: ["admin", "feedback"],
+    queryFn:  () => getAdminFeedback(),
+    enabled:  !!user && isAdmin && tab === "feedback",
+    staleTime: 60_000,
+  });
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -271,6 +279,7 @@ function AdminPage() {
             ["users", "사용자 관리"],
             ["apikeys", "API 키"],
             ["hero", "히어로 메시지"],
+            ["feedback", "피드백"],
           ] as [Tab, string][]).map(([t, label]) => (
             <button
               key={t}
@@ -882,6 +891,70 @@ function AdminPage() {
         {/* ── 히어로 메시지 탭 ── */}
         {tab === "hero" && (
           <HeroPhaseEditor />
+        )}
+
+        {tab === "feedback" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">이의 제기 현황</h2>
+              <p className="text-xs text-muted-foreground">이의 비율 20% 이상 · 총 피드백 3건 이상</p>
+            </div>
+            {feedbackLoading ? (
+              <div className="flex justify-center py-12">
+                <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : !feedbackData?.items.length ? (
+              <div className="text-center py-12 text-muted-foreground text-sm">
+                이의 제기 데이터가 없습니다.
+              </div>
+            ) : (
+              <div className="glass rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/50">
+                      <th className="text-left px-4 py-3 font-medium">분석 제목</th>
+                      <th className="text-left px-4 py-3 font-medium hidden md:table-cell">판정</th>
+                      <th className="text-right px-4 py-3 font-medium">동의</th>
+                      <th className="text-right px-4 py-3 font-medium">이의</th>
+                      <th className="text-right px-4 py-3 font-medium">이의율</th>
+                      <th className="px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {feedbackData.items.map((item) => (
+                      <tr key={item.analysis_id} className="border-b border-border/30 hover:bg-surface-2/50 transition-colors">
+                        <td className="px-4 py-3">
+                          <span className="line-clamp-1 text-xs">{item.title}</span>
+                        </td>
+                        <td className="px-4 py-3 hidden md:table-cell">
+                          <span className={`text-xs ${VERDICT_TEXT[item.overall_verdict] ?? "text-muted-foreground"}`}>
+                            {item.overall_verdict}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-emerald-400 font-mono text-xs">{item.agree}</td>
+                        <td className="px-4 py-3 text-right text-red-400 font-mono text-xs">{item.disagree}</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className={`text-xs font-bold ${item.disagree_rate >= 50 ? "text-red-400" : "text-orange-400"}`}>
+                            {item.disagree_rate}%
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <a
+                            href={`/analysis/${item.analysis_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-accent hover:underline"
+                          >
+                            보기
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         )}
 
       </main>

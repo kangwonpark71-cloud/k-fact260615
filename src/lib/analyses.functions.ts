@@ -17,9 +17,14 @@ import {
   buildReviewedSources,
   StyleClassificationSchema,
   STYLE_CLASSIFIER_SYSTEM,
+  Phase0Schema,
+  PHASE0_SYSTEM,
+  buildPhase0Prompt,
   type StyleClassification,
   type ClaimType,
   type SearchEvidence,
+  type Phase0Result,
+  type Phase0Claim,
 } from "./pipeline.server";
 import { fetchNaverFactChecks, formatNaverBlockForPrompt } from "./naver-factcheck.server";
 import { fetchDaumFactChecks, formatDaumBlockForPrompt } from "./daum-factcheck.server";
@@ -956,9 +961,9 @@ async function processAnalysisPhase1(
 
 ${isolateUserContent(bodyText.slice(0, 7000))}`;
 
-  // Phase 1 LLM + 트랜스포머 문체 분류기 병렬 실행 (추가 지연 없음)
-  // CF AI 12s: provider failures(~7s) + CF(12s) = ~19s → CF Workers 30s 제한 내 응답 보장
-  const [parsed, styleClassification] = await Promise.all([
+  // Phase 0 클레임 분해 + Phase 1 LLM + 문체 분류기 3-way 병렬 실행
+  const phase0ModelRef: ModelRef = { model: "unknown" };
+  const [parsed, styleClassification, phase0Result] = await Promise.all([
     generateWithFallback({
       schema: AnalysisSchema,
       system: PHASE1_SYSTEM,
@@ -968,6 +973,22 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
       cfMaxMs: 12000,
     }),
     analyzeStyleWithLLM(bodyText, styleModelRef, 12000),
+    // Phase 0: 경량 클레임 분해 (실패해도 전체 분석 중단 안 됨)
+    (async (): Promise<Phase0Result | null> => {
+      try {
+        const model = await createModelInstance(phase0ModelRef, "gemini");
+        const result = await generateObject({
+          model,
+          schema: Phase0Schema,
+          system: PHASE0_SYSTEM,
+          prompt: buildPhase0Prompt(bodyText),
+          maxRetries: 1,
+        });
+        return result.object;
+      } catch {
+        return null;
+      }
+    })(),
   ]);
 
   // LLM 분류 결과 우선, 실패 시 정규식 결과 사용
@@ -1006,12 +1027,24 @@ ${isolateUserContent(bodyText.slice(0, 7000))}`;
       style_signals: styleSignals,
       style_classification: styleClassification ?? undefined,
       items: correctedClaims,
+      decomposed_claims: phase0Result ?? undefined,
     },
     created_at: new Date().toISOString(),
     _phase1_model: p1ModelRef.model,
   };
 
   await kvPut(analysisId, phase1Payload);
+
+  // ── 확산 경보: 클레임 해시 7일 카운터 갱신 ──
+  try {
+    const textHash = (await hashText(bodyText.slice(0, 500).replace(/\s+/g, ""))).slice(0, 16);
+    const spreadKey = `spread:${textHash}`;
+    const existing = (await kvGetRaw(spreadKey)) as { count: number; ids: string[]; verdict: string } | null;
+    const newCount = (existing?.count ?? 0) + 1;
+    const ids = [...(existing?.ids ?? []), analysisId].slice(-20);
+    await kvPutRaw(spreadKey, { count: newCount, ids, verdict: p1Verdict, ts: Date.now() }, 604800); // 7일
+  } catch { /* 확산 카운터 실패는 분석 흐름에 영향 없음 */ }
+
   return phase1Payload;
 }
 
@@ -2091,6 +2124,267 @@ export const getSharedAnalysis = createServerFn({ method: "GET" })
     const kvRow = await kvGet(analysisId);
     if (kvRow) return kvRow;
     throw new Error("분석 데이터를 찾을 수 없습니다.");
+  });
+
+/* ═══════════════════════════════════════════════════════════════
+   피드백 서버 함수 — 사용자 판정 동의 / 이의
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════
+   클레임 자동 분해 서버 함수 (Phase 0 독립 실행)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════
+   확산 경보 서버 함수 — 동일 클레임 반복 제출 탐지
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════
+   딥페이크·AI 생성 이미지 탐지 서버 함수
+   ═══════════════════════════════════════════════════════════════ */
+
+const DeepfakeSchema = z.object({
+  ai_probability:    z.number().int().min(0).max(100).describe("AI 생성 가능성 0~100"),
+  manipulation_risk: z.number().int().min(0).max(100).describe("이미지 조작 위험도 0~100"),
+  deepfake_signals:  z.array(z.string().max(150)).max(6).describe("탐지된 딥페이크 신호"),
+  description:       z.string().max(500).describe("이미지 분석 요약"),
+  verdict:           z.enum(["정상", "의심", "고위험"]),
+  confidence:        z.number().int().min(0).max(100),
+});
+
+export type DeepfakeResult = z.infer<typeof DeepfakeSchema> & {
+  imageUrl: string;
+  contentType: string;
+  sizeBytes: number;
+};
+
+const DEEPFAKE_SYSTEM = `당신은 딥페이크·AI 생성 이미지 탐지 전문 AI입니다.
+
+## 탐지 신호
+- **얼굴 왜곡**: 눈·귀 비대칭, 치아·머리카락 부자연스러움, 피부 질감 과도한 매끄러움
+- **배경 왜곡**: 경계 흐림, 반복 패턴, 물체 일부 소실
+- **조명 모순**: 그림자 방향 불일치, 반사광 부자연스러움
+- **GAN 아티팩트**: 해상도 경계 불일치, 주파수 패턴
+- **맥락 불일치**: 뉴스 사진으로 위장한 AI 생성 이미지
+- **메타데이터 부재**: 카메라 정보·위치 정보 없음 (AI 생성 특징)
+
+## 판정 기준
+- 정상: ai_probability < 30
+- 의심: 30 ≤ ai_probability < 70
+- 고위험: ai_probability ≥ 70 또는 명백한 딥페이크 신호 다수
+
+응답은 한국어로, JSON만 반환하세요.`;
+
+export const analyzeImageDeepfake = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    z.object({ imageUrl: z.string().url().max(2000) }).parse(input)
+  )
+  .handler(async ({ data }): Promise<DeepfakeResult> => {
+    // URL 유효성 검증 (SSRF 방지)
+    validatePublicUrl(data.imageUrl);
+
+    // 이미지 메타데이터 확인
+    let contentType = "image/unknown";
+    let sizeBytes = 0;
+    try {
+      const headRes = await fetch(data.imageUrl, {
+        method: "HEAD",
+        signal: AbortSignal.timeout(5000),
+      });
+      contentType = headRes.headers.get("content-type") ?? "image/unknown";
+      sizeBytes = parseInt(headRes.headers.get("content-length") ?? "0", 10);
+    } catch { /* HEAD 실패 시 GET으로 시도 */ }
+
+    if (!contentType.startsWith("image/") && !contentType.startsWith("application/octet")) {
+      throw new Error("이미지 URL이 아닙니다 (Content-Type 불일치).");
+    }
+
+    // AI 비전 분석
+    const { keys } = await getAllActiveKeys();
+    const geminiEntry = keys.find(k => k.provider === "gemini");
+    const openaiEntry = keys.find(k => k.provider === "openai");
+    const entry = geminiEntry ?? openaiEntry;
+    if (!entry) throw new Error("이미지 분석에 사용할 AI 키가 없습니다.");
+
+    const model = createModelInstance(
+      entry.provider as import("./analyses/types").SupportedProvider,
+      entry.key
+    );
+
+    const { object } = await generateObject({
+      model,
+      schema: DeepfakeSchema,
+      system: DEEPFAKE_SYSTEM,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "image", image: new URL(data.imageUrl) } as never,
+            {
+              type: "text",
+              text: `이 이미지를 딥페이크·AI 생성 여부 관점에서 분석하세요. URL: ${data.imageUrl}`,
+            },
+          ],
+        },
+      ],
+      maxRetries: 1,
+    });
+
+    return { ...object, imageUrl: data.imageUrl, contentType, sizeBytes };
+  });
+
+export const getSpreadAlert = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    z.object({ text: z.string().min(20).max(10000) }).parse(input)
+  )
+  .handler(async ({ data }): Promise<{ count: number; isViral: boolean; verdict: string | null }> => {
+    try {
+      const textHash = (await hashText(data.text.slice(0, 500).replace(/\s+/g, ""))).slice(0, 16);
+      const spreadKey = `spread:${textHash}`;
+      const row = (await kvGetRaw(spreadKey)) as { count: number; verdict: string } | null;
+      const count = row?.count ?? 0;
+      return { count, isViral: count >= 5, verdict: row?.verdict ?? null };
+    } catch {
+      return { count: 0, isViral: false, verdict: null };
+    }
+  });
+
+export const decomposeTextClaims = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    z.object({ text: z.string().min(20).max(10000) }).parse(input)
+  )
+  .handler(async ({ data }): Promise<Phase0Result> => {
+    const modelRef: ModelRef = { model: "unknown" };
+    const model = await createModelInstance(modelRef, "gemini");
+    const result = await generateObject({
+      model,
+      schema: Phase0Schema,
+      system: PHASE0_SYSTEM,
+      prompt: buildPhase0Prompt(data.text),
+      maxRetries: 2,
+    });
+    return result.object;
+  });
+
+export const submitFeedback = createServerFn({ method: "POST" })
+  .validator((input: unknown) =>
+    z.object({
+      analysisId: z.string().uuid(),
+      sessionId:  z.string().min(1).max(64),
+      feedback:   z.enum(["agree", "disagree"]),
+      reason:     z.string().max(300).optional(),
+    }).parse(input)
+  )
+  .handler(async ({ data }) => {
+    const hasDB = (getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? "").startsWith("eyJ");
+    if (hasDB) {
+      try {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const userId = await getOptionalUserId();
+        const { error } = await (supabaseAdmin as any)
+          .from("analysis_feedback")
+          .upsert(
+            {
+              analysis_id: data.analysisId,
+              session_id:  data.sessionId,
+              feedback:    data.feedback,
+              reason:      data.reason ?? null,
+              user_id:     userId ?? null,
+            },
+            { onConflict: "session_id,analysis_id" }
+          );
+        if (error) throw error;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg.includes("does not exist")) {
+          // 테이블 미생성 — graceful degradation
+          return { ok: true, degraded: true };
+        }
+        throw e;
+      }
+    }
+    // DB 없으면 KV 카운터로 대체
+    else {
+      const key = `fb:${data.analysisId}:${data.sessionId}`;
+      const existing = await kvGet(key);
+      await kvPut(key, { feedback: data.feedback, ts: Date.now() }, 7776000); // 90일
+      // 집계 카운터 업데이트
+      const statsKey = `fb:stats:${data.analysisId}`;
+      const stats = (await kvGet(statsKey) as Record<string, number> | null) ?? { agree: 0, disagree: 0 };
+      if (existing) {
+        const prev = (existing as Record<string, string>).feedback as string;
+        if (prev !== data.feedback) {
+          stats[prev as "agree" | "disagree"] = Math.max(0, (stats[prev as "agree" | "disagree"] ?? 1) - 1);
+          stats[data.feedback] = (stats[data.feedback] ?? 0) + 1;
+        }
+      } else {
+        stats[data.feedback] = (stats[data.feedback] ?? 0) + 1;
+      }
+      await kvPut(statsKey, stats, 7776000);
+    }
+    return { ok: true, degraded: false };
+  });
+
+export const getFeedbackStats = createServerFn({ method: "GET" })
+  .validator((input: unknown) =>
+    z.object({ analysisId: z.string().uuid() }).parse(input)
+  )
+  .handler(async ({ data }) => {
+    const hasDB = (getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? "").startsWith("eyJ");
+    if (hasDB) {
+      try {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { data: row } = await (supabaseAdmin as any)
+          .from("analysis_feedback_stats")
+          .select("*")
+          .eq("analysis_id", data.analysisId)
+          .maybeSingle();
+        return {
+          total:        (row?.total         ?? 0) as number,
+          agree:        (row?.agree_count   ?? 0) as number,
+          disagree:     (row?.disagree_count ?? 0) as number,
+          disagree_rate:(row?.disagree_rate  ?? 0) as number,
+        };
+      } catch {
+        return { total: 0, agree: 0, disagree: 0, disagree_rate: 0 };
+      }
+    }
+    const statsKey = `fb:stats:${data.analysisId}`;
+    const stats = (await kvGet(statsKey) as Record<string, number> | null) ?? { agree: 0, disagree: 0 };
+    const total = (stats.agree ?? 0) + (stats.disagree ?? 0);
+    return {
+      total,
+      agree:         stats.agree    ?? 0,
+      disagree:      stats.disagree ?? 0,
+      disagree_rate: total > 0 ? Math.round((stats.disagree ?? 0) * 100 / total) : 0,
+    };
+  });
+
+export const getMyFeedback = createServerFn({ method: "GET" })
+  .validator((input: unknown) =>
+    z.object({
+      analysisId: z.string().uuid(),
+      sessionId:  z.string().min(1).max(64),
+    }).parse(input)
+  )
+  .handler(async ({ data }) => {
+    const hasDB = (getEnv("SUPABASE_SERVICE_ROLE_KEY") ?? "").startsWith("eyJ");
+    if (hasDB) {
+      try {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { data: row } = await (supabaseAdmin as any)
+          .from("analysis_feedback")
+          .select("feedback")
+          .eq("analysis_id", data.analysisId)
+          .eq("session_id", data.sessionId)
+          .maybeSingle();
+        return (row?.feedback as "agree" | "disagree" | null) ?? null;
+      } catch {
+        return null;
+      }
+    }
+    const key = `fb:${data.analysisId}:${data.sessionId}`;
+    const row = await kvGet(key) as Record<string, string> | null;
+    return (row?.feedback as "agree" | "disagree" | null) ?? null;
   });
 
 

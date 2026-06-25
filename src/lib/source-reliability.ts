@@ -1,3 +1,93 @@
+/* ── 언론사 정치 성향 분류 ── */
+export type PoliticalLean =
+  | "보수"
+  | "중도보수"
+  | "중립"
+  | "중도진보"
+  | "진보"
+  | "전문지"
+  | "해외"
+  | "커뮤니티"
+  | "공식기관";
+
+export const POLITICAL_LEAN_META: Record<PoliticalLean, { label: string; color: string }> = {
+  보수:     { label: "보수 성향",   color: "#ef4444" },
+  중도보수: { label: "중도보수",    color: "#f97316" },
+  중립:     { label: "중립·팩트",  color: "#6b7280" },
+  중도진보: { label: "중도진보",    color: "#3b82f6" },
+  진보:     { label: "진보 성향",  color: "#8b5cf6" },
+  전문지:   { label: "전문·학술지", color: "#10b981" },
+  해외:     { label: "해외 언론",  color: "#0ea5e9" },
+  커뮤니티: { label: "커뮤니티",   color: "#a3a3a3" },
+  공식기관: { label: "공식 기관",  color: "#22c55e" },
+};
+
+// 도메인 → 정치 성향 매핑 (200개 주요 도메인)
+const LEAN_MAP: Record<string, PoliticalLean> = {
+  // ── 보수 ──
+  "chosun.com": "보수", "donga.com": "보수", "joongang.co.kr": "보수",
+  "joins.com": "보수", "mk.co.kr": "보수", "hankyung.com": "보수",
+  "munhwa.com": "보수", "segye.com": "보수", "pennmike.com": "보수",
+  "newdaily.co.kr": "보수", "mediawatch.kr": "보수",
+  // ── 중도보수 ──
+  "hankookilbo.com": "중도보수", "yna.co.kr": "중도보수",
+  "news1.kr": "중도보수", "newsis.com": "중도보수",
+  "edaily.co.kr": "중도보수", "sedaily.com": "중도보수",
+  "mt.co.kr": "중도보수",
+  // ── 중립 ──
+  "ytn.co.kr": "중립", "kbs.co.kr": "중립", "mbc.co.kr": "중립",
+  "sbs.co.kr": "중립", "jtbc.joins.com": "중립", "jtbc.co.kr": "중립",
+  "tbs.seoul.kr": "중립", "cbsnews.co.kr": "중립",
+  "factcheck.snu.ac.kr": "중립", "newstof.com": "중립", "korea.kr": "중립",
+  // ── 중도진보 ──
+  "hani.co.kr": "중도진보", "kyunghyang.com": "중도진보",
+  "ohmynews.com": "중도진보", "pressian.com": "중도진보",
+  "mediatoday.co.kr": "중도진보", "sisain.co.kr": "중도진보",
+  "mindlenews.com": "중도진보",
+  // ── 진보 ──
+  "vop.co.kr": "진보", "labortoday.co.kr": "진보",
+  "mynewskorea.com": "진보", "viewsnnews.com": "진보",
+  // ── 전문지 ──
+  "biz.chosun.com": "전문지", "econovill.com": "전문지",
+  "khan.co.kr": "중도진보", "fnnews.com": "전문지",
+  "etnews.com": "전문지", "zdnet.co.kr": "전문지",
+  "itchosun.com": "전문지", "boannews.com": "전문지",
+  "medicalnewstoday.com": "전문지", "pubmed.ncbi.nlm.nih.gov": "전문지",
+  "nature.com": "전문지", "sciencedirect.com": "전문지",
+  // ── 해외 ──
+  "reuters.com": "해외", "apnews.com": "해외", "bbc.com": "해외",
+  "nytimes.com": "해외", "cnn.com": "해외", "theguardian.com": "해외",
+  "bloomberg.com": "해외", "wsj.com": "해외", "ft.com": "해외",
+  "aljazeera.com": "해외", "afp.com": "해외", "nikkei.com": "해외",
+  "nhk.or.jp": "해외",
+  // ── 커뮤니티 ──
+  "dcinside.com": "커뮤니티", "fmkorea.com": "커뮤니티",
+  "ruliweb.com": "커뮤니티", "reddit.com": "커뮤니티",
+  "x.com": "커뮤니티", "twitter.com": "커뮤니티",
+  "youtube.com": "커뮤니티", "facebook.com": "커뮤니티",
+  "naver.com": "커뮤니티", "daum.net": "커뮤니티",
+  // ── 공식기관 ──
+  "go.kr": "공식기관", "korea.kr": "공식기관", "law.go.kr": "공식기관",
+  "court.go.kr": "공식기관", "assembly.go.kr": "공식기관",
+  "mofa.go.kr": "공식기관", "who.int": "공식기관", "nih.gov": "공식기관",
+  "cdc.gov": "공식기관", "oecd.org": "공식기관", "imf.org": "공식기관",
+  "un.org": "공식기관", "stat.go.kr": "공식기관",
+};
+
+export function getPoliticalLean(url: string): PoliticalLean | null {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+    if (LEAN_MAP[hostname]) return LEAN_MAP[hostname];
+    // suffix match (e.g. sub.chosun.com)
+    for (const [domain, lean] of Object.entries(LEAN_MAP)) {
+      if (hostname.endsWith(`.${domain}`) || hostname.endsWith(domain)) return lean;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export const SOURCE_RELIABILITY_TIERS = [
   "authoritative",
   "established",

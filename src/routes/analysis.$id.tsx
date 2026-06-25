@@ -42,6 +42,10 @@ import {
   reverifyAnalysis,
   createShareLink,
   listAnalyses,
+  submitFeedback,
+  getFeedbackStats,
+  getMyFeedback,
+  getSpreadAlert,
   type SimplifiedClaim,
   type SimplifiedResult,
 } from "@/lib/analyses.functions";
@@ -670,7 +674,8 @@ function ReadingModeToggle({
 
 function AnalysisPage() {
   const { id } = Route.useParams();
-  const fetchAnalysis = useServerFn(getAnalysis);
+  const fetchAnalysis  = useServerFn(getAnalysis);
+  const getSpreadFn    = useServerFn(getSpreadAlert);
   const runPhase2 = useServerFn(continueAnalysis);
   const runSimplify = useServerFn(simplifyAnalysis);
   const runGetAuditLog = useServerFn(getAuditLog);
@@ -883,6 +888,18 @@ function AnalysisPage() {
   const styleClassification = (pipelineMeta as Record<string, unknown> | null)
     ?.style_classification as StyleClassification | undefined;
 
+  // Phase 0 클레임 분해 결과
+  const decomposedClaims = (pipelineMeta as Record<string, unknown> | null)
+    ?.decomposed_claims as import("@/lib/pipeline.server").Phase0Result | undefined;
+
+  // 확산 경보 — 동일 텍스트 반복 제출 감지
+  const { data: spreadAlert } = useQuery({
+    queryKey: ["spread-alert", id],
+    queryFn:  () => getSpreadFn({ data: { text: inputText } }),
+    enabled:  !!inputText && inputText.length >= 20,
+    staleTime: 5 * 60 * 1000,
+  });
+
   // 영토·주권 분쟁 주장 여부 — 고지 배너 표시 여부 결정
   const hasDisputedTerritory = claims.some((c) => c.claim_type === "DISPUTED_TERRITORY");
 
@@ -1000,6 +1017,23 @@ function AnalysisPage() {
                   <span className="text-sm text-muted-foreground">
                     신뢰도 <strong className="text-foreground">{overallConfidence}%</strong>
                   </span>
+                  {spreadAlert?.isViral && (
+                    <span
+                      title={`동일 주장이 7일 내 ${spreadAlert.count}회 팩트체크 요청됨`}
+                      className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30 animate-pulse"
+                    >
+                      <AlertTriangle className="w-2.5 h-2.5" />
+                      바이럴 {spreadAlert.count}회
+                    </span>
+                  )}
+                  {spreadAlert && !spreadAlert.isViral && spreadAlert.count >= 2 && (
+                    <span
+                      title={`동일 주장이 7일 내 ${spreadAlert.count}회 제출됨`}
+                      className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-muted-foreground border border-border/40"
+                    >
+                      반복 {spreadAlert.count}회
+                    </span>
+                  )}
                   {sourceDescription && (
                     <span className="inline-flex items-center gap-1 text-sm text-muted-foreground/70 ml-2 border-l border-border/30 pl-3 leading-tight">
                       {isUrlInput ? (
@@ -1085,6 +1119,7 @@ function AnalysisPage() {
                 </a>
               )}
               <div className="ml-auto flex items-center gap-3">
+                <FeedbackButton id={id} sessionId={sessionId ?? ""} />
                 <BookmarkButton id={id} />
                 <CompareButton id={id} sessionId={sessionId ?? ""} />
                 <ShareButton id={id} sessionId={sessionId ?? ""} />
@@ -1182,6 +1217,11 @@ function AnalysisPage() {
               </p>
             </div>
           </div>
+        )}
+
+        {/* Phase 0: 클레임 자동 분해 결과 */}
+        {decomposedClaims && decomposedClaims.claims.length > 0 && (
+          <DecomposedClaimsPanel result={decomposedClaims} />
         )}
 
         {/* ④ 주장 한눈에 보기 */}
@@ -3148,6 +3188,175 @@ function PointList({
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+/* ── Phase 0 클레임 분해 패널 ── */
+const CLAIM_TYPE_COLOR: Record<string, string> = {
+  통계: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+  인과: "bg-purple-500/10 text-purple-400 border-purple-500/30",
+  사실: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+  인용: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
+  예측: "bg-orange-500/10 text-orange-400 border-orange-500/30",
+};
+
+function DecomposedClaimsPanel({ result }: { result: import("@/lib/pipeline.server").Phase0Result }) {
+  const [open, setOpen] = useState(false);
+  const { claims, complexity, total_found } = result;
+  return (
+    <div className="border border-border/50 rounded-xl bg-surface overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2/50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Target className="w-4 h-4 text-primary" />
+          <span className="text-sm font-semibold">클레임 자동 분해</span>
+          <span className="text-xs text-muted-foreground">
+            — {total_found}개 주장 발견, {claims.length}개 추출
+          </span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${
+            complexity === "복잡" ? "bg-red-500/10 text-red-400 border-red-500/30" :
+            complexity === "보통" ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/30" :
+            "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+          }`}>
+            {complexity}
+          </span>
+        </div>
+        {open ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+      </button>
+      {open && (
+        <div className="border-t border-border/30 divide-y divide-border/20">
+          {claims.map((c, i) => (
+            <div key={i} className="px-4 py-3 flex gap-3 items-start hover:bg-surface-2/30 transition-colors">
+              <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
+                {i + 1}
+              </span>
+              <div className="flex-1 min-w-0 space-y-1">
+                <p className="text-sm leading-snug">{c.claim}</p>
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${CLAIM_TYPE_COLOR[c.type] ?? ""}`}>
+                    {c.type}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    검증가능성 {c.checkability}%
+                  </span>
+                  {c.keywords.map(kw => (
+                    <span key={kw} className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-muted-foreground border border-border/40">
+                      {kw}
+                    </span>
+                  ))}
+                </div>
+                {(c.subject || c.predicate || c.object) && (
+                  <div className="flex gap-1 text-[10px] text-muted-foreground/70">
+                    {c.subject && <span className="bg-surface-2 px-1 rounded">{c.subject}</span>}
+                    {c.predicate && <span>→ {c.predicate}</span>}
+                    {c.object && <span className="bg-surface-2 px-1 rounded">{c.object}</span>}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── 사용자 피드백 버튼 ── */
+function FeedbackButton({ id, sessionId }: { readonly id: string; readonly sessionId: string }) {
+  const submitFn   = useServerFn(submitFeedback);
+  const getStatsFn = useServerFn(getFeedbackStats);
+  const getMineFn  = useServerFn(getMyFeedback);
+  const qc         = useQueryClient();
+
+  const { data: myFeedback } = useQuery({
+    queryKey: ["my-feedback", id, sessionId],
+    queryFn:  () => getMineFn({ data: { analysisId: id, sessionId } }),
+    enabled:  !!id && !!sessionId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: stats } = useQuery({
+    queryKey: ["feedback-stats", id],
+    queryFn:  () => getStatsFn({ data: { analysisId: id } }),
+    enabled:  !!id,
+    staleTime: 60_000,
+  });
+
+  const [pending, setPending] = useState<"agree" | "disagree" | null>(null);
+  const [flash,   setFlash]   = useState<"agree" | "disagree" | null>(null);
+
+  const handleFeedback = async (type: "agree" | "disagree") => {
+    if (pending) return;
+    setPending(type);
+    try {
+      await submitFn({ data: { analysisId: id, sessionId, feedback: type } });
+      setFlash(type);
+      setTimeout(() => setFlash(null), 800);
+      qc.invalidateQueries({ queryKey: ["my-feedback", id] });
+      qc.invalidateQueries({ queryKey: ["feedback-stats", id] });
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const agree    = stats?.agree    ?? 0;
+  const disagree = stats?.disagree ?? 0;
+  const total    = agree + disagree;
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {/* 동의 */}
+      <button
+        type="button"
+        disabled={!!pending}
+        onClick={() => handleFeedback("agree")}
+        title="판정에 동의합니다"
+        className={[
+          "inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg border transition-all duration-200",
+          myFeedback === "agree"
+            ? "text-emerald-500 border-emerald-400/40 bg-emerald-400/10"
+            : "text-muted-foreground border-border/50 hover:text-emerald-500 hover:border-emerald-400/30 hover:bg-emerald-400/8",
+          flash === "agree" ? "scale-110" : "scale-100",
+          pending ? "opacity-50 cursor-wait" : "",
+        ].join(" ")}
+      >
+        <ThumbsUp className="w-3 h-3" />
+        {total > 0 && <span>{agree}</span>}
+      </button>
+
+      {/* 이의 */}
+      <button
+        type="button"
+        disabled={!!pending}
+        onClick={() => handleFeedback("disagree")}
+        title="판정에 이의 있습니다"
+        className={[
+          "inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-lg border transition-all duration-200",
+          myFeedback === "disagree"
+            ? "text-red-400 border-red-400/40 bg-red-400/10"
+            : "text-muted-foreground border-border/50 hover:text-red-400 hover:border-red-400/30 hover:bg-red-400/8",
+          flash === "disagree" ? "scale-110" : "scale-100",
+          pending ? "opacity-50 cursor-wait" : "",
+        ].join(" ")}
+      >
+        <ThumbsDown className="w-3 h-3" />
+        {total > 0 && <span>{disagree}</span>}
+      </button>
+
+      {/* 이의 30% 이상 경고 배지 */}
+      {total >= 5 && (stats?.disagree_rate ?? 0) >= 30 && (
+        <span
+          title={`이의 비율 ${stats?.disagree_rate}% — 재검증 권고`}
+          className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-400 border border-orange-400/30 animate-pulse"
+        >
+          <AlertTriangle className="w-2.5 h-2.5" />
+          재검증 권고
+        </span>
+      )}
     </div>
   );
 }
