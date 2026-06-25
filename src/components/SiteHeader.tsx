@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { checkIsAdmin } from "@/lib/admin.functions";
 import {
   ShieldCheck,
   History,
@@ -156,7 +158,12 @@ function ThemeSelector({ mobile = false }: { mobile?: boolean }) {
 export function SiteHeader() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
-  const isAdmin = user?.email === import.meta.env.VITE_ADMIN_EMAIL;
+  const { data: isAdmin = false } = useQuery({
+    queryKey: ["is-admin"],
+    queryFn: () => checkIsAdmin(),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const handleSignOut = async () => {
@@ -410,6 +417,11 @@ export function BottomNav() {
 
 function useBottomNavAdmin() {
   const { user } = useAuth();
-  const isAdmin = user?.email === import.meta.env.VITE_ADMIN_EMAIL;
+  const { data: isAdmin = false } = useQuery({
+    queryKey: ["is-admin"],
+    queryFn: () => checkIsAdmin(),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
   return { isAdmin };
 }
