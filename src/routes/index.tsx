@@ -112,6 +112,35 @@ const L1_START   = 160;  // 슬라이더 등장 시작
 const L2_START   = L1_START + 800;  // 슬라이더 등장 후 두 번째 줄 시작
 const DESC_START = L2_START + HERO_LINE2.length * CHAR_MS + 230;
 
+function RevealChars({
+  text,
+  startMs,
+  className,
+  extraClass,
+}: {
+  text: string;
+  startMs: number;
+  className?: string;
+  extraClass?: string;
+}) {
+  return (
+    <span className={className} aria-label={text}>
+      {[...text].map((ch, i) => (
+        <span
+          key={i}
+          className={`char-anim inline-block will-change-transform ${extraClass ?? ""}`}
+          style={{
+            opacity: 0,
+            animation: `char-blur-in 0.48s cubic-bezier(0.22, 1, 0.36, 1) ${startMs + i * CHAR_MS}ms both`,
+          }}
+        >
+          {ch === " " ? " " : ch}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function RollingHeroText() {
   const [phase, setPhase] = useState(0);
   const getPhases = useServerFn(getHeroPhases);
